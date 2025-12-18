@@ -8,11 +8,14 @@ body {
 body {
   margin: 0;
   background: #fff;
+  /* Page layout: navbar (top) + main (fills) + footer (bottom) */
+  display: flex;
+  flex-direction: column;
 }
 
-/* Main area takes full viewport minus navbar height */
+/* Main area fills the remaining viewport between navbar and footer */
 .tm-main {
-  height: calc(100vh - 56px);
+  flex: 1 1 auto;
   display: flex;
   flex-direction: row;
   min-height: 0;
@@ -20,12 +23,14 @@ body {
 
 /* Left editor panel (resizable) */
 .tm-left {
+  flex-shrink: 0; /* don't let Gallery/Help content squeeze the editor panel */
   width: 36%;
   min-width: 240px;
   max-width: 75%;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  border: 1px dotted gray;
 }
 
 .tm-panel-header {
@@ -35,6 +40,13 @@ body {
 .tm-editor {
   flex: 1 1 auto;
   min-height: 0;
+  margin: 30px; /* space around the editor block */
+}
+
+/* Ace editor: force a very light gray background (theme-override) */
+.tm-editor.ace_editor,
+.tm-editor.ace_editor .ace_scroller {
+  background: #f8f9fa; /* Bootstrap "light" */
 }
 
 /* Splitter */
@@ -86,12 +98,63 @@ body {
   min-height: 0;
 }
 
+.tm-viz-wrap {
+  height: calc(100% - 56px); /* keep existing right-panel header height assumption */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0; /* allow flex children to shrink; prevents horizontal overflow pushing panel */
+}
+
+.tm-viz-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  user-select: none;
+}
+
+.tm-icon-btn {
+  width: 34px; /* consistent square buttons for icons */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.tm-viz-status {
+  min-width: 140px;
+  text-align: right;
+}
+
 .tm-viz {
-  height: calc(100% - 56px);
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0; /* keep scroll containment inside right panel */
   overflow: auto;
   padding: 12px;
   background: #fff;
   --tm-node-shadow: none; /* MapScript can override via Default box shadow */
+}
+
+/* Viz interactivity */
+.tm-viz svg .node,
+.tm-viz svg .edge {
+  cursor: pointer;
+}
+
+.tm-viz svg .tm-viz-selected polygon,
+.tm-viz svg .tm-viz-selected path,
+.tm-viz svg .tm-viz-selected ellipse {
+  stroke: #0d6efd !important;
+  stroke-width: 2px !important;
+}
+
+/* Node modal: chevron disclosure */
+#tm-viz-add-link-details > summary {
+  cursor: pointer;
+  user-select: none;
 }
 
 /* Subtle “modern” look: apply shadow to Graphviz node shapes (SVG) */
@@ -118,6 +181,166 @@ body {
   border-radius: 6px;
   padding: 10px;
   overflow: auto;
+}
+
+/* Help tab: fixed quick reference + scrollable markdown body */
+.tm-help-tab {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tm-help-header {
+  flex: 0 0 auto;
+}
+
+.tm-help-md {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 12px;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.tm-help-quickref {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Help sub-tabs (intro|usage|syntax) */
+.tm-help-subtabs {
+  user-select: none;
+  margin-bottom: 8px;
+}
+
+.tm-help-subtab {
+  color: #444;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 0 2px;
+}
+
+.tm-help-subtab.active {
+  color: #0d6efd;
+}
+
+/* Minimal markdown typography */
+.tm-help-md h1,
+.tm-help-md h2,
+.tm-help-md h3,
+.tm-help-md h4,
+.tm-help-md h5,
+.tm-help-md h6 {
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.tm-help-md pre {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.tm-help-pre-wrap {
+  position: relative;
+}
+
+.tm-help-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+}
+
+.tm-help-md code {
+  background: #f8f9fa;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
+}
+
+/* Gallery */
+#tab-gallery {
+  /* Keep scrolling inside the right panel so switching tabs doesn't change overall page width. */
+  overflow: auto;
+}
+
+.tm-gallery-card {
+  cursor: pointer;
+}
+
+.tm-gallery-card:hover {
+  border-color: #0d6efd;
+}
+
+.tm-gallery-card {
+  position: relative;
+}
+
+.tm-gallery-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+
+.tm-gallery-actions .btn {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.tm-gallery-thumb {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  border-bottom: 1px solid #e9ecef;
+  background: #fff;
+}
+
+.tm-gallery-thumb-placeholder {
+  width: 100%;
+  height: 140px;
+  border-bottom: 1px solid #e9ecef;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 50%, #f1f3f5 100%);
+}
+
+/* Ace editor popover (colour picker) */
+.tm-ace-popover {
+  position: fixed;
+  z-index: 2000; /* above Ace + toolbar */
+  min-width: 260px;
+  max-width: 320px;
+  background: #fff;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+.tm-ace-popover-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Flash the editor Colour button when cursor is inside a valid colour token */
+@keyframes tmFlashRing {
+  0% {
+    box-shadow: 0 0 0 0 rgba(13, 110, 253, 0);
+  }
+  35% {
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(13, 110, 253, 0);
+  }
+}
+
+#tm-editor-color.tm-flash {
+  animation: tmFlashRing 420ms ease-out;
 }
 
 

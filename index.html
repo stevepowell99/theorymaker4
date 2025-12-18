@@ -4,6 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Theorymaker</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
 
     <!-- Bootstrap (styling only; no build step) -->
     <link
@@ -11,6 +13,12 @@
       rel="stylesheet"
       integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
       crossorigin="anonymous"
+    />
+
+    <!-- Bootstrap Icons (single-file icon font) -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
     />
 
     <!-- App styling -->
@@ -30,7 +38,16 @@
       <!-- Left: ACE editor -->
       <section id="tm-left" class="tm-left">
         <div class="tm-panel-header border-bottom bg-white px-2 py-2">
-          <div class="small text-muted">editor</div>
+          <div class="d-flex align-items-center justify-content-between gap-2">
+            <div class="small text-muted">editor</div>
+            <div class="d-flex align-items-center gap-2">
+              <button id="tm-editor-color" class="btn btn-sm btn-outline-secondary" type="button" title="Pick colour for editor">Colour</button>
+              <button id="tm-editor-save" class="btn btn-sm btn-outline-primary" type="button">Save</button>
+            </div>
+          </div>
+          <div class="small text-muted mt-1">
+            Saved maps live only in this browser (LocalStorage). Also save the URL somewhere safe.
+          </div>
         </div>
         <div id="editor" class="tm-editor" aria-label="Theory DSL editor"></div>
       </section>
@@ -42,7 +59,7 @@
       <section class="tm-right">
         <div class="tm-tabs border-bottom bg-white px-2 py-2">
           <!-- Per spec: tabs are “just text along the top” -->
-          <a href="#" class="tm-tab active" data-tab="viz">viz</a>
+          <a href="#" class="tm-tab active" data-tab="viz">diagram</a>
           <span class="text-muted px-1">|</span>
           <a href="#" class="tm-tab" data-tab="gallery">gallery</a>
           <span class="text-muted px-1">|</span>
@@ -54,35 +71,438 @@
           <section id="tab-viz" class="tm-tab-panel">
             <div class="p-2 border-bottom bg-white">
               <div id="tm-errors" class="tm-errors d-none"></div>
-              <div class="d-flex gap-2 align-items-center">
-                <button id="tm-render" class="btn btn-sm btn-primary">Render</button>
-                <div class="small text-muted">
-                  DSL → validate/autocorrect → DOT → Graphviz
-                </div>
-              </div>
             </div>
-            <div id="tm-viz" class="tm-viz" aria-label="Graph visualization output"></div>
+            <div class="tm-viz-wrap" aria-label="Graph visualization output">
+              <!-- Controls across the top of the Graphviz output (per spec) -->
+              <div class="tm-viz-toolbar border-bottom bg-white px-2 py-2">
+                <div class="btn-group btn-group-sm" role="group" aria-label="Zoom controls">
+                  <button
+                    id="tm-zoom-out"
+                    class="btn btn-outline-secondary tm-icon-btn"
+                    type="button"
+                    aria-label="Zoom out"
+                    data-bs-toggle="tooltip"
+                    data-bs-title="Zoom out"
+                  >
+                    <i class="bi bi-zoom-out" aria-hidden="true"></i>
+                  </button>
+                  <button
+                    id="tm-zoom-reset"
+                    class="btn btn-outline-secondary tm-icon-btn"
+                    type="button"
+                    aria-label="Reset zoom"
+                    data-bs-toggle="tooltip"
+                    data-bs-title="Reset zoom"
+                  >
+                    <i class="bi bi-aspect-ratio" aria-hidden="true"></i>
+                  </button>
+                  <button
+                    id="tm-zoom-in"
+                    class="btn btn-outline-secondary tm-icon-btn"
+                    type="button"
+                    aria-label="Zoom in"
+                    data-bs-toggle="tooltip"
+                    data-bs-title="Zoom in"
+                  >
+                    <i class="bi bi-zoom-in" aria-hidden="true"></i>
+                  </button>
+                </div>
+
+                <div class="vr mx-2"></div>
+
+                <div class="btn-group btn-group-sm" role="group" aria-label="Export and copy controls">
+                  <button
+                    id="tm-copy-raw-url"
+                    class="btn btn-outline-secondary tm-icon-btn"
+                    type="button"
+                    aria-label="Copy raw URL"
+                    data-bs-toggle="tooltip"
+                    data-bs-title="Copy raw URL (for restore)"
+                  >
+                    <i class="bi bi-clipboard" aria-hidden="true"></i>
+                  </button>
+                  <button
+                    id="tm-download-png"
+                    class="btn btn-outline-secondary tm-icon-btn"
+                    type="button"
+                    aria-label="Copy PNG"
+                    data-bs-toggle="tooltip"
+                    data-bs-title="Copy high-quality PNG"
+                  >
+                    <i class="bi bi-image" aria-hidden="true"></i>
+                  </button>
+                  <button
+                    id="tm-copy-link"
+                    class="btn btn-outline-secondary tm-icon-btn"
+                    type="button"
+                    aria-label="Copy formatted link"
+                    data-bs-toggle="tooltip"
+                    data-bs-title="Copy formatted HTML link"
+                  >
+                    <i class="bi bi-link-45deg" aria-hidden="true"></i>
+                  </button>
+                  <button
+                    id="tm-download-html"
+                    class="btn btn-outline-secondary tm-icon-btn"
+                    type="button"
+                    aria-label="Copy HTML package"
+                    data-bs-toggle="tooltip"
+                    data-bs-title="Copy HTML package (PNG + link)"
+                  >
+                    <i class="bi bi-filetype-html" aria-hidden="true"></i>
+                  </button>
+                </div>
+
+                <span id="tm-viz-status" class="tm-viz-status small text-muted ms-auto" aria-live="polite"></span>
+              </div>
+
+              <div id="tm-viz" class="tm-viz"></div>
+            </div>
           </section>
 
           <!-- Gallery tab (placeholder) -->
           <section id="tab-gallery" class="tm-tab-panel d-none p-3">
-            <div class="text-muted">Gallery coming soon.</div>
+            <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+              <div>
+                <h6 class="mb-1">Gallery</h6>
+                <div class="small text-muted">
+                  Click an item to load it into the editor (you’ll be asked whether to replace everything or only update styles).
+                </div>
+              </div>
+            </div>
+
+            <hr class="my-3" />
+
+            <div class="mb-4">
+              <div class="d-flex align-items-center justify-content-between">
+                <h6 class="mb-2">Saved in this browser</h6>
+                <div class="small text-muted">LocalStorage</div>
+              </div>
+              <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                <div class="small text-muted">Thumbnails are saved per browser.</div>
+                <button id="tm-gallery-rebuild-thumbs" class="btn btn-sm btn-outline-secondary" type="button">
+                  Rebuild thumbnails
+                </button>
+              </div>
+              <div id="tm-gallery-saved-empty" class="small text-muted">No saved maps found yet.</div>
+              <div id="tm-gallery-saved" class="row g-3 d-none"></div>
+            </div>
+
+            <div>
+              <div class="d-flex align-items-center justify-content-between">
+                <h6 class="mb-2">Examples</h6>
+                <div class="small text-muted">16</div>
+              </div>
+              <div id="tm-gallery-examples" class="row g-3"></div>
+            </div>
           </section>
 
           <!-- Help tab -->
-          <section id="tab-help" class="tm-tab-panel d-none p-3">
-            <h6 class="mb-2">help.md</h6>
-            <pre id="tm-help-md" class="tm-help"><code>Loading help…</code></pre>
+          <section id="tab-help" class="tm-tab-panel d-none p-3 tm-help-tab">
+            <div class="tm-help-header">
+              <div class="tm-help-subtabs">
+                <a href="#" class="tm-help-subtab active" data-help-tab="intro">intro</a>
+                <span class="text-muted px-1">|</span>
+                <a href="#" class="tm-help-subtab" data-help-tab="usage">usage</a>
+                <span class="text-muted px-1">|</span>
+                <a href="#" class="tm-help-subtab" data-help-tab="syntax">syntax</a>
+                <span class="text-muted px-1">|</span>
+                <a href="#" class="tm-help-subtab" data-help-tab="quickref">quickref</a>
+                <span id="tm-help-admin-sep" class="text-muted px-1 d-none">|</span>
+                <a id="tm-help-admin-tab" href="#" class="tm-help-subtab d-none" data-help-tab="admin">admin</a>
+              </div>
+            </div>
+
+            <div id="tm-help-quickref" class="tm-help-quickref">
+              <h6 class="mb-2">Quick reference</h6>
+              <pre class="tm-help"><code>Title: My new graph
+Background: White
+Default box colour: red
+Default box shape: rounded
+Default box border: 1px dotted green
+Direction: top-bottom
+Label wrap: 20 characters
+Rank gap: 20
+Node gap: 20
+
+A:: Actual text for A[colour=red | border=1px solid blue]
+--A grouping box containing B and C
+B:: Text for B
+----An inner grouping box containing C
+C:: Text for C
+----
+--
+F:: some text not in any grouping box
+
+A | Q -> B | C
+D -> Needs no alias
+D -> E [label=some edgelabel | border=1px solid | label style=italic | label size=10]</code></pre>
+              <div class="small text-muted">
+                Notes: comments start with <code>#</code>. Attributes are inside <code>[...]</code> and separated by <code>|</code>.
+              </div>
+            </div>
+
+            <div id="tm-help-md" class="tm-help-md d-none">Loading help…</div>
           </section>
         </div>
       </section>
     </main>
 
+    <!-- Subtle footer -->
+    <footer class="border-top bg-white">
+      <div class="container-fluid py-2">
+        <div class="small text-muted">
+          <a class="text-muted text-decoration-none" href="https://causalmap.app/">Causal Map Ltd</a>
+          <span class="px-1">·</span>
+          <a class="text-muted text-decoration-none" href="https://causalmap.app/">causalmap.app</a>
+          <span class="px-1">·</span>
+          <a class="text-muted text-decoration-none" href="https://github.com/stevepowell99/theorymaker4">github</a>
+          <span class="px-1">·</span>
+          <span>Licensed under </span>
+          <a class="text-muted text-decoration-none" rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY‑NC 4.0</a>
+        </div>
+      </div>
+    </footer>
+
     <!-- Ace Editor (CDN) -->
     <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.32.6/src-min-noconflict/ace.js" defer></script>
 
+    <!-- Markdown renderer for help.md -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js" defer></script>
+
+    <!-- Bootstrap JS (for modal) -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+      crossorigin="anonymous"
+      defer
+    ></script>
+
     <!-- App logic (module so we can import Graphviz WASM cleanly) -->
     <script type="module" src="./app.js"></script>
+
+    <!-- Gallery confirmation modal -->
+    <div class="modal fade" id="tm-gallery-modal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="tm-gallery-modal-title">Load map</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div id="tm-gallery-modal-desc" class="small text-muted"></div>
+            <div class="alert alert-warning mt-3 mb-0">
+              This will change the editor content.
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-outline-primary" id="tm-gallery-apply-styles">
+              Update styles only
+            </button>
+            <button type="button" class="btn btn-primary" id="tm-gallery-apply-all">
+              Replace entire editor
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Editor save modal (admin-only) -->
+    <div class="modal fade" id="tm-save-modal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Save</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="small text-muted">
+              Choose where to save this map (admin only).
+            </div>
+            <textarea id="tm-save-snippet" class="form-control form-control-sm mt-3 d-none" rows="10" readonly></textarea>
+            <div id="tm-save-snippet-hint" class="small text-muted mt-2 d-none">
+              Copied to clipboard. Paste into <code>GALLERY_EXAMPLES</code> in <code>app.js</code>.
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-outline-primary" id="tm-save-local">Save to this browser</button>
+            <button type="button" class="btn btn-primary" id="tm-save-example">Copy standard example snippet</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Viz edit modal (node/link interactivity) -->
+    <div class="modal fade" id="tm-viz-edit-modal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="tm-viz-edit-modal-title">Edit</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+
+          <div class="modal-body">
+            <div id="tm-viz-edit-meta" class="small text-muted"></div>
+
+            <!-- Shown when the clicked thing can't be edited via widgets (implicit / multi-edge line) -->
+            <div id="tm-viz-edit-disabled" class="alert alert-info mt-3 d-none"></div>
+
+            <!-- Node fields -->
+            <div id="tm-viz-edit-node-fields" class="mt-3 d-none">
+              <label class="form-label mb-1" for="tm-viz-node-label">Node label</label>
+              <input id="tm-viz-node-label" class="form-control form-control-sm" type="text" />
+
+              <div class="row g-2 mt-2">
+                <div class="col-12 col-md-5">
+                  <label class="form-label mb-1" for="tm-viz-node-fill-color">Fill colour</label>
+                  <input id="tm-viz-node-fill-color" class="form-control form-control-sm form-control-color" type="color" value="#ffffff" />
+                </div>
+                <div class="col-12 col-md-7 d-flex align-items-end gap-2">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="" id="tm-viz-node-rounded" />
+                    <label class="form-check-label" for="tm-viz-node-rounded">Rounded</label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row g-2 mt-2">
+                <div class="col-4">
+                  <label class="form-label mb-1" for="tm-viz-node-border-width">Border width</label>
+                  <input id="tm-viz-node-border-width" class="form-control form-control-sm" type="number" min="0" step="1" />
+                </div>
+                <div class="col-4">
+                  <label class="form-label mb-1" for="tm-viz-node-border-style">Border style</label>
+                  <select id="tm-viz-node-border-style" class="form-select form-select-sm">
+                    <option value="solid">solid</option>
+                    <option value="dotted">dotted</option>
+                    <option value="dashed">dashed</option>
+                    <option value="bold">bold</option>
+                  </select>
+                </div>
+                <div class="col-4">
+                  <label class="form-label mb-1" for="tm-viz-node-border-color">Border colour</label>
+                  <input id="tm-viz-node-border-color" class="form-control form-control-sm form-control-color" type="color" value="#999999" />
+                </div>
+              </div>
+
+              <hr class="my-3" />
+
+              <details id="tm-viz-add-link-details">
+                <summary class="fw-semibold">Add link</summary>
+                <div class="small text-muted mt-1">Adds a new line to the editor and re-renders.</div>
+
+                <div class="row g-2 mt-2">
+                  <div class="col-12 col-md-4">
+                    <label class="form-label mb-1" for="tm-viz-add-edge-dir">Direction</label>
+                    <select id="tm-viz-add-edge-dir" class="form-select form-select-sm">
+                      <option value="out">From this node → target</option>
+                      <option value="in">Source → to this node</option>
+                    </select>
+                  </div>
+                  <div class="col-12 col-md-8">
+                    <label class="form-label mb-1" for="tm-viz-add-edge-other">Other node</label>
+                    <select id="tm-viz-add-edge-other" class="form-select form-select-sm"></select>
+                    <input
+                      id="tm-viz-add-edge-new-label"
+                      class="form-control form-control-sm mt-2 d-none"
+                      type="text"
+                      placeholder="New node label"
+                    />
+                    <div id="tm-viz-add-edge-new-hint" class="small text-muted mt-1 d-none">
+                      A new explicit node line will be created.
+                    </div>
+                  </div>
+                </div>
+
+                <label class="form-label mb-1 mt-2" for="tm-viz-add-edge-label">Link label</label>
+                <input id="tm-viz-add-edge-label" class="form-control form-control-sm" type="text" />
+
+                <div class="row g-2 mt-2">
+                  <div class="col-4">
+                    <label class="form-label mb-1" for="tm-viz-add-edge-border-width">Border width</label>
+                    <input id="tm-viz-add-edge-border-width" class="form-control form-control-sm" type="number" min="0" step="1" />
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label mb-1" for="tm-viz-add-edge-border-style">Border style</label>
+                    <select id="tm-viz-add-edge-border-style" class="form-select form-select-sm">
+                      <option value="solid">solid</option>
+                      <option value="dotted">dotted</option>
+                      <option value="dashed">dashed</option>
+                      <option value="bold">bold</option>
+                    </select>
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label mb-1" for="tm-viz-add-edge-border-color">Border colour</label>
+                    <input id="tm-viz-add-edge-border-color" class="form-control form-control-sm form-control-color" type="color" value="#6c757d" />
+                  </div>
+                </div>
+
+                <div class="d-flex gap-2 mt-3">
+                  <button id="tm-viz-add-edge-btn" type="button" class="btn btn-sm btn-outline-primary">Add link</button>
+                  <div id="tm-viz-add-edge-status" class="small text-muted align-self-center"></div>
+                </div>
+              </details>
+            </div>
+
+            <!-- Edge fields -->
+            <div id="tm-viz-edit-edge-fields" class="mt-3 d-none">
+              <div class="row g-2">
+                <div class="col-12 col-md-6">
+                  <label class="form-label mb-1" for="tm-viz-edge-from">Source</label>
+                  <select id="tm-viz-edge-from" class="form-select form-select-sm"></select>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label mb-1" for="tm-viz-edge-to">Target</label>
+                  <select id="tm-viz-edge-to" class="form-select form-select-sm"></select>
+                </div>
+              </div>
+
+              <label class="form-label mb-1" for="tm-viz-edge-label">Link label</label>
+              <input id="tm-viz-edge-label" class="form-control form-control-sm" type="text" />
+
+              <div class="row g-2 mt-2">
+                <div class="col-4">
+                  <label class="form-label mb-1" for="tm-viz-edge-border-width">Border width</label>
+                  <input id="tm-viz-edge-border-width" class="form-control form-control-sm" type="number" min="0" step="1" />
+                </div>
+                <div class="col-4">
+                  <label class="form-label mb-1" for="tm-viz-edge-border-style">Border style</label>
+                  <select id="tm-viz-edge-border-style" class="form-select form-select-sm">
+                    <option value="solid">solid</option>
+                    <option value="dotted">dotted</option>
+                    <option value="dashed">dashed</option>
+                    <option value="bold">bold</option>
+                  </select>
+                </div>
+                <div class="col-4">
+                  <label class="form-label mb-1" for="tm-viz-edge-border-color">Border colour</label>
+                  <input id="tm-viz-edge-border-color" class="form-control form-control-sm form-control-color" type="color" value="#999999" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-outline-danger" id="tm-viz-edit-delete">Delete</button>
+            <button type="button" class="btn btn-primary" id="tm-viz-edit-save">Save</button>
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ace editor colour picker (inserts rgb(...) to avoid MapScript '#' comment conflict) -->
+    <div id="tm-ace-color-popover" class="tm-ace-popover d-none" role="dialog" aria-label="Colour picker">
+      <div class="tm-ace-popover-inner">
+        <input id="tm-ace-color-input" class="form-control form-control-sm form-control-color" type="color" value="#3366ff" />
+        <button id="tm-ace-color-apply" class="btn btn-sm btn-outline-primary" type="button">Apply</button>
+        <button id="tm-ace-color-close" class="btn btn-sm btn-outline-secondary" type="button">Close</button>
+      </div>
+      <div class="small text-muted mt-1">Inserts <code>rgb(r,g,b)</code> (MapScript treats <code>#</code> as a comment).</div>
+    </div>
   </body>
 </html>
 

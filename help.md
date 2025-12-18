@@ -1,189 +1,217 @@
 # Theorymaker
 
-This repo hosts a static web app (pure HTML/CSS/JS) that turns **MapScript** (a small DSL) into **Graphviz DOT**, then renders it.
+## Intro
 
-## MapScript (DSL) specification
+Theorymaker lets you write a simple text “map language” called **MapScript** and instantly see it as a diagram.
 
-### 1) File structure
+If you’re new: think of it like this:
 
-MapScript is line-oriented. Blank lines are ignored.
+- **Nodes** are the boxes in the diagram.
+- **Links** are arrows between nodes.
+- **Grouping boxes** are visual containers that group related nodes.
 
-- **Comments**: anything after `#` on a line is ignored.
-- **Whitespace**: generally ignored around tokens (IDs, `::`, `->`, `|`, `:`).
+## Usage
 
-### 2) Settings (optional)
+### The 3 areas
 
-Settings are written as `Key: Value` at the start of a line.
+- **Editor (left)**: where you type MapScript.
+- **Viz (right)**: the rendered diagram.
+- **Gallery**: example maps + maps you saved in this browser.
 
-Supported keys (case-insensitive):
+### Map controls (Viz tab)
 
-- **Title**: graph title (DOT `label`, top)
-- **Background**: background colour (DOT `bgcolor`)
-- **Default box colour** / **Default box color**: default node fill colour
-- **Default box shape**: default node shape styling
-  - `rounded` means Graphviz `style=rounded` on box-shaped nodes
-- **Default box border**: default node border style (see “Border syntax”)
-- **Default box shadow** / **Box shadow**: CSS shadow applied to rendered SVG nodes (not a Graphviz feature)
-  - Allowed values: `none`, `subtle`, `medium`, `strong`, or a CSS filter `drop-shadow(...)`
-- **Direction**: layout direction (maps to DOT `rankdir`)
-  - Allowed values: `top-bottom`, `bottom-top`, `left-right`, `right-left`
-- **Label wrap**: wrap node labels at N characters (best-effort)
-- **Rank gap**: vertical spacing between ranks (DOT `ranksep`)
-- **Node gap**: horizontal spacing between nodes (DOT `nodesep`)
+Across the top of the diagram you have controls:
 
-Example:
+- **Zoom out / Zoom in**: zoom the diagram.
+- **Reset (fit to width)**: fits the diagram to the available panel width again.
+- **Copy raw URL**: copies the current “restore URL” (the MapScript is encoded into it).
+- **Copy PNG**: copies a high-quality PNG image.
+- **Copy link**: copies a formatted HTML `<a href="...">...</a>` link.
+- **Copy HTML**: copies an HTML “package” containing a high-quality PNG + a link (useful for reports).
 
-Title: My new graph
-Background: White
-Default box colour: #ffeeba
-Default box shape: rounded
-Default box border: 1px dotted #666
-Default box shadow: subtle
-Direction: left-right
-Label wrap: 20
-Rank gap: 0.6
-Node gap: 0.4
+Tips:
 
-### 3) Nodes
+- If you resize the editor splitter, the diagram will refit while you’re in the default “fit to width” mode.
+- Once you zoom manually, the app keeps your zoom level until you hit **Reset**.
 
-Node definition syntax:
+### Sharing maps (URL)
 
-ID:: Label [attributes]
+- The URL updates as you type.
+- Copy/paste the URL to share the exact same map with someone else (or to restore later).
 
-- **ID**: a token like `A`, `B2`, `my_node`
-- **Label**: any text (can include spaces)
-- **[attributes]**: optional, see below
+### Saving maps (LocalStorage)
 
-Example:
+- Click **Save** to store the current map **in this browser only**.
+- Saved maps appear at the top of **Gallery**.
 
-A:: Actual text for A [colour=red | border=1px solid blue]
+### Editing the diagram with clicks
 
-### 4) Edges
+- Click a **node** to change its label and styling or delete it.
+- Click a **link** to change its endpoints/label/border or delete it.
 
-Edge syntax:
+## Admin
 
-FROM1 | FROM2 -> TO1 | TO2 | TO3 [edge-options]
+Admin features are enabled **only when running locally** on `http://localhost/...` (Live Server).
 
-- Multiple sources/targets are separated by `|` and expand to multiple edges (cross product).
-- Targets can be either an **ID** (preferred) or a **free label**.
-  - If you use a free label, it implicitly creates a node whose label is that text.
+- **Rebuild thumbnails**: Gallery → **Rebuild thumbnails** (admin-only).
+- **Save as standard example**: Editor → **Save** → **Copy standard example snippet**, then paste the snippet into `GALLERY_EXAMPLES` in `examples.js`.
 
-Examples:
+## Syntax
 
-A -> B | C
-A | Q -> B
-A | Q -> B | C
-D -> Needs no alias
-D -> E [some edgelabel | 1px solid]
+This section is meant to be copy/paste friendly.
 
-### 5) Clusters (grouping)
+### 1) The smallest possible map
 
-A cluster label line starts with `--`:
+Paste this into the editor:
 
---A box containing B and C
-
-All subsequent **node definitions** are placed into that cluster until another cluster label appears.
-
-#### Nested clusters (boxes within boxes)
-
-Use more dashes for deeper nesting:
-
-- `--Label` opens a box (level 1)
-- `----Label` opens a nested box (level 2)
-- `----` closes the most recent level-2 box
-- `--` closes the most recent level-1 box (and anything nested)
-
-Example:
-
---Drivers
-A:: Alice
-B:: Bob
-
---Outcomes
-C:: Crash risk
-
-A -> C
-B -> C
-
-Example with explicit open/close (to avoid confusion):
-
---Outer box
-A:: In outer
-----Inner box
-B:: In inner
-----  # end inner
---    # end outer
-C:: Not in any box
-
-### 6) Attribute syntax
-
-Attributes go inside `[...]` and are separated by `|`.
-
-#### 6.1) Node attributes
-
-Node attributes use `key=value` pairs.
-
-Supported keys (case-insensitive):
-
-- **colour** / **color**: node fill colour
-- **background**: alias for fill colour
-- **shape**: currently supports `rounded` (adds `style=rounded`)
-- **border**: border style (see “Border syntax”)
-
-Example:
-
-A:: Hello [colour=#ff0000 | border=2px dashed #333]
-
-#### 6.2) Edge options
-
-Edge options are “positional” parts inside `[...]`:
-
-[label | border]
-
-- First part: edge label (string)
-- Second part: border style (see “Border syntax”)
-
-Example:
-
-A -> B [increases | 1px dotted #888]
-
-### 7) Border syntax
-
-Border values are CSS-ish:
-
-WIDTH STYLE COLOR
-
-Examples:
-
-1px solid blue
-2px dotted #999
-
-### 8) Full examples
-
-#### Example A: Basic map
-
-Title: Simple map
-Direction: top-bottom
-
+```
 A:: Cause
 B:: Effect
 A -> B
+```
 
-#### Example B: Mixed IDs and implicit nodes
+### 2) Comments (important)
 
-Title: Implicit nodes
+- `#` starts a comment.
+- Everything after `#` on that line is ignored.
 
-A:: A (explicit)
-A -> “A free label node”
+This also means: **don’t use `#` for hex colours** (`#ff0000`) because it will be treated as a comment.
 
-#### Example C: Attributes and multi-target edges
+### 3) Settings (styles at the top)
 
-Title: Attributes
-Default box colour: #fff3cd
-Default box border: 1px dotted #666
+Settings look like `Key: Value` and usually go near the top.
 
-A:: Root cause [border=2px solid #0d6efd]
-B:: Outcome
-C:: Alternative outcome
+Common settings:
 
-A -> B | C [drives | 1px solid #999]
+- **Title**: text title shown above the diagram.
+- **Background**: background colour (named colour or `rgb(r,g,b)`).
+- **Default box colour**: default node fill colour.
+- **Default box border**: default node border, like `1px solid gray`.
+- **Default link colour**: default link/arrow colour.
+- **Default link style**: `solid | dotted | dashed | bold`.
+- **Default link width**: a number (interpreted like px), e.g. `2`.
+- **Default box shape**: `rounded` for rounded nodes.
+- **Default box shadow**: `none | subtle | medium | strong`.
+- **Direction**: `top-bottom | bottom-top | left-right | right-left`.
+- **Label wrap**: wraps node labels after N characters (best-effort).
+- **Rank gap / Node gap**: spacing controls (small numbers like `2`–`8` are typical).
+
+Colour rules (keep it simple):
+
+- Use **named colours** like `red`, `aliceblue`, `seagreen`, `dimgray`, etc.
+- Or use **`rgb(r,g,b)`**, e.g. `rgb(255, 0, 0)`.
+
+Example style block:
+
+```
+Background: aliceblue
+Default box colour: wheat
+Default box shape: rounded
+Default box border: 1px dotted dimgray
+Default link colour: dimgray
+Default link style: dotted
+Default link width: 2
+Default box shadow: subtle
+Direction: left-right
+```
+
+### 4) Nodes
+
+Define a node like this:
+
+ID:: Label
+
+- **ID** is a short name you use in links (like `A`, `B2`, `MyNode`).
+- **Label** is what you see in the diagram (can include spaces).
+
+Examples:
+
+```
+A:: A short label
+B:: A longer label with spaces
+```
+
+### 5) Links (arrows)
+
+Links look like this:
+
+```
+A -> B
+```
+
+You can create multiple links in one line using `|`:
+
+```
+A -> B | C
+A | Q -> B
+A | Q -> B | C
+```
+
+(That last one creates the full cross-product: A→B, A→C, Q→B, Q→C.)
+
+Optional link label + border:
+
+```
+A -> B [increases | 1px dotted gray]
+```
+
+Optional link label style + size (use `key=value` inside the brackets):
+
+```
+A -> B [label=increases | border=1px dotted gray | label style=italic | label size=10]
+```
+
+### 6) Grouping boxes (optional)
+
+Grouping boxes are just lines starting with dashes:
+
+- `--Label` opens a grouping box (level 1)
+- `----Label` opens a nested grouping box (level 2)
+- `----` closes the most recent level-2 grouping box
+- `--` closes the most recent level-1 grouping box (and anything nested)
+
+Example:
+
+```
+--Drivers
+A:: Training quality
+B:: Tool usability
+--
+
+--Outcomes
+C:: Adoption
+D:: Error rate
+--
+
+A | B -> C | D
+```
+
+### 7) Styling nodes inline (optional)
+
+You can put a small “style list” after a node label:
+
+```
+A:: Hello [colour=red | border=2px dashed dimgray | shape=rounded]
+```
+
+Supported node attributes:
+
+- `colour=...` (or `color=...`): fill colour
+- `background=...`: fill colour (alias)
+- `border=...`: border like `2px solid gray`
+- `shape=rounded`: rounded corners
+
+### 8) Border syntax (for nodes and links)
+
+Border text is:
+
+```
+WIDTH STYLE COLOUR
+```
+
+Examples:
+
+```
+1px solid blue
+2px dotted gray
+```
