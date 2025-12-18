@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Theorymaker</title>
+
+    <!-- Bootstrap (styling only; no build step) -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+
+    <!-- App styling -->
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+
+  <body>
+    <!-- Simple navbar -->
+    <nav class="navbar navbar-expand-lg navbar-light border-bottom bg-white">
+      <div class="container-fluid">
+        <a class="navbar-brand fw-semibold" href="#">theorymaker</a>
+      </div>
+    </nav>
+
+    <!-- Main layout: editor | splitter | right panel -->
+    <main class="tm-main">
+      <!-- Left: ACE editor -->
+      <section id="tm-left" class="tm-left">
+        <div class="tm-panel-header border-bottom bg-white px-2 py-2">
+          <div class="small text-muted">editor</div>
+        </div>
+        <div id="editor" class="tm-editor" aria-label="Theory DSL editor"></div>
+      </section>
+
+      <!-- Draggable splitter -->
+      <div id="tm-splitter" class="tm-splitter" role="separator" aria-orientation="vertical" aria-label="Resize editor"></div>
+
+      <!-- Right: tabs + content -->
+      <section class="tm-right">
+        <div class="tm-tabs border-bottom bg-white px-2 py-2">
+          <!-- Per spec: tabs are “just text along the top” -->
+          <a href="#" class="tm-tab active" data-tab="viz">viz</a>
+          <span class="text-muted px-1">|</span>
+          <a href="#" class="tm-tab" data-tab="gallery">gallery</a>
+          <span class="text-muted px-1">|</span>
+          <a href="#" class="tm-tab" data-tab="help">help</a>
+        </div>
+
+        <div class="tm-right-body">
+          <!-- Viz tab -->
+          <section id="tab-viz" class="tm-tab-panel">
+            <div class="p-2 border-bottom bg-white">
+              <div id="tm-errors" class="tm-errors d-none"></div>
+              <div class="d-flex gap-2 align-items-center">
+                <button id="tm-render" class="btn btn-sm btn-primary">Render</button>
+                <div class="small text-muted">
+                  DSL → validate/autocorrect → DOT → Graphviz
+                </div>
+              </div>
+            </div>
+            <div id="tm-viz" class="tm-viz" aria-label="Graph visualization output"></div>
+          </section>
+
+          <!-- Gallery tab (placeholder) -->
+          <section id="tab-gallery" class="tm-tab-panel d-none p-3">
+            <div class="text-muted">Gallery coming soon.</div>
+          </section>
+
+          <!-- Help tab -->
+          <section id="tab-help" class="tm-tab-panel d-none p-3">
+            <h6 class="mb-2">help.md</h6>
+            <pre id="tm-help-md" class="tm-help"><code>Loading help…</code></pre>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <!-- Ace Editor (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.32.6/src-min-noconflict/ace.js" defer></script>
+
+    <!-- App logic (module so we can import Graphviz WASM cleanly) -->
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
+
+

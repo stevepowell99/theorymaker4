@@ -1,0 +1,123 @@
+/* Theorymaker: minimal layout + splitter + light typography */
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #fff;
+}
+
+/* Main area takes full viewport minus navbar height */
+.tm-main {
+  height: calc(100vh - 56px);
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+}
+
+/* Left editor panel (resizable) */
+.tm-left {
+  width: 36%;
+  min-width: 240px;
+  max-width: 75%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tm-panel-header {
+  flex: 0 0 auto;
+}
+
+.tm-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Splitter */
+.tm-splitter {
+  width: 10px;
+  cursor: col-resize;
+  background: #f6f6f6;
+  border-left: 1px solid #e5e5e5;
+  border-right: 1px solid #e5e5e5;
+}
+
+.tm-splitter:hover {
+  background: #efefef;
+}
+
+/* Right panel */
+.tm-right {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tm-tabs {
+  flex: 0 0 auto;
+  user-select: none;
+}
+
+.tm-tab {
+  color: #444;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 0 2px;
+}
+
+.tm-tab.active {
+  color: #0d6efd; /* Bootstrap primary */
+}
+
+.tm-right-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tm-tab-panel {
+  height: 100%;
+  min-height: 0;
+}
+
+.tm-viz {
+  height: calc(100% - 56px);
+  overflow: auto;
+  padding: 12px;
+  background: #fff;
+  --tm-node-shadow: none; /* MapScript can override via Default box shadow */
+}
+
+/* Subtle “modern” look: apply shadow to Graphviz node shapes (SVG) */
+.tm-viz svg .node polygon,
+.tm-viz svg .node path,
+.tm-viz svg .node ellipse {
+  filter: var(--tm-node-shadow);
+}
+
+.tm-errors {
+  font-size: 0.9rem;
+  color: #842029; /* bootstrap danger-ish */
+  background: #f8d7da;
+  border: 1px solid #f5c2c7;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  white-space: pre-wrap;
+}
+
+.tm-help {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 10px;
+  overflow: auto;
+}
+
+
