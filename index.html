@@ -30,26 +30,98 @@
     <nav class="navbar navbar-expand-lg navbar-light border-bottom bg-white">
       <div class="container-fluid">
         <a class="navbar-brand fw-semibold" href="#">theorymaker</a>
+
+        <!-- History controls: mirrors browser back/forward (discrete undo/redo) -->
+        <div class="ms-auto d-flex align-items-center gap-2">
+          <div class="btn-group btn-group-sm" role="group" aria-label="History controls">
+            <button
+              id="tm-undo"
+              class="btn btn-outline-secondary tm-icon-btn"
+              type="button"
+              aria-label="Undo"
+              data-bs-toggle="tooltip"
+              data-bs-title="Undo (back)"
+            >
+              <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+            </button>
+            <button
+              id="tm-redo"
+              class="btn btn-outline-secondary tm-icon-btn"
+              type="button"
+              aria-label="Redo"
+              data-bs-toggle="tooltip"
+              data-bs-title="Redo (forward)"
+            >
+              <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
       </div>
     </nav>
 
     <!-- Main layout: editor | splitter | right panel -->
     <main class="tm-main">
-      <!-- Left: ACE editor -->
+      <!-- Left: Chat (default) + Editor (behind chevron) -->
       <section id="tm-left" class="tm-left">
+        <!-- Chat UI -->
         <div class="tm-panel-header border-bottom bg-white px-2 py-2">
           <div class="d-flex align-items-center justify-content-between gap-2">
-            <div class="small text-muted">editor</div>
-            <div class="d-flex align-items-center gap-2">
-              <button id="tm-editor-color" class="btn btn-sm btn-outline-secondary" type="button" title="Pick colour for editor">Colour</button>
-              <button id="tm-editor-save" class="btn btn-sm btn-outline-primary" type="button">Save</button>
-            </div>
+            <div class="small text-muted">chat</div>
           </div>
-          <div class="small text-muted mt-1">
-            Saved maps live only in this browser (LocalStorage). Also save the URL somewhere safe.
+
+          <div class="input-group input-group-sm mt-2">
+            <textarea
+              id="tm-chat-input"
+              class="form-control tm-chat-input"
+              rows="1"
+              placeholder="Ask to update the diagram contents and/or styles"
+              aria-label="Chat input"
+            ></textarea>
+            <button
+              id="tm-chat-clear"
+              class="btn btn-outline-secondary d-none"
+              type="button"
+              title="Clear chat history"
+              aria-label="Clear chat history"
+            >
+              Clear
+            </button>
+            <button id="tm-chat-send" class="btn btn-primary" type="button">
+              <span id="tm-chat-send-label">Send</span>
+              <span id="tm-chat-send-spinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+            </button>
           </div>
+
+          <!-- History hidden behind a chevron (per request) -->
+          <details id="tm-chat-history-details" class="tm-details tm-chat-details mt-2">
+            <summary class="tm-details-summary">
+              <i class="bi bi-chevron-right tm-chevron" aria-hidden="true"></i>
+              <span class="fw-semibold">history</span>
+            </summary>
+            <div id="tm-chat-history" class="tm-chat-history mt-2" aria-label="Chat history"></div>
+          </details>
         </div>
-        <div id="editor" class="tm-editor" aria-label="Theory DSL editor"></div>
+
+        <!-- Editor hidden behind a chevron (per request) -->
+        <details id="tm-editor-details" class="tm-details tm-editor-details">
+          <summary class="tm-details-summary tm-editor-details-summary">
+            <i class="bi bi-chevron-right tm-chevron" aria-hidden="true"></i>
+            <span class="fw-semibold">editor</span>
+          </summary>
+
+          <div class="tm-editor-wrap">
+            <div class="tm-panel-header border-bottom bg-white px-2 py-2">
+              <div class="d-flex align-items-center justify-content-between gap-2">
+                <div class="d-flex align-items-center gap-2">
+                  <button id="tm-editor-line-style" class="btn btn-sm btn-outline-secondary" type="button" title="Style the current line (node/link)">Current Line Style</button>
+                </div>
+              </div>
+
+            </div>
+
+            <div id="editor" class="tm-editor" aria-label="Theory DSL editor"></div>
+          </div>
+        </details>
       </section>
 
       <!-- Draggable splitter -->
@@ -110,7 +182,7 @@
 
                 <div class="vr mx-2"></div>
 
-                <div class="btn-group btn-group-sm" role="group" aria-label="Export and copy controls">
+                <div class="btn-group btn-group-sm" role="group" aria-label="Clipboard controls">
                   <button
                     id="tm-copy-raw-url"
                     class="btn btn-outline-secondary tm-icon-btn"
@@ -120,16 +192,6 @@
                     data-bs-title="Copy raw URL (for restore)"
                   >
                     <i class="bi bi-clipboard" aria-hidden="true"></i>
-                  </button>
-                  <button
-                    id="tm-download-png"
-                    class="btn btn-outline-secondary tm-icon-btn"
-                    type="button"
-                    aria-label="Copy PNG"
-                    data-bs-toggle="tooltip"
-                    data-bs-title="Copy high-quality PNG"
-                  >
-                    <i class="bi bi-image" aria-hidden="true"></i>
                   </button>
                   <button
                     id="tm-copy-link"
@@ -152,6 +214,45 @@
                     <i class="bi bi-filetype-html" aria-hidden="true"></i>
                   </button>
                 </div>
+
+                <div class="vr mx-2"></div>
+
+                <div class="btn-group btn-group-sm" role="group" aria-label="Export controls">
+                  <button
+                    id="tm-download-png"
+                    class="btn btn-outline-secondary tm-icon-btn"
+                    type="button"
+                    aria-label="Copy PNG"
+                    data-bs-toggle="tooltip"
+                    data-bs-title="Copy high-quality PNG"
+                  >
+                    <i class="bi bi-image" aria-hidden="true"></i>
+                  </button>
+                </div>
+
+                <div class="vr mx-2"></div>
+
+                <button
+                  id="tm-editor-style"
+                  class="btn btn-outline-secondary tm-icon-btn"
+                  type="button"
+                  aria-label="Diagram style"
+                  data-bs-toggle="tooltip"
+                  data-bs-title="Diagram style"
+                >
+                  <i class="bi bi-palette" aria-hidden="true"></i>
+                </button>
+
+                <button
+                  id="tm-editor-save"
+                  class="btn btn-outline-primary tm-icon-btn"
+                  type="button"
+                  aria-label="Save"
+                  data-bs-toggle="tooltip"
+                  data-bs-title="Save"
+                >
+                  <i class="bi bi-floppy" aria-hidden="true"></i>
+                </button>
 
                 <span id="tm-viz-status" class="tm-viz-status small text-muted ms-auto" aria-live="polite"></span>
               </div>
@@ -200,16 +301,31 @@
           <!-- Help tab -->
           <section id="tab-help" class="tm-tab-panel d-none p-3 tm-help-tab">
             <div class="tm-help-header">
-              <div class="tm-help-subtabs">
-                <a href="#" class="tm-help-subtab active" data-help-tab="intro">intro</a>
-                <span class="text-muted px-1">|</span>
-                <a href="#" class="tm-help-subtab" data-help-tab="usage">usage</a>
-                <span class="text-muted px-1">|</span>
-                <a href="#" class="tm-help-subtab" data-help-tab="syntax">syntax</a>
-                <span class="text-muted px-1">|</span>
-                <a href="#" class="tm-help-subtab" data-help-tab="quickref">quickref</a>
-                <span id="tm-help-admin-sep" class="text-muted px-1 d-none">|</span>
-                <a id="tm-help-admin-tab" href="#" class="tm-help-subtab d-none" data-help-tab="admin">admin</a>
+              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div class="tm-help-subtabs">
+                  <a href="#" class="tm-help-subtab active" data-help-tab="intro">intro</a>
+                  <span class="text-muted px-1">|</span>
+                  <a href="#" class="tm-help-subtab" data-help-tab="usage">usage</a>
+                  <span class="text-muted px-1">|</span>
+                  <a href="#" class="tm-help-subtab" data-help-tab="ai">ai</a>
+                  <span class="text-muted px-1">|</span>
+                  <a href="#" class="tm-help-subtab" data-help-tab="syntax">syntax</a>
+                  <span class="text-muted px-1">|</span>
+                  <a href="#" class="tm-help-subtab" data-help-tab="quickref">quickref</a>
+                  <span id="tm-help-admin-sep" class="text-muted px-1 d-none">|</span>
+                  <a id="tm-help-admin-tab" href="#" class="tm-help-subtab d-none" data-help-tab="admin">admin</a>
+                </div>
+
+                <!-- Link to standalone help page for the current sub-tab -->
+                <a
+                  id="tm-help-open"
+                  class="small text-muted text-decoration-none"
+                  href="./help/intro"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  open in new page
+                </a>
               </div>
             </div>
 
@@ -308,6 +424,209 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
       </div>
     </div>
 
+    <!-- Style modal (edit diagram-wide style settings without putting them in the editor text) -->
+    <div class="modal fade" id="tm-style-modal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Styles</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+
+          <div class="modal-body">
+
+            <hr class="my-3" />
+
+            <!-- Presets (fast picker) -->
+            <div class="row g-3">
+              <div class="col-12">
+                <div class="fw-semibold">Presets</div>
+                <div class="small text-muted">Pick a colourway and a style preset. You can fine-tune under “More settings”.</div>
+              </div>
+
+              <div class="col-12 col-lg-6">
+                <div class="small text-muted mb-1">Colourways</div>
+                <div id="tm-style-presets-colourways" class="tm-style-grid" aria-label="Colourway presets"></div>
+              </div>
+
+              <div class="col-12 col-lg-6">
+                <div class="small text-muted mb-1">Styles</div>
+                <div id="tm-style-presets-styles" class="tm-style-grid" aria-label="Style presets"></div>
+              </div>
+            </div>
+
+            <hr class="my-3" />
+
+            <!-- Keep these always visible (per UX request) -->
+            <div class="row g-3">
+              <div class="col-12 col-md-6">
+                <label class="form-label mb-1" for="tm-style-direction">Direction</label>
+                <select id="tm-style-direction" class="form-select form-select-sm">
+                  <option value="LR">left → right</option>
+                  <option value="RL">right → left</option>
+                  <option value="TB">top → bottom</option>
+                  <option value="BT">bottom → top</option>
+                </select>
+              </div>
+
+              <div class="col-12">
+                <div class="row g-2">
+                  <div class="col-12 col-md-6">
+                    <div class="d-flex align-items-center justify-content-between">
+                      <label class="form-label mb-1" for="tm-style-rank-gap">Rank gap</label>
+                      <div class="small text-muted"><span id="tm-style-rank-gap-val">4</span></div>
+                    </div>
+                    <input id="tm-style-rank-gap" class="form-range" type="range" min="0" max="20" step="1" value="4" />
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <div class="d-flex align-items-center justify-content-between">
+                      <label class="form-label mb-1" for="tm-style-node-gap">Node gap</label>
+                      <div class="small text-muted"><span id="tm-style-node-gap-val">3</span></div>
+                    </div>
+                    <input id="tm-style-node-gap" class="form-range" type="range" min="0" max="20" step="1" value="3" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Advanced settings hidden behind a chevron -->
+              <div class="col-12">
+                <details id="tm-style-advanced" class="tm-details">
+                  <summary class="tm-details-summary">
+                    <i class="bi bi-chevron-right tm-chevron" aria-hidden="true"></i>
+                    <span class="fw-semibold">More settings</span>
+                    <span class="small text-muted ms-2">background, box/link styles, label wrap…</span>
+                  </summary>
+
+                  <div class="mt-3 row g-3">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label mb-1" for="tm-style-background">Background</label>
+                      <input id="tm-style-background" class="form-control form-control-sm form-control-color" type="color" value="#ffffff" />
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                      <label class="form-label mb-1" for="tm-style-text-color">Text colour (title + edge labels)</label>
+                      <input id="tm-style-text-color" class="form-control form-control-sm form-control-color" type="color" value="#111827" />
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                      <div class="d-flex align-items-center justify-content-between">
+                        <label class="form-label mb-1" for="tm-style-title-size">Title size</label>
+                        <div class="small text-muted"><span id="tm-style-title-size-val">18</span>pt</div>
+                      </div>
+                      <input id="tm-style-title-size" class="form-range" type="range" min="10" max="36" step="1" value="18" />
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                      <label class="form-label mb-1" for="tm-style-box-fill">Default box colour</label>
+                      <input id="tm-style-box-fill" class="form-control form-control-sm form-control-color" type="color" value="#e7f5ff" />
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                      <label class="form-label mb-1" for="tm-style-box-shape">Default box shape</label>
+                      <select id="tm-style-box-shape" class="form-select form-select-sm">
+                        <option value="">square</option>
+                        <option value="rounded">rounded</option>
+                      </select>
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                      <label class="form-label mb-1" for="tm-style-box-shadow">Default box shadow</label>
+                      <select id="tm-style-box-shadow" class="form-select form-select-sm">
+                        <option value="none">none</option>
+                        <option value="subtle">subtle</option>
+                        <option value="medium">medium</option>
+                      </select>
+                    </div>
+
+                    <div class="col-12">
+                      <div class="d-flex align-items-center justify-content-between">
+                        <label class="form-label mb-1" for="tm-style-box-border-width">Default box border</label>
+                        <div class="small text-muted"><span id="tm-style-box-border-width-val">1</span>px</div>
+                      </div>
+                      <div class="row g-2">
+                        <div class="col-12 col-md-4">
+                          <input id="tm-style-box-border-width" class="form-range" type="range" min="0" max="6" step="1" value="1" />
+                        </div>
+                        <div class="col-12 col-md-4">
+                          <select id="tm-style-box-border-style" class="form-select form-select-sm">
+                            <option value="solid">solid</option>
+                            <option value="dotted">dotted</option>
+                            <option value="dashed">dashed</option>
+                            <option value="bold">bold</option>
+                          </select>
+                        </div>
+                        <div class="col-12 col-md-4">
+                          <input id="tm-style-box-border-color" class="form-control form-control-sm form-control-color" type="color" value="#1e90ff" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                      <label class="form-label mb-1" for="tm-style-link-color">Default link colour</label>
+                      <input id="tm-style-link-color" class="form-control form-control-sm form-control-color" type="color" value="#6c757d" />
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                      <label class="form-label mb-1" for="tm-style-link-style">Default link style</label>
+                      <select id="tm-style-link-style" class="form-select form-select-sm">
+                        <option value="">(auto)</option>
+                        <option value="solid">solid</option>
+                        <option value="dotted">dotted</option>
+                        <option value="dashed">dashed</option>
+                        <option value="bold">bold</option>
+                      </select>
+                    </div>
+
+                    <div class="col-12">
+                      <div class="row g-2">
+                        <div class="col-12 col-md-6">
+                          <div class="d-flex align-items-center justify-content-between">
+                            <label class="form-label mb-1" for="tm-style-link-width">Default link width</label>
+                            <div class="small text-muted"><span id="tm-style-link-width-val">1</span>px</div>
+                          </div>
+                          <input id="tm-style-link-width" class="form-range" type="range" min="1" max="6" step="1" value="1" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                          <div class="d-flex align-items-center justify-content-between">
+                            <label class="form-label mb-1" for="tm-style-label-wrap">Label wrap</label>
+                            <div class="small text-muted"><span id="tm-style-label-wrap-val">18</span></div>
+                          </div>
+                          <input id="tm-style-label-wrap" class="form-range" type="range" min="8" max="40" step="1" value="18" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" id="tm-style-apply" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Single setting-line modal (when cursor is on a "Key: Value" style line in the editor) -->
+    <div class="modal fade" id="tm-setting-line-modal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="tm-setting-line-modal-title">Edit setting</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div id="tm-setting-line-modal-meta" class="small text-muted"></div>
+            <div id="tm-setting-line-modal-body" class="mt-3"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Editor save modal (admin-only) -->
     <div class="modal fade" id="tm-save-modal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered">
@@ -387,6 +706,17 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
                 </div>
               </div>
 
+              <div class="mt-2">
+                <div class="form-check form-switch">
+                  <input id="tm-viz-node-text-size-enabled" class="form-check-input" type="checkbox" />
+                  <label class="form-check-label" for="tm-viz-node-text-size-enabled">Override text size</label>
+                </div>
+                <div class="mt-1">
+                  <label class="form-label mb-1" for="tm-viz-node-text-size">Scale (×)</label>
+                  <input id="tm-viz-node-text-size" class="form-control form-control-sm" type="number" min="0.5" max="2.5" step="0.1" value="1" />
+                </div>
+              </div>
+
               <hr class="my-3" />
 
               <details id="tm-viz-add-link-details">
@@ -446,6 +776,65 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
               </details>
             </div>
 
+            <!-- Grouping box (cluster) fields -->
+            <div id="tm-viz-edit-cluster-fields" class="mt-3 d-none">
+              <label class="form-label mb-1" for="tm-viz-cluster-label">Box title</label>
+              <input id="tm-viz-cluster-label" class="form-control form-control-sm" type="text" />
+
+              <div class="mt-2">
+                <div class="form-check form-switch">
+                  <input id="tm-viz-cluster-fill-enabled" class="form-check-input" type="checkbox" />
+                  <label class="form-check-label" for="tm-viz-cluster-fill-enabled">Override fill colour</label>
+                </div>
+                <input id="tm-viz-cluster-fill" class="form-control form-control-sm form-control-color mt-1" type="color" value="#ffffff" />
+              </div>
+
+              <div class="mt-2">
+                <div class="form-check form-switch">
+                  <input id="tm-viz-cluster-border-enabled" class="form-check-input" type="checkbox" />
+                  <label class="form-check-label" for="tm-viz-cluster-border-enabled">Override border</label>
+                </div>
+                <div class="row g-2 mt-1">
+                  <div class="col-4">
+                    <label class="form-label mb-1" for="tm-viz-cluster-border-width">Border width</label>
+                    <input id="tm-viz-cluster-border-width" class="form-control form-control-sm" type="number" min="0" step="1" />
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label mb-1" for="tm-viz-cluster-border-style">Border style</label>
+                    <select id="tm-viz-cluster-border-style" class="form-select form-select-sm">
+                      <option value="solid">solid</option>
+                      <option value="dotted">dotted</option>
+                      <option value="dashed">dashed</option>
+                      <option value="bold">bold</option>
+                    </select>
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label mb-1" for="tm-viz-cluster-border-color">Border colour</label>
+                    <input id="tm-viz-cluster-border-color" class="form-control form-control-sm form-control-color" type="color" value="#cccccc" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-2">
+                <div class="form-check form-switch">
+                  <input id="tm-viz-cluster-text-colour-enabled" class="form-check-input" type="checkbox" />
+                  <label class="form-check-label" for="tm-viz-cluster-text-colour-enabled">Override title text colour</label>
+                </div>
+                <input id="tm-viz-cluster-text-colour" class="form-control form-control-sm form-control-color mt-1" type="color" value="#111827" />
+              </div>
+
+              <div class="mt-2">
+                <div class="form-check form-switch">
+                  <input id="tm-viz-cluster-text-size-enabled" class="form-check-input" type="checkbox" />
+                  <label class="form-check-label" for="tm-viz-cluster-text-size-enabled">Override title text size</label>
+                </div>
+                <div class="mt-1">
+                  <label class="form-label mb-1" for="tm-viz-cluster-text-size">Scale (×)</label>
+                  <input id="tm-viz-cluster-text-size" class="form-control form-control-sm" type="number" min="0.5" max="2.5" step="0.1" value="1" />
+                </div>
+              </div>
+            </div>
+
             <!-- Edge fields -->
             <div id="tm-viz-edit-edge-fields" class="mt-3 d-none">
               <div class="row g-2">
@@ -485,24 +874,196 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
           </div>
 
           <div class="modal-footer">
-            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
             <button type="button" class="btn btn-outline-danger" id="tm-viz-edit-delete">Delete</button>
-            <button type="button" class="btn btn-primary" id="tm-viz-edit-save">Save</button>
-            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-outline-secondary" id="tm-viz-edit-save" data-bs-dismiss="modal">Close</button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Ace editor colour picker (inserts rgb(...) to avoid MapScript '#' comment conflict) -->
-    <div id="tm-ace-color-popover" class="tm-ace-popover d-none" role="dialog" aria-label="Colour picker">
+    <!-- Ace editor popover: style the current line (node/link) -->
+    <div id="tm-ace-style-popover" class="tm-ace-popover d-none" role="dialog" aria-label="Style this line">
       <div class="tm-ace-popover-inner">
-        <input id="tm-ace-color-input" class="form-control form-control-sm form-control-color" type="color" value="#3366ff" />
-        <button id="tm-ace-color-apply" class="btn btn-sm btn-outline-primary" type="button">Apply</button>
-        <button id="tm-ace-color-close" class="btn btn-sm btn-outline-secondary" type="button">Close</button>
+        <div id="tm-ace-style-meta" class="small text-muted"></div>
+
+        <!-- Shown when the current line isn't a node or a link -->
+        <div id="tm-ace-style-none" class="small text-muted d-none">
+          Put the cursor on a node line (<code>ID:: ...</code>) or a link line (<code>A -&gt; B</code>) to style it.
+        </div>
+
+        <!-- Node styling -->
+        <div id="tm-ace-style-node" class="d-none">
+          <div class="d-flex align-items-center justify-content-between">
+            <div class="fw-semibold">Node styling</div>
+          </div>
+
+          <div class="mt-2">
+            <div class="form-check form-switch">
+              <input id="tm-ace-style-node-fill-enabled" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" for="tm-ace-style-node-fill-enabled">Override fill colour</label>
+            </div>
+            <input id="tm-ace-style-node-fill" class="form-control form-control-sm form-control-color mt-1" type="color" value="#ffffff" />
+          </div>
+
+          <div class="mt-2">
+            <div class="form-check form-switch">
+              <input id="tm-ace-style-node-border-enabled" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" for="tm-ace-style-node-border-enabled">Override border</label>
+            </div>
+            <div class="row g-2 mt-1">
+              <div class="col-4">
+                <label class="form-label mb-1" for="tm-ace-style-node-border-width">Width</label>
+                <input id="tm-ace-style-node-border-width" class="form-control form-control-sm" type="number" min="0" max="12" step="1" value="1" />
+              </div>
+              <div class="col-4">
+                <label class="form-label mb-1" for="tm-ace-style-node-border-style">Style</label>
+                <select id="tm-ace-style-node-border-style" class="form-select form-select-sm">
+                  <option value="solid">solid</option>
+                  <option value="dotted">dotted</option>
+                  <option value="dashed">dashed</option>
+                  <option value="bold">bold</option>
+                </select>
+              </div>
+              <div class="col-4">
+                <label class="form-label mb-1" for="tm-ace-style-node-border-color">Colour</label>
+                <input id="tm-ace-style-node-border-color" class="form-control form-control-sm form-control-color" type="color" value="#999999" />
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-2">
+            <div class="form-check">
+              <input id="tm-ace-style-node-rounded" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" for="tm-ace-style-node-rounded">Rounded</label>
+            </div>
+          </div>
+
+          <div class="mt-2">
+            <div class="form-check form-switch">
+              <input id="tm-ace-style-node-text-size-enabled" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" for="tm-ace-style-node-text-size-enabled">Override text size</label>
+            </div>
+            <div class="mt-1">
+              <label class="form-label mb-1" for="tm-ace-style-node-text-size">Scale (×)</label>
+              <input id="tm-ace-style-node-text-size" class="form-control form-control-sm" type="number" min="0.5" max="2.5" step="0.1" value="1" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Grouping box (cluster) styling -->
+        <div id="tm-ace-style-cluster" class="d-none">
+          <div class="d-flex align-items-center justify-content-between">
+            <div class="fw-semibold">Group box styling</div>
+          </div>
+
+          <div class="mt-2">
+            <div class="form-check form-switch">
+              <input id="tm-ace-style-cluster-fill-enabled" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" for="tm-ace-style-cluster-fill-enabled">Override fill colour</label>
+            </div>
+            <input id="tm-ace-style-cluster-fill" class="form-control form-control-sm form-control-color mt-1" type="color" value="#ffffff" />
+          </div>
+
+          <div class="mt-2">
+            <div class="form-check form-switch">
+              <input id="tm-ace-style-cluster-border-enabled" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" for="tm-ace-style-cluster-border-enabled">Override border</label>
+            </div>
+            <div class="row g-2 mt-1">
+              <div class="col-4">
+                <label class="form-label mb-1" for="tm-ace-style-cluster-border-width">Width</label>
+                <input id="tm-ace-style-cluster-border-width" class="form-control form-control-sm" type="number" min="0" max="12" step="1" value="1" />
+              </div>
+              <div class="col-4">
+                <label class="form-label mb-1" for="tm-ace-style-cluster-border-style">Style</label>
+                <select id="tm-ace-style-cluster-border-style" class="form-select form-select-sm">
+                  <option value="solid">solid</option>
+                  <option value="dotted">dotted</option>
+                  <option value="dashed">dashed</option>
+                  <option value="bold">bold</option>
+                </select>
+              </div>
+              <div class="col-4">
+                <label class="form-label mb-1" for="tm-ace-style-cluster-border-color">Colour</label>
+                <input id="tm-ace-style-cluster-border-color" class="form-control form-control-sm form-control-color" type="color" value="#cccccc" />
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-2">
+            <div class="form-check form-switch">
+              <input id="tm-ace-style-cluster-text-colour-enabled" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" for="tm-ace-style-cluster-text-colour-enabled">Override title text colour</label>
+            </div>
+            <input id="tm-ace-style-cluster-text-colour" class="form-control form-control-sm form-control-color mt-1" type="color" value="#111827" />
+          </div>
+
+          <div class="mt-2">
+            <div class="form-check form-switch">
+              <input id="tm-ace-style-cluster-text-size-enabled" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" for="tm-ace-style-cluster-text-size-enabled">Override title text size</label>
+            </div>
+            <div class="mt-1">
+              <label class="form-label mb-1" for="tm-ace-style-cluster-text-size">Scale (×)</label>
+              <input id="tm-ace-style-cluster-text-size" class="form-control form-control-sm" type="number" min="0.5" max="2.5" step="0.1" value="1" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Link styling -->
+        <div id="tm-ace-style-edge" class="d-none">
+          <div class="d-flex align-items-center justify-content-between">
+            <div class="fw-semibold">Link styling</div>
+          </div>
+
+          <div class="mt-2">
+            <label class="form-label mb-1" for="tm-ace-style-edge-label">Label</label>
+            <input id="tm-ace-style-edge-label" class="form-control form-control-sm" type="text" placeholder="(optional)" />
+          </div>
+
+          <div class="mt-2">
+            <div class="form-check form-switch">
+              <input id="tm-ace-style-edge-border-enabled" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" for="tm-ace-style-edge-border-enabled">Override border</label>
+            </div>
+            <div class="row g-2 mt-1">
+              <div class="col-4">
+                <label class="form-label mb-1" for="tm-ace-style-edge-border-width">Width</label>
+                <input id="tm-ace-style-edge-border-width" class="form-control form-control-sm" type="number" min="0" max="12" step="1" value="1" />
+              </div>
+              <div class="col-4">
+                <label class="form-label mb-1" for="tm-ace-style-edge-border-style">Style</label>
+                <select id="tm-ace-style-edge-border-style" class="form-select form-select-sm">
+                  <option value="solid">solid</option>
+                  <option value="dotted">dotted</option>
+                  <option value="dashed">dashed</option>
+                  <option value="bold">bold</option>
+                </select>
+              </div>
+              <div class="col-4">
+                <label class="form-label mb-1" for="tm-ace-style-edge-border-color">Colour</label>
+                <input id="tm-ace-style-edge-border-color" class="form-control form-control-sm form-control-color" type="color" value="#999999" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2 mt-2">
+          <button id="tm-ace-style-apply" class="btn btn-sm btn-outline-secondary" type="button">Close</button>
+        </div>
       </div>
-      <div class="small text-muted mt-1">Inserts <code>rgb(r,g,b)</code> (MapScript treats <code>#</code> as a comment).</div>
     </div>
+
+    <!-- Cursor-adjacent style button (appears near the cursor when the current line is styleable) -->
+    <button
+      id="tm-ace-cursor-style-btn"
+      class="btn btn-sm btn-outline-secondary tm-ace-cursor-style-btn d-none"
+      type="button"
+      aria-label="Style this line"
+      title="Style this line"
+    >
+      <i class="bi bi-brush" aria-hidden="true"></i>
+    </button>
   </body>
 </html>
 

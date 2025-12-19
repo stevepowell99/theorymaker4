@@ -37,10 +37,32 @@ body {
   flex: 0 0 auto;
 }
 
+.tm-chat-input {
+  /* Multi-line prompt: grows via JS on focus/input */
+  resize: none;
+  overflow: hidden;
+  line-height: 1.25;
+}
+
+.tm-chat-input::placeholder {
+  /* Make placeholder a bit lighter + italic (without affecting typed text) */
+  color: #adb5bd; /* Bootstrap "secondary" ish */
+  font-style: italic;
+}
+
+.tm-editor-wrap {
+  /* Editor section content: header + Ace editor fill remaining space */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .tm-editor {
   flex: 1 1 auto;
-  min-height: 0;
-  margin: 30px; /* space around the editor block */
+  min-height: 220px; /* ensure the editor is visibly editable when disclosed */
+  margin: 12px; /* space around the editor block */
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
 }
 
 /* Ace editor: force a very light gray background (theme-override) */
@@ -307,7 +329,7 @@ body {
   background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 50%, #f1f3f5 100%);
 }
 
-/* Ace editor popover (colour picker) */
+/* Ace editor popover (style current line) */
 .tm-ace-popover {
   position: fixed;
   z-index: 2000; /* above Ace + toolbar */
@@ -320,27 +342,183 @@ body {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
 }
 
+.tm-ace-cursor-style-btn {
+  position: fixed;
+  z-index: 1999; /* just under the popover */
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.10);
+}
+
 .tm-ace-popover-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Style modal: preset selector grid + chevron details */
+.tm-style-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+@media (max-width: 576px) {
+  .tm-style-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Style modal sizing: keep it wider (esp preset galleries) and prevent it growing too tall */
+@media (min-width: 992px) {
+  #tm-style-modal .modal-dialog {
+    max-width: min(1200px, 96vw);
+  }
+
+  .tm-style-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}
+
+#tm-style-modal .modal-body {
+  /* Keep the modal within the viewport; scroll inside the body instead of making the modal too tall */
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+.tm-style-preset-btn {
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 0;
+  background: #fff;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+.tm-style-preset-btn:hover {
+  border-color: #0d6efd;
+}
+
+.tm-style-preset-btn.tm-selected {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+.tm-style-preset-btn.tm-selected .tm-style-thumb {
+  outline: 2px solid rgba(13, 110, 253, 0.45);
+  outline-offset: -2px;
+}
+
+.tm-style-thumb {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.tm-style-thumb-node {
+  position: absolute;
+  left: 10%;
+  top: 16%;
+  width: 50%;
+  height: 44%;
+  background: #e7f5ff;
+  border: 1px solid #1e90ff;
+  border-radius: 0; /* default: truly square; rounded presets override inline */
+}
+
+.tm-style-thumb-edge {
+  position: absolute;
+  left: 14%;
+  top: 68%;
+  width: 72%;
+  height: 0;
+  border-top: 2px solid #6c757d;
+  transform: rotate(-8deg);
+  transform-origin: left center;
+}
+
+.tm-details {
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+
+.tm-chat-details {
+  /* Chat details lives inside the chat header area */
+  padding: 8px 10px;
+}
+
+.tm-chat-history {
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  background: #f8f9fa;
+  padding: 8px;
+  white-space: pre-wrap;
+}
+
+.tm-chat-msg {
+  padding: 6px 8px;
+  border-radius: 8px;
+  margin: 6px 0;
+  border: 1px solid #e9ecef;
+  background: #ffffff;
+}
+
+.tm-chat-msg-user {
+  border-color: #cfe2ff;
+  background: #e7f1ff;
+}
+
+.tm-chat-msg-assistant {
+  border-color: #d1e7dd;
+  background: #eaf7ef;
+}
+
+.tm-editor-details {
+  /* Make the editor disclosure fill the remaining left panel height */
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 10px;
+  padding: 0; /* summary will provide padding; avoid double-padding with Ace margin */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tm-editor-details-summary {
+  padding: 10px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.tm-editor-details > .tm-editor-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.tm-details-summary {
+  cursor: pointer;
+  user-select: none;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-/* Flash the editor Colour button when cursor is inside a valid colour token */
-@keyframes tmFlashRing {
-  0% {
-    box-shadow: 0 0 0 0 rgba(13, 110, 253, 0);
-  }
-  35% {
-    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.35);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(13, 110, 253, 0);
-  }
+.tm-details-summary::-webkit-details-marker {
+  display: none;
 }
 
-#tm-editor-color.tm-flash {
-  animation: tmFlashRing 420ms ease-out;
+.tm-chevron {
+  transition: transform 120ms ease-out;
+}
+
+details[open] .tm-chevron {
+  transform: rotate(90deg);
 }
 
 

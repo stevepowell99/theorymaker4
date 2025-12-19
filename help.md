@@ -4,6 +4,12 @@
 
 Theorymaker lets you write a simple text “map language” called **MapScript** and instantly see it as a diagram.
 
+You can work in three ways:
+
+- **Manual**: write MapScript directly in the Editor.
+- **AI**: ask the chat to update the diagram for you.
+- **Combination**: use AI for a first draft, then tweak/refine manually (or vice versa).
+
 If you’re new: think of it like this:
 
 - **Nodes** are the boxes in the diagram.
@@ -17,6 +23,19 @@ If you’re new: think of it like this:
 - **Editor (left)**: where you type MapScript.
 - **Viz (right)**: the rendered diagram.
 - **Gallery**: example maps + maps you saved in this browser.
+
+### Editor keyboard shortcuts (Ace)
+
+Most useful (Windows):
+
+- **Find**: `Ctrl+F`
+- **Replace**: `Ctrl+H`
+- **Go to line**: `Ctrl+L`
+- **Duplicate line/selection**: `Ctrl+Shift+D`
+- **Multi-cursor (add above/below)**: `Ctrl+Alt+Up` / `Ctrl+Alt+Down`
+- **Multi-cursor (add at click)**: `Alt+Click`
+- **Toggle comment**: `Ctrl+/`
+- **Indent / outdent**: `Tab` / `Shift+Tab`
 
 ### Map controls (Viz tab)
 
@@ -48,6 +67,28 @@ Tips:
 
 - Click a **node** to change its label and styling or delete it.
 - Click a **link** to change its endpoints/label/border or delete it.
+
+## AI
+
+Use the chat box (left panel) if you want help editing your map in plain English.
+
+How it works (simple version):
+
+- You describe what you want to change, e.g. “Add a node for Training and connect it to Adoption”.
+- Theorymaker asks an AI to propose an updated map.
+- The app applies the update and redraws the diagram.
+
+Good ways to use it:
+
+- **Start a map quickly**: describe the topic and ask for a first draft.
+- **Make bigger edits**: “group these nodes”, “add missing drivers”, “simplify the structure”.
+- **Then refine manually**: small wording/styling tweaks are often faster by hand in the Editor.
+
+Important notes:
+
+- **Optional**: you can ignore chat entirely and just edit manually.
+- **Privacy**: when you use chat, your current map text is sent to an external AI service to generate a suggested update.
+- **API key**: you may be prompted to paste an API key the first time you use chat (it’s stored only in this browser).
 
 ## Admin
 
@@ -186,6 +227,21 @@ D:: Error rate
 A | B -> C | D
 ```
 
+### 6b) Styling grouping boxes (optional)
+
+You can add a style list to a grouping box title line:
+
+```
+--Drivers [colour=aliceblue | border=2px dotted dimgray | text colour=dimgray | text size=1.2]
+```
+
+Supported grouping box attributes:
+
+- `colour=...` (or `color=...`, `background=...`): fill colour
+- `border=...`: border like `2px solid gray`
+- `text colour=...` (or `text color=...`): title text colour
+- `text size=...` (or `text scale=...`): relative title text size multiplier like `1.2` or `80%`
+
 ### 7) Styling nodes inline (optional)
 
 You can put a small “style list” after a node label:
@@ -200,6 +256,7 @@ Supported node attributes:
 - `background=...`: fill colour (alias)
 - `border=...`: border like `2px solid gray`
 - `shape=rounded`: rounded corners
+- `text size=...` (or `text scale=...`): relative node text size multiplier like `1.2` or `80%`
 
 ### 8) Border syntax (for nodes and links)
 

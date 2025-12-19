@@ -5,6 +5,176 @@
 
 import { Graphviz } from "https://cdn.jsdelivr.net/npm/@hpcc-js/wasm@2.20.0/dist/graphviz.js";
 import { GALLERY_EXAMPLES } from "./examples.js";
+import { initHelpFromMarkdown } from "./help.js";
+
+// -----------------------------
+// Browser history (back/forward) + discrete undo/redo buttons
+// - Uses History API entries to store editor states
+// - Pushes ONE new entry at the start of an edit "burst", then replaces within that entry while typing
+// -----------------------------
+const TM_HISTORY_STATE_MARK = "tm_history_v1";
+let suppressHistorySync = false; // prevents loops while restoring editor from popstate or doing batch operations
+let historyBurstActive = false;
+let historyBurstTimer = null;
+
+// -----------------------------
+// Diagram styles
+// Source of truth: editor text (MapScript "Key: Value" lines), then URL (#m=...)
+// -----------------------------
+//
+// NOTE: "title" is intentionally NOT here: title remains user-facing editor text.
+const STYLE_SETTING_KEYS = [
+  "background",
+  "textColour",
+  "titleSize",
+  "defaultBoxColour",
+  "defaultBoxShape",
+  "defaultBoxBorder",
+  "defaultBoxShadow",
+  "defaultLinkColour",
+  "defaultLinkStyle",
+  "defaultLinkWidth",
+  "direction",
+  "labelWrap",
+  "rankGap",
+  "nodeGap",
+];
+
+// -----------------------------
+// Ace: incremental (undo-friendly) edits
+// -----------------------------
+
+function replaceEditorLine(editor, idx, nextLineText) {
+  // Purpose: update a single line without resetting the whole editor text (preserves undo better).
+  if (!editor || !editor.session) return false;
+  const i = Number(idx);
+  if (!Number.isFinite(i) || i < 0) return false;
+
+  const old = editor.session.getLine(i);
+  if (old == null) return false;
+  const next = String(nextLineText ?? "");
+  if (old === next) return false;
+
+  // Ace Range is available via ace.require (ace is global; this file is an ES module).
+  const Range = globalThis.ace?.require?.("ace/range")?.Range;
+  if (!Range) return false;
+
+  editor.session.replace(new Range(i, 0, i, old.length), next);
+  return true;
+}
+
+function afterEditorMutation({ editor, graphviz }) {
+  // Purpose: keep URL + diagram in sync after an editor text change.
+  setMapScriptInUrl(editor.getValue());
+  renderNow(graphviz, editor);
+}
+
+function cssColorToEditorToken(value) {
+  // Purpose: avoid "#rrggbb" in MapScript (because "#" starts comments).
+  const raw = String(value ?? "").trim();
+  if (!raw) return raw;
+  if (!raw.startsWith("#")) return raw; // already "rgb(...)" or a named colour
+  const rgb = hexToRgb(raw);
+  if (!rgb) return raw;
+  return `rgb(${rgb.r},${rgb.g},${rgb.b})`;
+}
+
+function buildEditorStyleLinesFromUiStyleSettings(sIn) {
+  // Purpose: write global styles into the editor so changes are saved in MapScript too.
+  const s = sIn && typeof sIn === "object" ? sIn : {};
+  const lines = [];
+
+  if (s.background) lines.push(`Background: ${cssColorToEditorToken(s.background)}`);
+  if (s.textColour) lines.push(`Text colour: ${cssColorToEditorToken(s.textColour)}`);
+  if (Number.isFinite(Number(s.titleSize))) lines.push(`Title size: ${Math.round(Number(s.titleSize))}`);
+  if (s.defaultBoxColour) lines.push(`Default box colour: ${cssColorToEditorToken(s.defaultBoxColour)}`);
+  if (s.defaultBoxShape) lines.push(`Default box shape: ${String(s.defaultBoxShape).trim()}`);
+  if (s.defaultBoxShadow) lines.push(`Default box shadow: ${String(s.defaultBoxShadow).trim()}`);
+  if (s.defaultBoxBorder) lines.push(`Default box border: ${String(s.defaultBoxBorder).trim()}`);
+  if (s.defaultLinkColour) lines.push(`Default link colour: ${cssColorToEditorToken(s.defaultLinkColour)}`);
+  if (s.defaultLinkStyle) lines.push(`Default link style: ${String(s.defaultLinkStyle).trim()}`);
+  if (Number.isFinite(Number(s.defaultLinkWidth))) lines.push(`Default link width: ${Math.round(Number(s.defaultLinkWidth))}`);
+  if (s.direction) lines.push(`Direction: ${String(s.direction).trim()}`);
+  if (Number.isFinite(Number(s.labelWrap))) lines.push(`Label wrap: ${Math.round(Number(s.labelWrap))}`);
+  if (Number.isFinite(Number(s.rankGap))) lines.push(`Rank gap: ${Math.round(Number(s.rankGap))}`);
+  if (Number.isFinite(Number(s.nodeGap))) lines.push(`Node gap: ${Math.round(Number(s.nodeGap))}`);
+
+  return lines;
+}
+
+function editorHasStyleLines(text) {
+  const split = splitMapScriptStylesAndContents(text);
+  return Boolean(split?.styles);
+}
+
+function upsertEditorStyleBlockFromUiStyleSettings(editor, uiStyles) {
+  // Purpose: replace only the *settings lines* in the initial "styles" section; keep any blank/comment lines there.
+  const text = editor.getValue();
+  const split = splitMapScriptStylesAndContents(text);
+
+  const styleLines = (split.styles ? split.styles.split(/\r?\n/) : []).slice(0);
+  const contentText = String(split.contents || "").trimStart();
+
+  const isSettingLine = (raw) => {
+    const trimmed = String(raw || "").trim();
+    if (!trimmed) return false;
+    if (trimmed.startsWith("#")) return false;
+    if (trimmed.includes("->") || trimmed.includes("::")) return false;
+    const m = trimmed.match(/^([^:]+):\s*(.+)$/);
+    if (!m) return false;
+    const key = m[1].trim().toLowerCase();
+    return SUPPORTED_SETTING_LINE_KEYS.has(key);
+  };
+
+  const keptStyleLines = styleLines.filter((l) => !isSettingLine(l));
+  const nextSettingLines = buildEditorStyleLinesFromUiStyleSettings(uiStyles);
+
+  // Also remove any settings lines that appear later in the document (outside the initial style block),
+  // so we never end up with multiple lines for the same setting.
+  const contentLines = contentText.split(/\r?\n/);
+  const keptContentText = contentLines.filter((l) => !isSettingLine(l)).join("\n").trimStart();
+
+  // Keep the style section tidy: drop trailing blanks before appending new settings.
+  while (keptStyleLines.length && String(keptStyleLines[keptStyleLines.length - 1] || "").trim() === "") keptStyleLines.pop();
+
+  const nextStylesText = [...keptStyleLines, ...(keptStyleLines.length ? [""] : []), ...nextSettingLines].join("\n").trimEnd();
+  const nextText = nextStylesText ? `${nextStylesText}\n\n${keptContentText}`.trimEnd() : keptContentText;
+
+  // Preserve cursor position as best effort (adjust row by style-section line count delta).
+  const cursor = editor.getCursorPosition();
+  const oldStyleCount = split.styles ? split.styles.split(/\r?\n/).length : 0;
+  const newStyleCount = nextStylesText ? nextStylesText.split(/\r?\n/).length : 0;
+  const delta = newStyleCount - oldStyleCount;
+  const nextCursorRow = cursor.row >= oldStyleCount ? Math.max(0, cursor.row + delta) : cursor.row;
+
+  editor.setValue(nextText, -1);
+  editor.moveCursorToPosition({ row: nextCursorRow, column: cursor.column });
+  editor.clearSelection();
+}
+
+// Supported *editor* settings line keys (eg "Background: ...") used by:
+// - splitMapScriptStylesAndContents()
+// - the "Current Line Style" button (so it can act on global style lines too)
+const SUPPORTED_SETTING_LINE_KEYS = new Set([
+  "background",
+  "text colour",
+  "text color",
+  "title size",
+  "default box colour",
+  "default box color",
+  "default box shape",
+  "default box border",
+  "default link colour",
+  "default link color",
+  "default link style",
+  "default link width",
+  "default box shadow",
+  "box shadow",
+  "direction",
+  "label wrap",
+  "rank gap",
+  "node gap",
+]);
 
 // -----------------------------
 // Admin/dev mode: when running locally via Live Server (localhost)
@@ -20,124 +190,125 @@ function isLocalLiveServer() {
 const IS_ADMIN = isLocalLiveServer();
 
 // -----------------------------
-// Ace helpers: colour picker that inserts rgb(...) (MapScript treats '#' as comments)
+// Ace helpers: line style popover (styles the current line and writes/updates [...] inline)
 // -----------------------------
 
-function hexToRgbCss(hex) {
-  // Convert "#RRGGBB" to "rgb(r,g,b)" (keeps MapScript '#' comment rule intact).
-  const h = String(hex || "").trim();
-  const m = h.match(/^#?([0-9a-f]{6})$/i);
-  if (!m) return null;
-  const n = parseInt(m[1], 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  return `rgb(${r}, ${g}, ${b})`;
-}
+function initAceLineStylePopover({ editor, graphviz }) {
+  const btn = document.getElementById("tm-editor-line-style");
+  const pop = document.getElementById("tm-ace-style-popover");
+  const cursorBtn = document.getElementById("tm-ace-cursor-style-btn");
+  const editorDetailsEl = document.getElementById("tm-editor-details");
+  const meta = document.getElementById("tm-ace-style-meta");
+  const none = document.getElementById("tm-ace-style-none");
+  const nodeBox = document.getElementById("tm-ace-style-node");
+  const clusterBox = document.getElementById("tm-ace-style-cluster");
+  const edgeBox = document.getElementById("tm-ace-style-edge");
+  const apply = document.getElementById("tm-ace-style-apply");
+  const close = document.getElementById("tm-ace-style-close"); // optional (we now only have one button)
 
-function findColourTokenInLine(line, col) {
-  // Find a colour token spanning the cursor column. Supported tokens:
-  // - rgb(...)
-  // - simple CSS colour names (letters + hyphen)
-  const s = String(line || "");
-  const c = Math.max(0, Math.min(Number(col) || 0, s.length));
+  // Single setting-line modal (focused UI for "Key: Value" lines)
+  const settingModalEl = document.getElementById("tm-setting-line-modal");
+  const settingModalTitle = document.getElementById("tm-setting-line-modal-title");
+  const settingModalMeta = document.getElementById("tm-setting-line-modal-meta");
+  const settingModalBody = document.getElementById("tm-setting-line-modal-body");
+  const bs = globalThis.bootstrap;
+  const settingModal = settingModalEl && bs?.Modal ? new bs.Modal(settingModalEl) : null;
 
-  const tokens = [];
-  const reRgb = /rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)/gi;
-  const reName = /\b[a-z][a-z-]*\b/gi;
+  // Node fields
+  const nodeFillEnabled = document.getElementById("tm-ace-style-node-fill-enabled");
+  const nodeFill = document.getElementById("tm-ace-style-node-fill");
+  const nodeBorderEnabled = document.getElementById("tm-ace-style-node-border-enabled");
+  const nodeBw = document.getElementById("tm-ace-style-node-border-width");
+  const nodeBs = document.getElementById("tm-ace-style-node-border-style");
+  const nodeBc = document.getElementById("tm-ace-style-node-border-color");
+  const nodeRounded = document.getElementById("tm-ace-style-node-rounded");
+  const nodeTextSizeEnabled = document.getElementById("tm-ace-style-node-text-size-enabled");
+  const nodeTextSize = document.getElementById("tm-ace-style-node-text-size");
 
-  for (const re of [reRgb, reName]) {
-    re.lastIndex = 0;
-    let m;
-    while ((m = re.exec(s))) {
-      tokens.push({ start: m.index, end: m.index + m[0].length, text: m[0] });
-    }
-  }
+  // Cluster fields
+  const clusterFillEnabled = document.getElementById("tm-ace-style-cluster-fill-enabled");
+  const clusterFill = document.getElementById("tm-ace-style-cluster-fill");
+  const clusterBorderEnabled = document.getElementById("tm-ace-style-cluster-border-enabled");
+  const clusterBw = document.getElementById("tm-ace-style-cluster-border-width");
+  const clusterBs = document.getElementById("tm-ace-style-cluster-border-style");
+  const clusterBc = document.getElementById("tm-ace-style-cluster-border-color");
+  const clusterTextColourEnabled = document.getElementById("tm-ace-style-cluster-text-colour-enabled");
+  const clusterTextColour = document.getElementById("tm-ace-style-cluster-text-colour");
+  const clusterTextSizeEnabled = document.getElementById("tm-ace-style-cluster-text-size-enabled");
+  const clusterTextSize = document.getElementById("tm-ace-style-cluster-text-size");
 
-  // Prefer the smallest token that contains the cursor.
-  const hits = tokens.filter((t) => t.start <= c && c <= t.end);
-  if (!hits.length) return null;
-  hits.sort((a, b) => (a.end - a.start) - (b.end - b.start));
-  return hits[0];
-}
+  // Edge fields
+  const edgeLabel = document.getElementById("tm-ace-style-edge-label");
+  const edgeBorderEnabled = document.getElementById("tm-ace-style-edge-border-enabled");
+  const edgeBw = document.getElementById("tm-ace-style-edge-border-width");
+  const edgeBs = document.getElementById("tm-ace-style-edge-border-style");
+  const edgeBc = document.getElementById("tm-ace-style-edge-border-color");
 
-function initAceColourPicker(editor) {
-  const btn = document.getElementById("tm-editor-color");
-  const pop = document.getElementById("tm-ace-color-popover");
-  const input = document.getElementById("tm-ace-color-input");
-  const apply = document.getElementById("tm-ace-color-apply");
-  const close = document.getElementById("tm-ace-color-close");
-  if (!btn || !pop || !input || !apply || !close) return;
+  if (!btn || !pop || !apply) return;
+  const closeBtn = close || apply; // single-button UI: Apply is the close button
+  let suppressLiveApply = false; // prevents feedback loops while we populate widgets
 
-  // Keep the widget disabled unless the cursor is currently inside a valid colour token.
-  // While it is valid, keep the button showing the colour (swatch) and flash on every cursor move.
-  const DEFAULT_BTN_LABEL = (btn.textContent || "Colour").trim() || "Colour";
-
-  function hide() {
-    pop.classList.add("d-none");
-  }
-
-  function clearButtonSwatch() {
-    btn.style.backgroundColor = "";
-    btn.style.borderColor = "";
-    btn.style.color = "";
-  }
-
-  function setButtonSwatch(rgb, hex) {
-    // Show a filled swatch on the button until cursor leaves.
-    btn.style.backgroundColor = hex;
-    btn.style.borderColor = hex;
-    // Simple contrast heuristic so text stays readable.
-    const lum = (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) / 255;
-    btn.style.color = lum > 0.62 ? "#111" : "#fff";
-  }
-
-  function getActiveColourAtCursor() {
-    const pos = editor.getCursorPosition(); // { row, column }
-    const line = editor.session.getLine(pos.row);
-    const tok = findColourTokenInLine(line, pos.column);
-    if (!tok) return null;
-
-    const rgb = resolveCssColorToRgb(tok.text);
-    if (!rgb) return null;
-
-    return {
-      row: pos.row,
-      start: tok.start,
-      end: tok.end,
-      text: tok.text,
-      rgb,
-      hex: rgbToHex(rgb),
-    };
-  }
-
-  function flashButtonOnce() {
-    btn.classList.remove("tm-flash");
-    // Trigger reflow so removing+adding replays the animation.
-    void btn.offsetWidth;
-    btn.classList.add("tm-flash");
-  }
-
-  function syncUiToCursorColour() {
-    const active = getActiveColourAtCursor();
-
-    btn.disabled = !active;
-    btn.textContent = active ? "Edit Colour" : DEFAULT_BTN_LABEL;
-    btn.title = active ? "Pick colour (cursor is on a colour)" : "Move cursor onto a colour token to enable";
-
-    if (!active) {
-      clearButtonSwatch();
-      hide();
+  function setStyleButtonPreview({ enabled, fillHex, borderUi, rounded }) {
+    // Visual preview on the button itself (keep it simple, no extra DOM).
+    if (!enabled) {
+      btn.style.backgroundColor = "";
+      btn.style.borderColor = "";
+      btn.style.borderWidth = "";
+      btn.style.borderStyle = "";
+      btn.style.borderRadius = "";
+      btn.style.color = "";
       return;
     }
 
-    // Keep the colour input synced even before opening the popover.
-    input.value = active.hex;
+    // Background (nodes only)
+    if (fillHex) btn.style.backgroundColor = String(fillHex);
+    else btn.style.backgroundColor = ""; // edges/default
 
-    // Flash on every cursor move while we're in a valid colour token.
-    flashButtonOnce();
+    // Border (nodes + edges)
+    const b = borderUi && typeof borderUi === "object" ? borderUi : null;
+    const w = b && Number.isFinite(Number(b.width)) ? Math.max(0, Number(b.width)) : 1;
+    const sRaw = String(b?.style || "solid").trim().toLowerCase();
+    const s = sRaw === "bold" ? "solid" : sRaw; // CSS doesn't have "bold" border-style
+    const c = String(b?.colorHex || "#999999").trim() || "#999999";
+    btn.style.borderWidth = `${Math.round(w || 1)}px`;
+    btn.style.borderStyle = ["solid", "dotted", "dashed"].includes(s) ? s : "solid";
+    btn.style.borderColor = c;
 
-    setButtonSwatch(active.rgb, active.hex);
+    // Rounded nodes
+    btn.style.borderRadius = rounded ? "999px" : "";
+
+    // Keep label readable: if there's a background, let Bootstrap decide text colour unless it becomes illegible.
+    // (No heavy contrast logic; users can still read the tooltip.)
+    btn.style.color = "";
+  }
+
+  function setStyleButtonState({ enabled, isCustom, title, preview }) {
+    // Keep the UI simple:
+    // - disabled if the cursor line isn't a node/link
+    // - outline-primary if the line has custom inline styling, outline-secondary otherwise
+    // - text suffix makes the state obvious even if colours are subtle on some displays
+    btn.disabled = !enabled;
+    btn.classList.remove("btn-outline-primary", "btn-outline-secondary");
+    btn.classList.add(enabled && isCustom ? "btn-outline-primary" : "btn-outline-secondary");
+    btn.title = String(title || "").trim();
+
+    const baseLabel = btn.dataset.tmBaseLabel || btn.textContent || "Style";
+    if (!btn.dataset.tmBaseLabel) btn.dataset.tmBaseLabel = baseLabel;
+    if (!enabled) btn.textContent = baseLabel;
+    else btn.textContent = `${baseLabel} · ${isCustom ? "custom" : "default"}`;
+
+    setStyleButtonPreview({
+      enabled,
+      fillHex: preview?.fillHex || "",
+      borderUi: preview?.borderUi || null,
+      rounded: Boolean(preview?.rounded),
+    });
+  }
+
+  function hide() {
+    pop.classList.add("d-none");
+    // Cursor button can reappear once the popover is closed.
+    positionCursorStyleButton();
   }
 
   function showAtCursor() {
@@ -146,38 +317,771 @@ function initAceColourPicker(editor) {
     pop.style.left = `${Math.round(xy.pageX + 10)}px`;
     pop.style.top = `${Math.round(xy.pageY + 18)}px`;
     pop.classList.remove("d-none");
-    input.focus();
+    // Hide the cursor button while the popover is open (avoids overlapping click targets).
+    if (cursorBtn) cursorBtn.classList.add("d-none");
   }
 
-  function applyToEditor() {
-    const rgb = hexToRgbCss(input.value);
-    if (!rgb) return;
+  function positionCursorStyleButton() {
+    if (!cursorBtn) return;
+    // If the editor is hidden behind the chevron, never show the floating button.
+    if (editorDetailsEl && editorDetailsEl.tagName === "DETAILS" && !editorDetailsEl.open) {
+      cursorBtn.classList.add("d-none");
+      return;
+    }
+    // If Ace container is effectively hidden (e.g. details closed), don't show.
+    const aceRect = editor?.container?.getBoundingClientRect?.();
+    if (aceRect && (aceRect.width <= 1 || aceRect.height <= 1)) {
+      cursorBtn.classList.add("d-none");
+      return;
+    }
+    // Don't show the button while the popover is open.
+    if (!pop.classList.contains("d-none")) {
+      cursorBtn.classList.add("d-none");
+      return;
+    }
+
+    const info = getCursorLineInfo();
+    if (info.type === "none") {
+      cursorBtn.classList.add("d-none");
+      return;
+    }
 
     const pos = editor.getCursorPosition();
-    const line = editor.session.getLine(pos.row);
-    const tok = findColourTokenInLine(line, pos.column);
-    if (!tok) return;
-
-    // Only allow replacement when we're on a *valid* colour token (keeps widget behaviour consistent with disabling).
-    if (!resolveCssColorToRgb(tok.text)) return;
-
-    const Range = ace.require("ace/range").Range;
-    editor.session.replace(new Range(pos.row, tok.start, pos.row, tok.end), rgb);
-    editor.focus();
-    hide();
+    const xy = editor.renderer.textToScreenCoordinates(pos.row, pos.column);
+    cursorBtn.style.left = `${Math.round(xy.pageX + 12)}px`;
+    cursorBtn.style.top = `${Math.round(xy.pageY - 10)}px`;
+    cursorBtn.classList.remove("d-none");
   }
 
-  btn.addEventListener("click", () => {
-    if (btn.disabled) return;
-    syncUiToCursorColour();
+  function getCursorLineInfo() {
+    const pos = editor.getCursorPosition(); // { row, column }
+    const row = pos.row;
+    const raw = editor.session.getLine(row) || "";
+    const { code } = stripCommentKeepSuffix(raw);
+    const trimmed = code.trim();
+    const lineNo = row + 1;
+
+    if (!trimmed) return { type: "none", row, lineNo };
+
+    // Global style setting line, eg "Background: white"
+    // (Keep these enabled: the button should open the Styles modal for quick edits.)
+    const settingMatch = (() => {
+      if (trimmed.includes("->") || trimmed.includes("::")) return null;
+      const m = trimmed.match(/^([^:]+):\s*(.+)$/);
+      if (!m) return null;
+      const keyLower = m[1].trim().toLowerCase();
+      if (!SUPPORTED_SETTING_LINE_KEYS.has(keyLower)) return null;
+      return { keyLower, keyRaw: m[1].trim(), valueRaw: m[2].trim() };
+    })();
+    if (settingMatch) return { type: "setting", row, lineNo, ...settingMatch };
+
+    const nodeMatch = trimmed.match(/^(\S+)\s*::\s*(.+)$/);
+    if (nodeMatch) return { type: "node", row, lineNo, nodeId: nodeMatch[1].trim() };
+
+    const clusterMatch = trimmed.match(/^(-{2,})(.*)$/);
+    if (clusterMatch) {
+      const dashes = clusterMatch[1];
+      const rest = String(clusterMatch[2] || "").trim();
+      const depth = dashes.length;
+      if (depth % 2 === 0 && rest) return { type: "cluster", row, lineNo };
+    }
+
+    const edgeMatch = trimmed.match(/^(.+?)\s*->\s*(.+)$/);
+    if (edgeMatch) return { type: "edge", row, lineNo };
+
+    return { type: "none", row, lineNo };
+  }
+
+  // Cluster line parsing/updating uses shared helpers: parseClusterDefLineAt / setClusterDefLineAt
+
+  function setNodeControlsEnabled(enabled) {
+    if (nodeFill) nodeFill.disabled = !enabled || !nodeFillEnabled?.checked;
+    if (nodeBw) nodeBw.disabled = !enabled || !nodeBorderEnabled?.checked;
+    if (nodeBs) nodeBs.disabled = !enabled || !nodeBorderEnabled?.checked;
+    if (nodeBc) nodeBc.disabled = !enabled || !nodeBorderEnabled?.checked;
+    if (nodeRounded) nodeRounded.disabled = !enabled;
+    if (nodeFillEnabled) nodeFillEnabled.disabled = !enabled;
+    if (nodeBorderEnabled) nodeBorderEnabled.disabled = !enabled;
+    if (nodeTextSizeEnabled) nodeTextSizeEnabled.disabled = !enabled;
+    if (nodeTextSize) nodeTextSize.disabled = !enabled || !nodeTextSizeEnabled?.checked;
+  }
+
+  function setClusterControlsEnabled(enabled) {
+    if (clusterFillEnabled) clusterFillEnabled.disabled = !enabled;
+    if (clusterFill) clusterFill.disabled = !enabled || !clusterFillEnabled?.checked;
+    if (clusterBorderEnabled) clusterBorderEnabled.disabled = !enabled;
+    if (clusterBw) clusterBw.disabled = !enabled || !clusterBorderEnabled?.checked;
+    if (clusterBs) clusterBs.disabled = !enabled || !clusterBorderEnabled?.checked;
+    if (clusterBc) clusterBc.disabled = !enabled || !clusterBorderEnabled?.checked;
+    if (clusterTextColourEnabled) clusterTextColourEnabled.disabled = !enabled;
+    if (clusterTextColour) clusterTextColour.disabled = !enabled || !clusterTextColourEnabled?.checked;
+    if (clusterTextSizeEnabled) clusterTextSizeEnabled.disabled = !enabled;
+    if (clusterTextSize) clusterTextSize.disabled = !enabled || !clusterTextSizeEnabled?.checked;
+  }
+
+  function setEdgeControlsEnabled(enabled) {
+    if (edgeLabel) edgeLabel.disabled = !enabled;
+    if (edgeBw) edgeBw.disabled = !enabled || !edgeBorderEnabled?.checked;
+    if (edgeBs) edgeBs.disabled = !enabled || !edgeBorderEnabled?.checked;
+    if (edgeBc) edgeBc.disabled = !enabled || !edgeBorderEnabled?.checked;
+    if (edgeBorderEnabled) edgeBorderEnabled.disabled = !enabled;
+  }
+
+  function refreshFormFromCursorLine() {
+    suppressLiveApply = true;
+    try {
+      const info = getCursorLineInfo();
+      if (meta) meta.textContent = `Line ${info.lineNo}`;
+
+      const showNone = info.type === "none";
+      none?.classList.toggle("d-none", !showNone);
+      nodeBox?.classList.toggle("d-none", info.type !== "node");
+      clusterBox?.classList.toggle("d-none", info.type !== "cluster");
+      edgeBox?.classList.toggle("d-none", info.type !== "edge");
+
+      if (showNone) {
+        setNodeControlsEnabled(false);
+        setClusterControlsEnabled(false);
+        setEdgeControlsEnabled(false);
+        return;
+      }
+
+      const lines = editor.getValue().split(/\r?\n/);
+
+      if (info.type === "node") {
+        if (meta) meta.textContent = `Line ${info.lineNo}: node ${info.nodeId}`;
+        const parsed = parseNodeDefLine(lines, info.nodeId);
+        const fromAttrs = styleInnerToNodeUi(parsed?.styleInner || "");
+        const defaults = getDefaultNodeUi();
+
+        const fillHex = fromAttrs?.fillHex || null;
+        if (nodeFillEnabled) nodeFillEnabled.checked = Boolean(fillHex);
+        if (nodeFill) nodeFill.value = fillHex || defaults.fillHex || "#ffffff";
+
+        const borderUi = fromAttrs?.borderUi || null;
+        if (nodeBorderEnabled) nodeBorderEnabled.checked = Boolean(borderUi);
+        if (nodeBw) nodeBw.value = String(borderUi?.width ?? 1);
+        if (nodeBs) nodeBs.value = String(borderUi?.style || "solid");
+        if (nodeBc) nodeBc.value = String(borderUi?.colorHex || "#999999");
+
+        if (nodeRounded) nodeRounded.checked = Boolean(fromAttrs?.rounded);
+
+        const textSizeScale = fromAttrs?.textSizeScale;
+        if (nodeTextSizeEnabled) nodeTextSizeEnabled.checked = Number.isFinite(textSizeScale) && textSizeScale !== 1;
+        if (nodeTextSize) nodeTextSize.value = String(Number.isFinite(textSizeScale) ? textSizeScale : 1);
+
+        setNodeControlsEnabled(true);
+        setClusterControlsEnabled(false);
+        setEdgeControlsEnabled(false);
+        return;
+      }
+
+      if (info.type === "cluster") {
+        if (meta) meta.textContent = `Line ${info.lineNo}: group box`;
+        const parsed = parseClusterDefLineAt(lines, info.row);
+        const fromAttrs = styleInnerToClusterUi(parsed?.styleInner || "");
+
+        const fillHex = fromAttrs?.fillHex || null;
+        if (clusterFillEnabled) clusterFillEnabled.checked = Boolean(fillHex);
+        if (clusterFill) clusterFill.value = fillHex || "#ffffff";
+
+        const borderUi = fromAttrs?.borderUi || null;
+        if (clusterBorderEnabled) clusterBorderEnabled.checked = Boolean(borderUi);
+        if (clusterBw) clusterBw.value = String(borderUi?.width ?? 1);
+        if (clusterBs) clusterBs.value = String(borderUi?.style || "solid");
+        if (clusterBc) clusterBc.value = String(borderUi?.colorHex || "#cccccc");
+
+        const tc = fromAttrs?.textColourHex || null;
+        if (clusterTextColourEnabled) clusterTextColourEnabled.checked = Boolean(tc);
+        if (clusterTextColour) clusterTextColour.value = tc || "#111827";
+
+        const ts = fromAttrs?.textSizeScale;
+        if (clusterTextSizeEnabled) clusterTextSizeEnabled.checked = Number.isFinite(ts) && ts !== 1;
+        if (clusterTextSize) clusterTextSize.value = String(Number.isFinite(ts) ? ts : 1);
+
+        setNodeControlsEnabled(false);
+        setClusterControlsEnabled(true);
+        setEdgeControlsEnabled(false);
+        return;
+      }
+
+      if (info.type === "edge") {
+        if (meta) meta.textContent = `Line ${info.lineNo}: link`;
+        const parsed = parseEdgeLine(lines, info.lineNo);
+
+        if (edgeLabel) edgeLabel.value = parsed?.label ?? "";
+
+        const borderText = String(parsed?.border || "").trim();
+        const hasBorder = Boolean(borderText);
+        if (edgeBorderEnabled) edgeBorderEnabled.checked = hasBorder;
+        const ui = borderText ? borderTextToUi(borderText) : borderTextToUi(getDefaultEdgeBorderText());
+        if (edgeBw) edgeBw.value = String(ui.width ?? 1);
+        if (edgeBs) edgeBs.value = ui.style || "solid";
+        if (edgeBc) edgeBc.value = ui.colorHex || "#999999";
+
+        setNodeControlsEnabled(false);
+        setClusterControlsEnabled(false);
+        setEdgeControlsEnabled(true);
+      }
+    } finally {
+      suppressLiveApply = false;
+    }
+  }
+
+  function syncStyleButtonToCursorLine() {
+    const info = getCursorLineInfo();
+    const lines = editor.getValue().split(/\r?\n/);
+
+    if (info.type === "none") {
+      setStyleButtonState({
+        enabled: false,
+        isCustom: false,
+        title: `Line ${info.lineNo}: no node/link to style`,
+        preview: null,
+      });
+      return;
+    }
+
+    if (info.type === "setting") {
+      setStyleButtonState({
+        enabled: true,
+        // Treat settings lines as "custom" so it's obvious this line already carries styles.
+        isCustom: true,
+        title: `Line ${info.lineNo}: global style setting (${info.keyRaw})`,
+        preview: null,
+      });
+      return;
+    }
+
+    if (info.type === "node") {
+      const parsed = parseNodeDefLine(lines, info.nodeId);
+      const styleInner = String(parsed?.styleInner || "").trim();
+      const ui = styleInnerToNodeUi(styleInner) || {};
+      const hasCustom = Boolean(styleInner); // any inline attrs (even unrecognised) counts as custom
+
+      const parts = [];
+      if (ui.fillHex) parts.push(`colour=${ui.fillHex}`);
+      if (ui.borderUi) parts.push(`border=${uiToBorderText(ui.borderUi)}`);
+      if (ui.rounded) parts.push("shape=rounded");
+
+      // Effective preview: merge defaults + inline overrides
+      const defaults = getDefaultNodeUi();
+      const effFillHex = ui.fillHex || defaults.fillHex || "";
+      const effBorderUi = ui.borderUi || defaults.borderUi || { width: 1, style: "solid", colorHex: "#999999" };
+      const effRounded = ui.rounded || Boolean(defaults.rounded);
+
+      setStyleButtonState({
+        enabled: true,
+        isCustom: hasCustom,
+        title: hasCustom
+          ? `Line ${info.lineNo}: node ${info.nodeId} (${parts.join(" | ")})`
+          : `Line ${info.lineNo}: node ${info.nodeId} (default)`,
+        preview: { fillHex: effFillHex, borderUi: effBorderUi, rounded: effRounded },
+      });
+      return;
+    }
+
+    if (info.type === "cluster") {
+      const parsed = parseClusterDefLineAt(lines, info.row);
+      const styleInner = String(parsed?.styleInner || "").trim();
+      const ui = styleInnerToClusterUi(styleInner) || {};
+      const hasCustom = Boolean(styleInner);
+
+      const parts = [];
+      if (ui.fillHex) parts.push(`colour=${ui.fillHex}`);
+      if (ui.borderUi) parts.push(`border=${uiToBorderText(ui.borderUi)}`);
+      if (ui.textColourHex) parts.push(`text colour=${ui.textColourHex}`);
+      if (Number.isFinite(ui.textSizeScale) && ui.textSizeScale !== 1) parts.push(`text size=${ui.textSizeScale}`);
+
+      setStyleButtonState({
+        enabled: true,
+        isCustom: hasCustom,
+        title: hasCustom ? `Line ${info.lineNo}: group box (${parts.join(" | ")})` : `Line ${info.lineNo}: group box (default)`,
+        preview: { fillHex: ui.fillHex || "", borderUi: ui.borderUi || { width: 1, style: "solid", colorHex: "#cccccc" }, rounded: false },
+      });
+      return;
+    }
+
+    // edge
+    const parsed = parseEdgeLine(lines, info.lineNo);
+    const label = String(parsed?.label || "").trim();
+    const border = String(parsed?.border || "").trim();
+    const hasCustom = Boolean(parsed?.hasBracket && (label || border)); // only treat as custom if user provided bracket content
+
+    const parts = [];
+    if (label) parts.push(`label=${label}`);
+    if (border) parts.push(`border=${border}`);
+
+    // Effective preview: use explicit border if present, otherwise default link border.
+    const borderText = border || getDefaultEdgeBorderText();
+    const borderUi = borderTextToUi(borderText);
+
+    setStyleButtonState({
+      enabled: true,
+      isCustom: hasCustom,
+      title: hasCustom ? `Line ${info.lineNo}: link (${parts.join(" | ")})` : `Line ${info.lineNo}: link (default)`,
+      preview: { fillHex: "", borderUi, rounded: false },
+    });
+  }
+
+  function openStylesModalForSettingKey(keyLower) {
+    // Reuse the existing Styles modal (diagram-wide) rather than inventing a second UI.
+    const adv = document.getElementById("tm-style-advanced");
+    if (adv && adv.tagName === "DETAILS") adv.open = true;
+
+    // Button exists in the toolbar and already opens the modal.
+    document.getElementById("tm-editor-style")?.click();
+
+    const idByKey = {
+      background: "tm-style-background",
+      direction: "tm-style-direction",
+      "title size": "tm-style-title-size",
+      "text colour": "tm-style-text-color",
+      "text color": "tm-style-text-color",
+      "default box colour": "tm-style-box-fill",
+      "default box color": "tm-style-box-fill",
+      "default box shape": "tm-style-box-shape",
+      "default box border": "tm-style-box-border-width",
+      "default box shadow": "tm-style-box-shadow",
+      "box shadow": "tm-style-box-shadow",
+      "default link colour": "tm-style-link-color",
+      "default link color": "tm-style-link-color",
+      "default link style": "tm-style-link-style",
+      "default link width": "tm-style-link-width",
+      "label wrap": "tm-style-label-wrap",
+      "rank gap": "tm-style-rank-gap",
+      "node gap": "tm-style-node-gap",
+    };
+
+    // Focus after the modal starts opening.
+    window.setTimeout(() => {
+      const id = idByKey[String(keyLower || "").trim().toLowerCase()];
+      if (!id) return;
+      document.getElementById(id)?.focus?.();
+    }, 0);
+  }
+
+  function openSettingLineModal(keyLower) {
+    // Focused modal for the current setting line (background/direction/gaps/etc).
+    // Falls back to the big Styles modal if Bootstrap isn't available.
+    if (!settingModal || !settingModalBody) return openStylesModalForSettingKey(keyLower);
+
+    const key = String(keyLower || "").trim().toLowerCase();
+    const parsed = dslToDot(editor.getValue()).settings;
+    const cur = coerceUiStyleSettings(pickStyleSettings(parsed));
+
+    const titleMap = {
+      background: "Background",
+      direction: "Direction",
+      "text colour": "Text colour",
+      "text color": "Text colour",
+      "title size": "Title size",
+      "default box colour": "Default box colour",
+      "default box color": "Default box colour",
+      "default box shape": "Default box shape",
+      "default box shadow": "Default box shadow",
+      "box shadow": "Default box shadow",
+      "default box border": "Default box border",
+      "default link colour": "Default link colour",
+      "default link color": "Default link colour",
+      "default link style": "Default link style",
+      "default link width": "Default link width",
+      "label wrap": "Label wrap",
+      "rank gap": "Rank gap",
+      "node gap": "Node gap",
+    };
+
+    const label = titleMap[key] || key;
+    if (settingModalTitle) settingModalTitle.textContent = `Edit: ${label}`;
+    if (settingModalMeta) settingModalMeta.textContent = "Changes apply live and are written into the editor.";
+
+    const applyPatch = (patch) => {
+      const next = { ...cur, ...(patch || {}) };
+      upsertEditorStyleBlockFromUiStyleSettings(editor, next);
+      afterEditorMutation({ editor, graphviz });
+    };
+
+    const makeColorInput = (initialCss, onCssChange) => {
+      const rgb = resolveCssColorToRgb(initialCss || "#ffffff") || { r: 255, g: 255, b: 255 };
+      const wrap = document.createElement("div");
+      const input = document.createElement("input");
+      input.type = "color";
+      input.className = "form-control form-control-sm form-control-color";
+      input.value = rgbToHex(rgb);
+      input.addEventListener("input", () => onCssChange(input.value));
+      input.addEventListener("change", () => onCssChange(input.value));
+      wrap.appendChild(input);
+      return { wrap, focusEl: input };
+    };
+
+    const makeSelect = (options, initialValue, onChange) => {
+      const sel = document.createElement("select");
+      sel.className = "form-select form-select-sm";
+      for (const opt of options) {
+        const o = document.createElement("option");
+        o.value = opt.value;
+        o.textContent = opt.label;
+        sel.appendChild(o);
+      }
+      sel.value = String(initialValue ?? "");
+      sel.addEventListener("change", () => onChange(sel.value));
+      return { el: sel, focusEl: sel };
+    };
+
+    const makeRange = ({ min, max, step, value, suffix }, onInput) => {
+      const wrap = document.createElement("div");
+      const top = document.createElement("div");
+      top.className = "d-flex align-items-center justify-content-between";
+      const val = document.createElement("div");
+      val.className = "small text-muted";
+      const range = document.createElement("input");
+      range.type = "range";
+      range.className = "form-range";
+      range.min = String(min);
+      range.max = String(max);
+      range.step = String(step);
+      range.value = String(value);
+      const sync = () => {
+        val.textContent = `${range.value}${suffix || ""}`;
+        onInput(range.value);
+      };
+      range.addEventListener("input", sync);
+      range.addEventListener("change", sync);
+      sync();
+      top.appendChild(document.createElement("div"));
+      top.appendChild(val);
+      wrap.appendChild(top);
+      wrap.appendChild(range);
+      return { wrap, focusEl: range };
+    };
+
+    // Build minimal UI for the specific key.
+    settingModalBody.innerHTML = "";
+    let focusEl = null;
+
+    if (key === "background") {
+      const { wrap, focusEl: f } = makeColorInput(cur.background || "#ffffff", (hex) => applyPatch({ background: normalizeColor(hex) }));
+      settingModalBody.appendChild(wrap);
+      focusEl = f;
+    } else if (key === "text colour" || key === "text color") {
+      const { wrap, focusEl: f } = makeColorInput(cur.textColour || "#111827", (hex) => applyPatch({ textColour: normalizeColor(hex) }));
+      settingModalBody.appendChild(wrap);
+      focusEl = f;
+    } else if (key === "default box colour" || key === "default box color") {
+      const { wrap, focusEl: f } = makeColorInput(cur.defaultBoxColour || "#e7f5ff", (hex) => applyPatch({ defaultBoxColour: normalizeColor(hex) }));
+      settingModalBody.appendChild(wrap);
+      focusEl = f;
+    } else if (key === "default link colour" || key === "default link color") {
+      const { wrap, focusEl: f } = makeColorInput(cur.defaultLinkColour || "#6c757d", (hex) => applyPatch({ defaultLinkColour: normalizeColor(hex) }));
+      settingModalBody.appendChild(wrap);
+      focusEl = f;
+    } else if (key === "direction") {
+      const { el, focusEl: f } = makeSelect(
+        [
+          { value: "LR", label: "left → right" },
+          { value: "RL", label: "right → left" },
+          { value: "TB", label: "top → bottom" },
+          { value: "BT", label: "bottom → top" },
+        ],
+        cur.direction || "LR",
+        (v) => applyPatch({ direction: normalizeDirection(v) || v })
+      );
+      settingModalBody.appendChild(el);
+      focusEl = f;
+    } else if (key === "title size") {
+      const n = Number(cur.titleSize);
+      const { wrap, focusEl: f } = makeRange({ min: 10, max: 36, step: 1, value: Number.isFinite(n) ? Math.round(n) : 18, suffix: "pt" }, (v) =>
+        applyPatch({ titleSize: Number(v) })
+      );
+      settingModalBody.appendChild(wrap);
+      focusEl = f;
+    } else if (key === "label wrap") {
+      const { wrap, focusEl: f } = makeRange({ min: 8, max: 40, step: 1, value: Number(cur.labelWrap || 18), suffix: "" }, (v) =>
+        applyPatch({ labelWrap: Number(v) })
+      );
+      settingModalBody.appendChild(wrap);
+      focusEl = f;
+    } else if (key === "rank gap") {
+      const { wrap, focusEl: f } = makeRange({ min: 0, max: 20, step: 1, value: Number(cur.rankGap || 4), suffix: "" }, (v) =>
+        applyPatch({ rankGap: Number(v) })
+      );
+      settingModalBody.appendChild(wrap);
+      focusEl = f;
+    } else if (key === "node gap") {
+      const { wrap, focusEl: f } = makeRange({ min: 0, max: 20, step: 1, value: Number(cur.nodeGap || 3), suffix: "" }, (v) =>
+        applyPatch({ nodeGap: Number(v) })
+      );
+      settingModalBody.appendChild(wrap);
+      focusEl = f;
+    } else if (key === "default link width") {
+      const { wrap, focusEl: f } = makeRange({ min: 1, max: 6, step: 1, value: Number(cur.defaultLinkWidth || 1), suffix: "px" }, (v) =>
+        applyPatch({ defaultLinkWidth: Number(v) })
+      );
+      settingModalBody.appendChild(wrap);
+      focusEl = f;
+    } else if (key === "default link style") {
+      const { el, focusEl: f } = makeSelect(
+        [
+          { value: "", label: "(auto)" },
+          { value: "solid", label: "solid" },
+          { value: "dotted", label: "dotted" },
+          { value: "dashed", label: "dashed" },
+          { value: "bold", label: "bold" },
+        ],
+        String(cur.defaultLinkStyle || ""),
+        (v) => applyPatch({ defaultLinkStyle: String(v || "").trim().toLowerCase() || null })
+      );
+      settingModalBody.appendChild(el);
+      focusEl = f;
+    } else if (key === "default box shape") {
+      const { el, focusEl: f } = makeSelect(
+        [
+          { value: "", label: "square" },
+          { value: "rounded", label: "rounded" },
+        ],
+        String(cur.defaultBoxShape || ""),
+        (v) => applyPatch({ defaultBoxShape: String(v || "").trim().toLowerCase() || null })
+      );
+      settingModalBody.appendChild(el);
+      focusEl = f;
+    } else if (key === "default box shadow" || key === "box shadow") {
+      const { el, focusEl: f } = makeSelect(
+        [
+          { value: "none", label: "none" },
+          { value: "subtle", label: "subtle" },
+          { value: "medium", label: "medium" },
+          { value: "strong", label: "strong" },
+        ],
+        String(cur.defaultBoxShadow || "subtle"),
+        (v) => applyPatch({ defaultBoxShadow: String(v || "").trim() || null })
+      );
+      settingModalBody.appendChild(el);
+      focusEl = f;
+    } else if (key === "default box border") {
+      const ui = borderTextToUi(String(cur.defaultBoxBorder || "1px solid rgb(30,144,255)"));
+      const row = document.createElement("div");
+      row.className = "row g-2";
+
+      const colW = document.createElement("div");
+      colW.className = "col-4";
+      const w = document.createElement("input");
+      w.type = "number";
+      w.className = "form-control form-control-sm";
+      w.min = "0";
+      w.step = "1";
+      w.value = String(ui.width ?? 1);
+
+      const colS = document.createElement("div");
+      colS.className = "col-4";
+      const s = document.createElement("select");
+      s.className = "form-select form-select-sm";
+      ["solid", "dotted", "dashed", "bold"].forEach((x) => {
+        const o = document.createElement("option");
+        o.value = x;
+        o.textContent = x;
+        s.appendChild(o);
+      });
+      s.value = String(ui.style || "solid");
+
+      const colC = document.createElement("div");
+      colC.className = "col-4";
+      const c = document.createElement("input");
+      c.type = "color";
+      c.className = "form-control form-control-sm form-control-color";
+      c.value = String(ui.colorHex || "#1e90ff");
+
+      const sync = () => {
+        const border = uiToBorderText({ width: Number(w.value), style: String(s.value || "solid"), colorHex: String(c.value || "#999999") });
+        applyPatch({ defaultBoxBorder: border || null });
+      };
+      w.addEventListener("input", sync);
+      s.addEventListener("change", sync);
+      c.addEventListener("input", sync);
+      row.appendChild(colW);
+      row.appendChild(colS);
+      row.appendChild(colC);
+      colW.appendChild(w);
+      colS.appendChild(s);
+      colC.appendChild(c);
+      settingModalBody.appendChild(row);
+      focusEl = c;
+    } else {
+      // Unknown setting line -> fall back to the big Styles modal.
+      return openStylesModalForSettingKey(keyLower);
+    }
+
+    settingModal.show();
+    if (focusEl) setTimeout(() => focusEl.focus?.(), 0);
+  }
+
+  function applyToEditor({ hideAfter = true, focusEditor = true } = {}) {
+    const info = getCursorLineInfo();
+    if (info.type === "none") return;
+
+    const lines = editor.getValue().split(/\r?\n/);
+    let changedIdx = -1;
+
+    if (info.type === "node") {
+      const parsed = parseNodeDefLine(lines, info.nodeId);
+      if (!parsed) return;
+      changedIdx = parsed.idx;
+
+      const fillHex = nodeFillEnabled?.checked ? (nodeFill?.value || "") : null;
+      const borderText = nodeBorderEnabled?.checked
+        ? uiToBorderText({
+            width: nodeBw?.value ?? 0,
+            style: nodeBs?.value ?? "solid",
+            colorHex: nodeBc?.value ?? "#999999",
+          })
+        : "";
+      const rounded = Boolean(nodeRounded?.checked);
+      const textSizeScale = nodeTextSizeEnabled?.checked ? Number(nodeTextSize?.value) : null;
+
+      const nextInner = upsertNodeStyleInner(parsed.styleInner || "", {
+        fillHex,
+        borderText,
+        rounded,
+        textSizeScale: Number.isFinite(textSizeScale) && textSizeScale > 0 ? textSizeScale : null,
+      });
+
+      const ok = setNodeDefLine(lines, info.nodeId, { label: parsed.label || info.nodeId, styleInner: nextInner });
+      if (!ok) return;
+    }
+
+    if (info.type === "cluster") {
+      const parsed = parseClusterDefLineAt(lines, info.row);
+      if (!parsed) return;
+      changedIdx = parsed.idx;
+
+      const fillHex = clusterFillEnabled?.checked ? (clusterFill?.value || "") : null;
+      const borderText = clusterBorderEnabled?.checked
+        ? uiToBorderText({
+            width: clusterBw?.value ?? 0,
+            style: clusterBs?.value ?? "solid",
+            colorHex: clusterBc?.value ?? "#cccccc",
+          })
+        : "";
+      const textColourHex = clusterTextColourEnabled?.checked ? (clusterTextColour?.value || "") : null;
+      const textSizeScale = clusterTextSizeEnabled?.checked ? Number(clusterTextSize?.value) : null;
+
+      const nextInner = upsertClusterStyleInner(parsed.styleInner || "", {
+        fillHex: fillHex || null,
+        borderText: borderText || "",
+        textColourHex: textColourHex || null,
+        textSizeScale: Number.isFinite(textSizeScale) && textSizeScale > 0 ? textSizeScale : null,
+      });
+
+      setClusterDefLineAt(lines, parsed.idx, {
+        dashes: parsed.dashes,
+        label: parsed.label,
+        styleInner: nextInner,
+        comment: parsed.comment,
+      });
+    }
+
+    if (info.type === "edge") {
+      changedIdx = info.lineNo - 1;
+      const borderText = edgeBorderEnabled?.checked
+        ? uiToBorderText({
+            width: edgeBw?.value ?? 0,
+            style: edgeBs?.value ?? "solid",
+            colorHex: edgeBc?.value ?? "#999999",
+          })
+        : "";
+
+      const ok = setEdgeLine(lines, info.lineNo, {
+        fromId: null,
+        toId: null,
+        label: edgeLabel?.value ?? "",
+        border: borderText,
+        nodesById: null,
+      });
+      if (!ok) return;
+    }
+
+    if (changedIdx >= 0) {
+      const ok = replaceEditorLine(editor, changedIdx, lines[changedIdx]);
+      if (!ok) return;
+      afterEditorMutation({ editor, graphviz });
+    }
+
+    if (focusEditor) editor.focus();
+    if (hideAfter) hide();
+  }
+
+  // Keep enabling/disabling inputs in sync with the override switches.
+  nodeFillEnabled?.addEventListener("change", () => setNodeControlsEnabled(true));
+  nodeBorderEnabled?.addEventListener("change", () => setNodeControlsEnabled(true));
+  nodeTextSizeEnabled?.addEventListener("change", () => setNodeControlsEnabled(true));
+  clusterFillEnabled?.addEventListener("change", () => setClusterControlsEnabled(true));
+  clusterBorderEnabled?.addEventListener("change", () => setClusterControlsEnabled(true));
+  clusterTextColourEnabled?.addEventListener("change", () => setClusterControlsEnabled(true));
+  clusterTextSizeEnabled?.addEventListener("change", () => setClusterControlsEnabled(true));
+  edgeBorderEnabled?.addEventListener("change", () => setEdgeControlsEnabled(true));
+
+  function openStyleUiForCursorLine() {
+    const info = getCursorLineInfo();
+    if (info.type === "setting") {
+      openSettingLineModal(info.keyLower);
+      return;
+    }
+    refreshFormFromCursorLine();
     showAtCursor();
+    // Focus the first meaningful input.
+    if (info.type === "node") (nodeFillEnabled || nodeFill)?.focus?.();
+    else if (info.type === "cluster") (clusterFillEnabled || clusterFill)?.focus?.();
+    else if (info.type === "edge") (edgeLabel || edgeBorderEnabled)?.focus?.();
+  }
+
+  btn.addEventListener("click", () => openStyleUiForCursorLine());
+  // Use mousedown (not click) so Ace blur doesn't hide the button before the handler runs.
+  cursorBtn?.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openStyleUiForCursorLine();
   });
 
-  apply.addEventListener("click", () => {
-    applyToEditor();
-  });
+  // Live preview: any change updates the editor + rerenders immediately.
+  function maybeLiveApply() {
+    if (suppressLiveApply) return;
+    if (pop.classList.contains("d-none")) return;
+    applyToEditor({ hideAfter: false, focusEditor: false });
+  }
 
-  close.addEventListener("click", () => hide());
+  const liveEls = [
+    nodeFillEnabled,
+    nodeFill,
+    nodeBorderEnabled,
+    nodeBw,
+    nodeBs,
+    nodeBc,
+    nodeRounded,
+    nodeTextSizeEnabled,
+    nodeTextSize,
+    clusterFillEnabled,
+    clusterFill,
+    clusterBorderEnabled,
+    clusterBw,
+    clusterBs,
+    clusterBc,
+    clusterTextColourEnabled,
+    clusterTextColour,
+    clusterTextSizeEnabled,
+    clusterTextSize,
+    edgeLabel,
+    edgeBorderEnabled,
+    edgeBw,
+    edgeBs,
+    edgeBc,
+  ].filter(Boolean);
+
+  for (const el of liveEls) {
+    el.addEventListener("input", maybeLiveApply);
+    el.addEventListener("change", maybeLiveApply);
+  }
+
+  // Single-button UI: just close (changes are applied live).
+  closeBtn.addEventListener("click", () => hide());
 
   // Close on Escape anywhere.
   window.addEventListener("keydown", (e) => {
@@ -192,9 +1096,35 @@ function initAceColourPicker(editor) {
     hide();
   });
 
-  // Enable/disable + sync as the user moves the cursor.
-  editor.selection.on("changeCursor", syncUiToCursorColour);
-  syncUiToCursorColour(); // initial state
+  // Keep the Style button (and popover, if open) in sync as the cursor moves.
+  editor.selection.on("changeCursor", () => {
+    syncStyleButtonToCursorLine();
+    if (!pop.classList.contains("d-none")) refreshFormFromCursorLine();
+    positionCursorStyleButton();
+  });
+
+  // If the editor scrolls without moving the cursor, keep the cursor button positioned correctly.
+  editor.session.on("changeScrollTop", () => positionCursorStyleButton());
+  editor.session.on("changeScrollLeft", () => positionCursorStyleButton());
+
+  // Hide cursor button when editor loses focus (prevents a "stuck" floating button).
+  editor.on("blur", () => {
+    // Delay so mousedown handlers on the cursor button can run first.
+    setTimeout(() => cursorBtn?.classList.add("d-none"), 0);
+  });
+  editor.on("focus", () => positionCursorStyleButton());
+
+  // If the editor is behind a <details> chevron, track its open/close state.
+  if (editorDetailsEl && editorDetailsEl.tagName === "DETAILS") {
+    editorDetailsEl.addEventListener("toggle", () => {
+      if (!editorDetailsEl.open) cursorBtn?.classList.add("d-none");
+      else positionCursorStyleButton();
+    });
+  }
+
+  // Initial state.
+  syncStyleButtonToCursorLine();
+  positionCursorStyleButton();
 }
 
 // -----------------------------
@@ -250,6 +1180,433 @@ function initSplitter() {
   });
 }
 
+function initStyleModal({ editor, graphviz }) {
+  const btn = document.getElementById("tm-editor-style");
+  const modalEl = document.getElementById("tm-style-modal");
+  const btnApply = document.getElementById("tm-style-apply");
+  if (!btn || !modalEl || !btnApply) return;
+
+  // Preset grids
+  const presetColourwaysEl = document.getElementById("tm-style-presets-colourways");
+  const presetStylesEl = document.getElementById("tm-style-presets-styles");
+  const advancedDetails = document.getElementById("tm-style-advanced");
+
+  // Inputs
+  const bg = document.getElementById("tm-style-background");
+  const dir = document.getElementById("tm-style-direction");
+  const boxFill = document.getElementById("tm-style-box-fill");
+  const boxShape = document.getElementById("tm-style-box-shape");
+  const boxBorderW = document.getElementById("tm-style-box-border-width");
+  const boxBorderWVal = document.getElementById("tm-style-box-border-width-val");
+  const boxBorderStyle = document.getElementById("tm-style-box-border-style");
+  const boxBorderColor = document.getElementById("tm-style-box-border-color");
+  const boxShadow = document.getElementById("tm-style-box-shadow");
+  const textColor = document.getElementById("tm-style-text-color");
+  const titleSize = document.getElementById("tm-style-title-size");
+  const titleSizeVal = document.getElementById("tm-style-title-size-val");
+  const linkColor = document.getElementById("tm-style-link-color");
+  const linkStyle = document.getElementById("tm-style-link-style");
+  const linkWidth = document.getElementById("tm-style-link-width");
+  const linkWidthVal = document.getElementById("tm-style-link-width-val");
+  const labelWrap = document.getElementById("tm-style-label-wrap");
+  const labelWrapVal = document.getElementById("tm-style-label-wrap-val");
+  const rankGap = document.getElementById("tm-style-rank-gap");
+  const rankGapVal = document.getElementById("tm-style-rank-gap-val");
+  const nodeGap = document.getElementById("tm-style-node-gap");
+  const nodeGapVal = document.getElementById("tm-style-node-gap-val");
+
+  const bs = globalThis.bootstrap;
+  const modal = bs?.Modal ? new bs.Modal(modalEl) : null;
+  let suppressLiveApply = false; // prevents feedback loops while we populate widgets
+
+  // Default UX: keep "More settings" closed unless something explicitly opens it.
+  // (Details state persists across modal opens otherwise.)
+  if (advancedDetails && advancedDetails.tagName === "DETAILS") {
+    // Some browsers restore <details> open state across reload/back-forward cache; force closed on init.
+    advancedDetails.open = false;
+    modalEl.addEventListener("hidden.bs.modal", () => {
+      advancedDetails.open = false;
+    });
+  }
+
+  function syncRangeValueLabel(rangeEl, valEl) {
+    if (!rangeEl || !valEl) return;
+    valEl.textContent = String(rangeEl.value);
+  }
+
+  function setRangeUi(rangeEl, valEl) {
+    if (!rangeEl || !valEl) return;
+    const sync = () => syncRangeValueLabel(rangeEl, valEl);
+    rangeEl.addEventListener("input", sync);
+    sync();
+  }
+
+  setRangeUi(boxBorderW, boxBorderWVal);
+  setRangeUi(linkWidth, linkWidthVal);
+  setRangeUi(labelWrap, labelWrapVal);
+  setRangeUi(rankGap, rankGapVal);
+  setRangeUi(nodeGap, nodeGapVal);
+  setRangeUi(titleSize, titleSizeVal);
+
+  function setControlsFromStyleSettings(sIn) {
+    suppressLiveApply = true;
+    try {
+      const s = sIn || {};
+
+      const bgRgb = resolveCssColorToRgb(s.background || "#ffffff") || { r: 255, g: 255, b: 255 };
+      if (bg) bg.value = rgbToHex(bgRgb);
+
+      const tcRgb = resolveCssColorToRgb(s.textColour || "#111827") || { r: 17, g: 24, b: 39 };
+      if (textColor) textColor.value = rgbToHex(tcRgb);
+
+      if (titleSize) titleSize.value = String(Math.max(6, Math.min(72, Math.round(Number(s.titleSize || 18)))));
+      syncRangeValueLabel(titleSize, titleSizeVal);
+
+      if (dir) dir.value = String(s.direction || "LR");
+
+      const boxRgb = resolveCssColorToRgb(s.defaultBoxColour || "#e7f5ff") || { r: 231, g: 245, b: 255 };
+      if (boxFill) boxFill.value = rgbToHex(boxRgb);
+      if (boxShape) boxShape.value = String(s.defaultBoxShape || "");
+
+      const b = borderTextToUi(s.defaultBoxBorder || "1px solid rgb(30,144,255)");
+      if (boxBorderW) boxBorderW.value = String(Math.max(0, Math.min(6, Math.round(b.width || 1))));
+      if (boxBorderStyle) boxBorderStyle.value = String(b.style || "solid");
+      if (boxBorderColor) boxBorderColor.value = String(b.colorHex || "#1e90ff");
+      syncRangeValueLabel(boxBorderW, boxBorderWVal);
+
+      if (boxShadow) boxShadow.value = String(s.defaultBoxShadow || "subtle");
+
+      const linkRgb = resolveCssColorToRgb(s.defaultLinkColour || "#6c757d") || { r: 108, g: 117, b: 125 };
+      if (linkColor) linkColor.value = rgbToHex(linkRgb);
+      if (linkStyle) linkStyle.value = String(s.defaultLinkStyle || "");
+
+      if (linkWidth) linkWidth.value = String(Math.max(1, Math.min(6, Math.round(Number(s.defaultLinkWidth || 1)))));
+      syncRangeValueLabel(linkWidth, linkWidthVal);
+
+      if (labelWrap) labelWrap.value = String(Math.max(8, Math.min(40, Math.round(Number(s.labelWrap || 18)))));
+      syncRangeValueLabel(labelWrap, labelWrapVal);
+
+      if (rankGap) rankGap.value = String(Math.max(0, Math.min(20, Math.round(Number(s.rankGap || 4)))));
+      syncRangeValueLabel(rankGap, rankGapVal);
+
+      if (nodeGap) nodeGap.value = String(Math.max(0, Math.min(20, Math.round(Number(s.nodeGap || 3)))));
+      syncRangeValueLabel(nodeGap, nodeGapVal);
+    } finally {
+      suppressLiveApply = false;
+    }
+  }
+
+  function readUiStylesFromModal() {
+    const out = {};
+    if (bg) out.background = normalizeColor(bg.value);
+    if (textColor) out.textColour = normalizeColor(textColor.value);
+    if (titleSize) out.titleSize = Number(titleSize.value);
+    if (dir) out.direction = normalizeDirection(dir.value) || dir.value;
+    if (boxFill) out.defaultBoxColour = normalizeColor(boxFill.value);
+    if (boxShape) out.defaultBoxShape = String(boxShape.value || "").trim().toLowerCase() || null;
+    if (boxShadow) out.defaultBoxShadow = String(boxShadow.value || "").trim() || null;
+
+    // Border text stays in our existing "Npx style rgb(...)" format.
+    if (boxBorderW && boxBorderStyle && boxBorderColor) {
+      out.defaultBoxBorder = uiToBorderText({
+        width: Number(boxBorderW.value),
+        style: String(boxBorderStyle.value || "solid"),
+        colorHex: String(boxBorderColor.value || "#999999"),
+      }) || null;
+    }
+
+    if (linkColor) out.defaultLinkColour = normalizeColor(linkColor.value);
+    if (linkStyle) out.defaultLinkStyle = String(linkStyle.value || "").trim().toLowerCase() || null;
+    if (linkWidth) out.defaultLinkWidth = Number(linkWidth.value);
+    if (labelWrap) out.labelWrap = Number(labelWrap.value);
+    if (rankGap) out.rankGap = Number(rankGap.value);
+    if (nodeGap) out.nodeGap = Number(nodeGap.value);
+
+    return coerceUiStyleSettings(out);
+  }
+
+  function renderPresetButton(container, { title, preview, onClick }) {
+    if (!container) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tm-style-preset-btn";
+    btn.title = title || "";
+    btn.setAttribute("aria-label", title || "Preset");
+    btn.setAttribute("aria-pressed", "false");
+
+    const thumb = document.createElement("div");
+    thumb.className = "tm-style-thumb";
+    thumb.style.background = preview.background || "#ffffff";
+
+    const node = document.createElement("div");
+    node.className = "tm-style-thumb-node";
+    node.style.background = preview.nodeFill || "#e7f5ff";
+    node.style.border = preview.nodeBorder || "1px solid #1e90ff";
+    node.style.borderRadius = preview.nodeRadius || "6px";
+
+    const edge = document.createElement("div");
+    edge.className = "tm-style-thumb-edge";
+    edge.style.borderTop = preview.edgeBorder || "2px solid #6c757d";
+
+    thumb.appendChild(node);
+    thumb.appendChild(edge);
+    btn.appendChild(thumb);
+
+    btn.addEventListener("click", () => onClick(btn));
+    container.appendChild(btn);
+  }
+
+  function setSelectedPresetInGrid(container, selectedBtn) {
+    if (!container || !selectedBtn) return;
+    container.querySelectorAll(".tm-style-preset-btn").forEach((b) => {
+      const isSelected = b === selectedBtn;
+      b.classList.toggle("tm-selected", isSelected);
+      b.setAttribute("aria-pressed", isSelected ? "true" : "false");
+    });
+  }
+
+  function initPresets() {
+    if (presetColourwaysEl) presetColourwaysEl.innerHTML = "";
+    if (presetStylesEl) presetStylesEl.innerHTML = "";
+
+    function relLuminance(rgb) {
+      // WCAG relative luminance for sRGB.
+      const toLin = (v) => {
+        const s = (Number(v) || 0) / 255;
+        return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+      };
+      const r = toLin(rgb.r);
+      const g = toLin(rgb.g);
+      const b = toLin(rgb.b);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+
+    function contrastRatio(rgbA, rgbB) {
+      const L1 = relLuminance(rgbA);
+      const L2 = relLuminance(rgbB);
+      const hi = Math.max(L1, L2);
+      const lo = Math.min(L1, L2);
+      return (hi + 0.05) / (lo + 0.05);
+    }
+
+    function mixRgb(a, b, t) {
+      const k = Math.max(0, Math.min(1, Number(t)));
+      const m = (x, y) => Math.round((1 - k) * x + k * y);
+      return { r: m(a.r, b.r), g: m(a.g, b.g), b: m(a.b, b.b) };
+    }
+
+    function ensureReadableHexOnBg(fgCss, bgCss, { minRatio = 3 } = {}) {
+      // Purpose: keep edges/borders readable on the chosen background, while preserving hue where possible.
+      const fg = resolveCssColorToRgb(fgCss);
+      const bg = resolveCssColorToRgb(bgCss);
+      if (!fg || !bg) return String(fgCss || "").trim();
+      if (contrastRatio(fg, bg) >= minRatio) return rgbToHex(fg);
+
+      const bgLum = relLuminance(bg);
+      const target = bgLum < 0.45 ? { r: 248, g: 250, b: 252 } : { r: 17, g: 24, b: 39 }; // light or dark
+
+      // Nudge towards the target (white-ish on dark bg, black-ish on light bg) until readable.
+      for (const t of [0.18, 0.30, 0.42, 0.54, 0.66, 0.78, 0.9, 1]) {
+        const cand = mixRgb(fg, target, t);
+        if (contrastRatio(cand, bg) >= minRatio) return rgbToHex(cand);
+      }
+      return rgbToHex(target);
+    }
+
+    function pickBestTextColour(bgCss, boxCss) {
+      // Purpose: pick a single text colour that stays readable on BOTH the background and default node fill.
+      const bg = resolveCssColorToRgb(bgCss);
+      const box = resolveCssColorToRgb(boxCss);
+      if (!bg || !box) return "#111827";
+
+      const dark = { r: 17, g: 24, b: 39 }; // #111827
+      const light = { r: 248, g: 250, b: 252 }; // #f8fafc
+
+      const score = (rgb) => Math.min(contrastRatio(rgb, bg), contrastRatio(rgb, box));
+      const best = score(light) >= score(dark) ? light : dark;
+      return rgbToHex(best);
+    }
+
+    // Colourways (36): keep overall number, but replace 6 palest ones with stronger dark-ish backgrounds.
+    // Each preset sets diagram background + default node fill + border/link colours.
+    const COLOURWAYS = [
+      // Replacements (dark-ish)
+      { name: "Burgundy night", bg: "#3b0a17", box: "#5a1224", border: "#fb7185", link: "#fb7185" },
+      { name: "Deep maroon", bg: "#4a0f0f", box: "#6b1d1d", border: "#fca5a5", link: "#fca5a5" },
+      { name: "Royal purple", bg: "#2b0f3a", box: "#3f1a59", border: "#d8b4fe", link: "#d8b4fe" },
+      { name: "Navy", bg: "#0b2a5b", box: "#123b73", border: "#93c5fd", link: "#93c5fd" },
+      { name: "Pine", bg: "#052e1b", box: "#0b4a2b", border: "#34d399", link: "#34d399" },
+      { name: "Deep teal", bg: "#05343b", box: "#0a4a54", border: "#2dd4bf", link: "#2dd4bf" },
+
+      // Existing (kept)
+      { name: "Slate", bg: "#f1f5f9", box: "#f1f3f5", border: "#495057", link: "#495057" },
+      { name: "Teal", bg: "#ecfeff", box: "#e6fcf5", border: "#0ca678", link: "#0ca678" },
+      { name: "Lemon", bg: "#fffbeb", box: "#fff9db", border: "#f59f00", link: "#6c757d" },
+      { name: "Indigo", bg: "#eef2ff", box: "#edf2ff", border: "#364fc7", link: "#364fc7" },
+      { name: "Dark mode", bg: "#0b1020", box: "#111827", border: "#93c5fd", link: "#93c5fd" },
+      { name: "Night mint", bg: "#0b1020", box: "#1ff2a8", border: "#9ec5fe", link: "#9ec5fe" },
+
+      // More (24): varied palettes (light, dark, muted, high-contrast)
+      { name: "Coral", bg: "#fff1f2", box: "#ffe4e6", border: "#fb7185", link: "#fb7185" },
+      { name: "Tangerine", bg: "#fff7ed", box: "#ffedd5", border: "#f97316", link: "#f97316" },
+      { name: "Amber", bg: "#fffbeb", box: "#fef3c7", border: "#f59e0b", link: "#f59e0b" },
+      { name: "Lime", bg: "#f7fee7", box: "#ecfccb", border: "#84cc16", link: "#65a30d" },
+      { name: "Spring", bg: "#f0fdf4", box: "#dcfce7", border: "#22c55e", link: "#16a34a" },
+      { name: "Aqua", bg: "#ecfeff", box: "#cffafe", border: "#06b6d4", link: "#0891b2" },
+      { name: "Cobalt", bg: "#eff6ff", box: "#dbeafe", border: "#2563eb", link: "#1d4ed8" },
+      { name: "Violet", bg: "#f5f3ff", box: "#ede9fe", border: "#8b5cf6", link: "#7c3aed" },
+      { name: "Magenta", bg: "#fdf2f8", box: "#fce7f3", border: "#db2777", link: "#be185d" },
+      { name: "Mocha", bg: "#faf5ef", box: "#f3e8d9", border: "#7c4a2d", link: "#7c4a2d" },
+      { name: "Forest", bg: "#f0fdf4", box: "#dcfce7", border: "#166534", link: "#166534" },
+      { name: "Arctic", bg: "#e0f2fe", box: "#bae6fd", border: "#0284c7", link: "#334155" },
+      { name: "Paper + ink", bg: "#fffdf5", box: "#ffffff", border: "#111827", link: "#111827" },
+      { name: "Mono high-contrast", bg: "#ffffff", box: "#ffffff", border: "#000000", link: "#000000" },
+      { name: "Charcoal", bg: "#0f172a", box: "#111827", border: "#94a3b8", link: "#e2e8f0" },
+      { name: "Midnight blue", bg: "#0b132b", box: "#1c2541", border: "#5bc0be", link: "#5bc0be" },
+      { name: "Neon on black", bg: "#0b0f14", box: "#0b0f14", border: "#22d3ee", link: "#f472b6" },
+      { name: "Cyber lime", bg: "#0b0f14", box: "#111827", border: "#a3e635", link: "#a3e635" },
+      { name: "Plum night", bg: "#120a1f", box: "#2a0a3d", border: "#c084fc", link: "#c084fc" },
+      { name: "Desert dusk", bg: "#2d1b12", box: "#1f2937", border: "#f59e0b", link: "#f97316" },
+      { name: "Ocean night", bg: "#082f49", box: "#0b2a3d", border: "#38bdf8", link: "#38bdf8" },
+      { name: "Nord", bg: "#2e3440", box: "#3b4252", border: "#88c0d0", link: "#a3be8c" },
+      { name: "Burgundy", bg: "#fff1f2", box: "#ffe4e6", border: "#7f1d1d", link: "#7f1d1d" },
+      { name: "Evergreen + gold", bg: "#f0fdf4", box: "#dcfce7", border: "#065f46", link: "#b45309" },
+    ];
+
+    COLOURWAYS.forEach((cw) => {
+      renderPresetButton(presetColourwaysEl, {
+        title: cw.name,
+        preview: {
+          background: cw.bg,
+          nodeFill: cw.box,
+          nodeBorder: `1px solid ${cw.border}`,
+          nodeRadius: "0px",
+          edgeBorder: `2px solid ${cw.link}`,
+        },
+        onClick: (btnEl) => {
+          setSelectedPresetInGrid(presetColourwaysEl, btnEl);
+          const cur = readUiStylesFromModal();
+          const curBorder = borderTextToUi(cur.defaultBoxBorder || "1px solid rgb(30,144,255)");
+          const nextBorderHex = ensureReadableHexOnBg(cw.border, cw.bg, { minRatio: 3 });
+          const nextLinkHex = ensureReadableHexOnBg(cw.link, cw.bg, { minRatio: 3 });
+          const nextBorder = uiToBorderText({
+            width: Number.isFinite(curBorder.width) ? curBorder.width : 1,
+            style: curBorder.style || "solid",
+            colorHex: nextBorderHex,
+          });
+
+          const merged = {
+            ...cur,
+            background: cw.bg,
+            textColour: pickBestTextColour(cw.bg, cw.box),
+            defaultBoxColour: cw.box,
+            defaultLinkColour: nextLinkHex,
+            defaultBoxBorder: nextBorder,
+          };
+          setControlsFromStyleSettings(merged);
+          applyLiveFromModal(); // preset clicks don't fire input/change events; apply immediately
+        },
+      });
+    });
+
+    // 12 style presets: rounded/square + thick/thin + edge style, without overriding colours.
+    const STYLES = [
+      { name: "Square / thin", shape: "", bw: 1, bs: "solid", ew: 1, es: "solid", shadow: "none" },
+      { name: "Rounded / thin", shape: "rounded", bw: 1, bs: "solid", ew: 1, es: "solid", shadow: "subtle" },
+      { name: "Square / thick", shape: "", bw: 3, bs: "solid", ew: 3, es: "solid", shadow: "none" },
+      { name: "Rounded / thick", shape: "rounded", bw: 3, bs: "solid", ew: 3, es: "solid", shadow: "medium" },
+      { name: "Square / dotted", shape: "", bw: 2, bs: "dotted", ew: 2, es: "dotted", shadow: "none" },
+      { name: "Rounded / dotted", shape: "rounded", bw: 2, bs: "dotted", ew: 2, es: "dotted", shadow: "subtle" },
+      { name: "Square / dashed", shape: "", bw: 2, bs: "dashed", ew: 2, es: "dashed", shadow: "none" },
+      { name: "Rounded / dashed", shape: "rounded", bw: 2, bs: "dashed", ew: 2, es: "dashed", shadow: "subtle" },
+      { name: "Square / bold", shape: "", bw: 4, bs: "bold", ew: 4, es: "bold", shadow: "none" },
+      { name: "Rounded / bold", shape: "rounded", bw: 4, bs: "bold", ew: 4, es: "bold", shadow: "medium" },
+      { name: "Soft shadow", shape: "rounded", bw: 1, bs: "solid", ew: 1, es: "solid", shadow: "medium" },
+      { name: "Flat + crisp", shape: "", bw: 1, bs: "solid", ew: 1, es: "solid", shadow: "none" },
+    ];
+
+    STYLES.forEach((st) => {
+      renderPresetButton(presetStylesEl, {
+        title: st.name,
+        preview: {
+          background: "#ffffff",
+          nodeFill: "#f1f3f5",
+          nodeBorder: `${st.bw}px ${st.bs} #495057`,
+          nodeRadius: st.shape === "rounded" ? "8px" : "0px",
+          edgeBorder: `${st.ew}px ${st.es} #495057`,
+        },
+        onClick: (btnEl) => {
+          setSelectedPresetInGrid(presetStylesEl, btnEl);
+          const cur = readUiStylesFromModal();
+          const curBorder = borderTextToUi(cur.defaultBoxBorder || "1px solid rgb(30,144,255)");
+          const borderColorHex = curBorder.colorHex || "#1e90ff";
+          const nextBorder = uiToBorderText({ width: st.bw, style: st.bs, colorHex: borderColorHex });
+
+          const merged = {
+            ...cur,
+            defaultBoxShape: st.shape,
+            defaultBoxShadow: st.shadow,
+            defaultBoxBorder: nextBorder,
+            defaultLinkWidth: st.ew,
+            defaultLinkStyle: st.es,
+          };
+          setControlsFromStyleSettings(merged);
+          applyLiveFromModal(); // preset clicks don't fire input/change events; apply immediately
+        },
+      });
+    });
+  }
+
+  // Render presets once (they only need to exist; clicks mutate the modal fields).
+  initPresets();
+
+  function applyLiveFromModal() {
+    if (suppressLiveApply) return;
+    // Persist to the editor (source of truth), then URL (#m), then render.
+    const ui = readUiStylesFromModal();
+    upsertEditorStyleBlockFromUiStyleSettings(editor, ui);
+    afterEditorMutation({ editor, graphviz });
+  }
+
+  btn.addEventListener("click", () => {
+    // Prefer what's currently in the editor (so manual edits to style lines are respected).
+    const parsed = dslToDot(editor.getValue()).settings;
+    const fromEditor = coerceUiStyleSettings(pickStyleSettings(parsed));
+    setControlsFromStyleSettings(fromEditor || {});
+    modal?.show();
+  });
+
+  btnApply.addEventListener("click", async () => {
+    // Ensure the latest values are applied (the modal is live, but keep this deterministic).
+    applyLiveFromModal();
+    modal?.hide();
+  });
+
+  // Live preview: update URL + rerender on any input change.
+  const liveEls = [
+    bg,
+    dir,
+    boxFill,
+    boxShape,
+    boxBorderW,
+    boxBorderStyle,
+    boxBorderColor,
+    boxShadow,
+    textColor,
+    titleSize,
+    linkColor,
+    linkStyle,
+    linkWidth,
+    labelWrap,
+    rankGap,
+    nodeGap,
+  ].filter(Boolean);
+  for (const el of liveEls) {
+    el.addEventListener("input", applyLiveFromModal);
+    el.addEventListener("change", applyLiveFromModal);
+  }
+}
+
 // -----------------------------
 // Gallery: examples + (optional) saved local maps
 // -----------------------------
@@ -290,7 +1647,7 @@ function buildStandardExampleSnippet({ id, title, desc, dsl }) {
 
 function listSavedMapsFromLocalStorage() {
   // Saved maps are optional; gallery shows them if present.
-  // Expected value: JSON { name, dsl, savedAt, screenshotDataUrl? }
+  // Expected value: JSON { name, dsl, styleSettings?, savedAt, screenshotDataUrl? }
   const items = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
@@ -305,6 +1662,7 @@ function listSavedMapsFromLocalStorage() {
         title: String(v.name || k.slice(TM_SAVED_KEY_PREFIX.length) || "Saved map"),
         desc: v.savedAt ? `Saved ${new Date(v.savedAt).toLocaleString()}` : "Saved map",
         dsl: v.dsl,
+        styleSettings: v.styleSettings && typeof v.styleSettings === "object" ? coerceUiStyleSettings(v.styleSettings) : null,
         screenshotDataUrl: typeof v.screenshotDataUrl === "string" ? v.screenshotDataUrl : null,
         _savedAt: v.savedAt ? Number(new Date(v.savedAt)) : 0,
       });
@@ -370,6 +1728,7 @@ function saveMapToLocalStorage({ key, name, dsl, screenshotDataUrl }) {
   const payload = {
     name,
     dsl,
+    // styleSettings: legacy (we now store styles in the editor/MapScript itself)
     savedAt: new Date().toISOString(),
     screenshotDataUrl: screenshotDataUrl || null,
   };
@@ -481,25 +1840,6 @@ function splitMapScriptStylesAndContents(text) {
   const styleLines = [];
   const contentLines = [];
 
-  const supportedSettingKeys = new Set([
-    "title",
-    "background",
-    "default box colour",
-    "default box color",
-    "default box shape",
-    "default box border",
-    "default link colour",
-    "default link color",
-    "default link style",
-    "default link width",
-    "default box shadow",
-    "box shadow",
-    "direction",
-    "label wrap",
-    "rank gap",
-    "node gap",
-  ]);
-
   let inStyles = true;
   for (const raw of lines) {
     const trimmed = raw.trim();
@@ -511,7 +1851,7 @@ function splitMapScriptStylesAndContents(text) {
       const m = trimmed.match(/^([^:]+):\s*(.+)$/);
       if (!m) return false;
       const key = m[1].trim().toLowerCase();
-      return supportedSettingKeys.has(key);
+      return SUPPORTED_SETTING_LINE_KEYS.has(key);
     })();
 
     if (inStyles) {
@@ -531,18 +1871,6 @@ function splitMapScriptStylesAndContents(text) {
     styles: styleLines.join("\n").trimEnd(),
     contents: contentLines.join("\n").trimStart(),
   };
-}
-
-function buildStyleOnlyMapScript(exampleDsl, currentDsl) {
-  const ex = splitMapScriptStylesAndContents(exampleDsl);
-  const cur = splitMapScriptStylesAndContents(currentDsl);
-
-  const styles = (ex.styles || "").trimEnd();
-  const contents = (cur.contents || "").trimStart();
-
-  if (!styles) return currentDsl;
-  if (!contents) return styles;
-  return `${styles}\n\n${contents}`;
 }
 
 function initGallery(editor, graphviz) {
@@ -655,11 +1983,27 @@ function initGallery(editor, graphviz) {
 
   function applySelection(mode) {
     if (!selectedItem) return;
-    const current = editor.getValue();
-    const next = mode === "styles" ? buildStyleOnlyMapScript(selectedItem.dsl, current) : selectedItem.dsl;
-    editor.setValue(next, -1);
-    setMapScriptInUrl(editor.getValue());
-    renderNow(graphviz, editor);
+    const selectedDsl = String(selectedItem.dsl || "");
+    const styleFromItem =
+      selectedItem.styleSettings && typeof selectedItem.styleSettings === "object"
+        ? coerceUiStyleSettings(selectedItem.styleSettings)
+        : coerceUiStyleSettings(pickStyleSettings(dslToDot(selectedDsl).settings));
+
+    if (mode === "styles") {
+      // Apply styles by writing style lines into the editor; keep contents unchanged.
+      upsertEditorStyleBlockFromUiStyleSettings(editor, styleFromItem);
+      afterEditorMutation({ editor, graphviz });
+      if (modal) modal.hide();
+      setActiveTab("viz");
+      return;
+    }
+
+    // Replace entire editor content; ensure selected styles are present as style lines.
+    editor.setValue(selectedDsl, -1);
+    if (styleFromItem && Object.keys(styleFromItem).length) {
+      upsertEditorStyleBlockFromUiStyleSettings(editor, styleFromItem);
+    }
+    afterEditorMutation({ editor, graphviz });
     if (modal) modal.hide(); // close gallery confirm modal after user choice
     setActiveTab("viz");
   }
@@ -719,11 +2063,17 @@ async function rebuildSavedThumbnails({ editor, graphviz, refreshGallery }) {
   if (!saved.length) return;
 
   const current = editor.getValue();
+  const prevSuppress = suppressHistorySync;
+  suppressHistorySync = true; // avoid polluting browser history while batch-rendering thumbnails
   try {
     setVizStatus(`Rebuilding ${saved.length} thumbnails…`);
     for (let i = 0; i < saved.length; i++) {
       const it = saved[i];
       editor.setValue(it.dsl, -1);
+      // Back-compat: older saved maps may store styles separately; import into editor before rendering.
+      if (it.styleSettings && !editorHasStyleLines(editor.getValue())) {
+        upsertEditorStyleBlockFromUiStyleSettings(editor, it.styleSettings);
+      }
       await renderNow(graphviz, editor);
       const shot = await captureVizPngDataUrl({ scale: 1.5 });
       if (shot) updateSavedMapThumbnailInLocalStorage(it.id, shot);
@@ -735,13 +2085,14 @@ async function rebuildSavedThumbnails({ editor, graphviz, refreshGallery }) {
     await renderNow(graphviz, editor);
     if (typeof refreshGallery === "function") refreshGallery();
     setVizStatus("Thumbnails rebuilt");
+    suppressHistorySync = prevSuppress;
   }
 }
 
 // -----------------------------
 // URL ↔ editor syncing (share/restore)
 // - Stores MapScript in URL hash as: #m=<base64url(utf8)>
-// - Uses replaceState so typing doesn't spam back-button history
+// - Uses History API so browser back/forward can restore prior editor states
 // -----------------------------
 
 function bytesToBase64(bytes) {
@@ -785,11 +2136,103 @@ function getMapScriptFromUrl() {
   }
 }
 
-function setMapScriptInUrl(mapScript) {
+function getUrlWithMapScript(mapScript) {
   const params = new URLSearchParams((location.hash || "").replace(/^#/, ""));
   params.set("m", base64UrlEncodeUtf8(mapScript));
+  return `${location.pathname}${location.search}#${params.toString()}`;
+}
+
+function setMapScriptInUrl(mapScript) {
+  // Replace (not push): keeps the current history entry up to date during an edit burst.
+  const next = getUrlWithMapScript(mapScript);
+  const prev = history.state && history.state[TM_HISTORY_STATE_MARK] ? history.state : { [TM_HISTORY_STATE_MARK]: true };
+  history.replaceState(prev, "", next);
+}
+
+function pushMapScriptInUrl(mapScript) {
+  // Push: creates a new browser history entry (so Back/Forward walks through prior states).
+  const next = getUrlWithMapScript(mapScript);
+  history.pushState({ [TM_HISTORY_STATE_MARK]: true }, "", next);
+}
+
+function getStyleSettingsFromUrl() {
+  const hash = (location.hash || "").replace(/^#/, "");
+  if (!hash) return null;
+  const params = new URLSearchParams(hash);
+  const s = params.get("s");
+  if (!s) return null;
+  try {
+    const txt = base64UrlDecodeUtf8(s);
+    const obj = JSON.parse(txt);
+    return obj && typeof obj === "object" ? obj : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearStyleSettingsFromUrl() {
+  // Legacy cleanup: remove #s=... after importing styles into the editor text.
+  const params = new URLSearchParams((location.hash || "").replace(/^#/, ""));
+  if (!params.has("s")) return false;
+  params.delete("s");
   const next = `${location.pathname}${location.search}#${params.toString()}`;
-  history.replaceState(null, "", next);
+  const prev = history.state && history.state[TM_HISTORY_STATE_MARK] ? history.state : { [TM_HISTORY_STATE_MARK]: true };
+  history.replaceState(prev, "", next);
+  return true;
+}
+
+function pickStyleSettings(settings) {
+  // Keep only the style settings (not title) and drop null/undefined.
+  const out = {};
+  for (const k of STYLE_SETTING_KEYS) {
+    const v = settings ? settings[k] : null;
+    if (v == null) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+function coerceUiStyleSettings(obj) {
+  // Minimal sanitiser for URL/localStorage payloads.
+  const x = obj && typeof obj === "object" ? obj : {};
+  const out = {};
+  for (const k of STYLE_SETTING_KEYS) {
+    const v = x[k];
+    if (v == null) continue;
+    if (k === "titleSize") {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) out[k] = n;
+      continue;
+    }
+    out[k] = v;
+  }
+  return out;
+}
+
+function initHistoryNav({ editor, graphviz }) {
+  // Navbar buttons mirror browser back/forward.
+  document.getElementById("tm-undo")?.addEventListener("click", () => history.back());
+  document.getElementById("tm-redo")?.addEventListener("click", () => history.forward());
+
+  // Browser back/forward: restore editor from the URL hash.
+  window.addEventListener("popstate", (e) => {
+    // Only handle entries we created (otherwise you might be navigating away).
+    if (!e?.state || !e.state[TM_HISTORY_STATE_MARK]) return;
+    const fromUrl = getMapScriptFromUrl();
+    if (fromUrl == null) return;
+
+    if (historyBurstTimer) clearTimeout(historyBurstTimer);
+    historyBurstTimer = null;
+    historyBurstActive = false;
+
+    suppressHistorySync = true;
+    try {
+      editor.setValue(fromUrl, -1);
+    } finally {
+      suppressHistorySync = false;
+    }
+    renderNow(graphviz, editor);
+  });
 }
 
 // -----------------------------
@@ -1061,10 +2504,41 @@ function styleInnerToNodeUi(styleInner) {
 
   const rounded = String(kv.shape || "").trim().toLowerCase() === "rounded";
 
-  return { fillHex, borderUi, rounded };
+  const textScaleRaw = kv["text size"] || kv.textsize || kv["text scale"] || kv.textscale || "";
+  const textSizeScale = parseRelativeScale(textScaleRaw);
+
+  return { fillHex, borderUi, rounded, textSizeScale: Number.isFinite(textSizeScale) ? textSizeScale : null };
 }
 
-function upsertNodeStyleInner(existingInner, { fillHex, borderText, rounded }) {
+function styleInnerToClusterUi(styleInner) {
+  // Cluster (group box) attrs mirror node attrs, plus optional title text styling.
+  const inner = String(styleInner || "").trim();
+  if (!inner) return null;
+  const { kv } = parseBracketAttrs(`[${inner}]`);
+
+  const fillRaw = kv.colour || kv.color || kv.background || "";
+  const fillRgb = resolveCssColorToRgb(fillRaw);
+  const fillHex = fillRgb ? rgbToHex(fillRgb) : null;
+
+  const borderRaw = kv.border ? String(kv.border) : "";
+  const borderUi = borderRaw ? borderTextToUi(borderRaw) : null;
+
+  const textColourRaw = kv["text colour"] || kv["text color"] || kv.textcolour || kv.textcolor || "";
+  const textRgb = resolveCssColorToRgb(textColourRaw);
+  const textColourHex = textRgb ? rgbToHex(textRgb) : null;
+
+  const textScaleRaw = kv["text size"] || kv.textsize || kv["text scale"] || kv.textscale || "";
+  const textSizeScale = parseRelativeScale(textScaleRaw);
+
+  return {
+    fillHex,
+    borderUi,
+    textColourHex,
+    textSizeScale: Number.isFinite(textSizeScale) ? textSizeScale : null,
+  };
+}
+
+function upsertNodeStyleInner(existingInner, { fillHex, borderText, rounded, textSizeScale }) {
   // Update/replace only the keys we manage; preserve any other attrs/loose tokens.
   const parts = String(existingInner || "")
     .split("|")
@@ -1076,6 +2550,7 @@ function upsertNodeStyleInner(existingInner, { fillHex, borderText, rounded }) {
   let sawBackground = false;
   let sawBorder = false;
   let sawShape = false;
+  let sawTextSize = false;
 
   for (const p of parts) {
     const eq = p.indexOf("=");
@@ -1106,6 +2581,10 @@ function upsertNodeStyleInner(existingInner, { fillHex, borderText, rounded }) {
       sawShape = true;
       continue;
     }
+    if (k === "text size" || k === "textscale" || k === "text scale") {
+      sawTextSize = true;
+      continue;
+    }
     kept.push(p);
   }
 
@@ -1116,8 +2595,57 @@ function upsertNodeStyleInner(existingInner, { fillHex, borderText, rounded }) {
   }
   if (borderText) out.push(`border=${borderText}`);
   if (rounded) out.push("shape=rounded");
+  if (Number.isFinite(Number(textSizeScale)) && Number(textSizeScale) > 0) {
+    const s = Math.round(Number(textSizeScale) * 100) / 100;
+    if (s !== 1) out.push(`text size=${String(s)}`);
+  }
 
   // Preserve other attrs after ours
+  out.push(...kept);
+  return out.join(" | ");
+}
+
+function upsertClusterStyleInner(existingInner, { fillHex, borderText, textColourHex, textSizeScale }) {
+  // Update/replace only the keys we manage; preserve any other attrs/loose tokens.
+  const parts = String(existingInner || "")
+    .split("|")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const kept = [];
+  for (const p of parts) {
+    const eq = p.indexOf("=");
+    if (eq < 0) {
+      kept.push(p);
+      continue;
+    }
+    const k = p.slice(0, eq).trim().toLowerCase();
+    if (k === "colour" || k === "color" || k === "background") continue;
+    if (k === "border") continue;
+    if (k === "text colour" || k === "text color" || k === "textcolour" || k === "textcolor") continue;
+    if (k === "text size" || k === "textscale" || k === "text scale") continue;
+    kept.push(p);
+  }
+
+  const out = [];
+
+  if (fillHex) {
+    const rgb = hexToRgb(fillHex);
+    if (rgb) out.push(`colour=rgb(${rgb.r},${rgb.g},${rgb.b})`);
+  }
+
+  if (borderText) out.push(`border=${borderText}`);
+
+  if (textColourHex) {
+    const rgb = hexToRgb(textColourHex);
+    if (rgb) out.push(`text colour=rgb(${rgb.r},${rgb.g},${rgb.b})`);
+  }
+
+  if (Number.isFinite(Number(textSizeScale)) && Number(textSizeScale) > 0) {
+    const s = Math.round(Number(textSizeScale) * 100) / 100;
+    if (s !== 1) out.push(`text size=${String(s)}`);
+  }
+
   out.push(...kept);
   return out.join(" | ");
 }
@@ -1202,6 +2730,22 @@ function parseLeadingNumber(value) {
   return m ? Number(m[0]) : null;
 }
 
+function parseRelativeScale(value) {
+  // Parse a "relative size" multiplier like:
+  // - "1.2" (20% bigger)
+  // - "80%" (20% smaller)
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  if (raw.endsWith("%")) {
+    const n = Number(raw.slice(0, -1));
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return n / 100;
+  }
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
 function fontNameWithStyle(baseFont, styleText) {
   // Minimal mapping: Graphviz doesn't have separate "font-weight"/"font-style" attrs,
   // so we use fontname variants when possible.
@@ -1218,9 +2762,12 @@ function fontNameWithStyle(baseFont, styleText) {
 
 function dslToDot(dslText) {
   const errors = [];
+  const BASE_NODE_FONT_SIZE = 14; // Graphviz-ish default; used only when user sets a relative node text size
+  const BASE_CLUSTER_FONT_SIZE = 14; // used only when user sets a relative cluster title text size
   const settings = {
     title: null,
     background: null,
+    textColour: null,
     defaultBoxColour: null,
     defaultBoxShape: null,
     defaultBoxBorder: null,
@@ -1237,7 +2784,7 @@ function dslToDot(dslText) {
   const nodes = new Map(); // id -> { label, attrs }
   const autoLabelNodes = new Map(); // id -> label (from edges)
   const edges = []; // { fromId, toId, attrs, srcLineNo }
-  const clusters = []; // { id, label, depth, nodeIds: [], children: [] }
+  const clusters = []; // { id, label, depth, styleInner, srcLineNo, nodeIds: [], children: [] }
   const clusterStack = []; // stack of clusters (nested)
 
   function ensureNode(token) {
@@ -1297,7 +2844,7 @@ function dslToDot(dslText) {
     const clusterMatch = line.match(/^(-{2,})(.*)$/);
     if (clusterMatch) {
       const dashes = clusterMatch[1];
-      const rest = (clusterMatch[2] || "").trim();
+      let rest = (clusterMatch[2] || "").trim();
       const depth = dashes.length;
 
       if (depth % 2 !== 0) {
@@ -1313,6 +2860,14 @@ function dslToDot(dslText) {
         continue;
       }
 
+      // Optional cluster attrs: "--Label [colour=... | border=... | text colour=... | text size=...]"
+      let bracket = null;
+      const bracketStart = rest.lastIndexOf("[");
+      if (bracketStart >= 0 && rest.endsWith("]")) {
+        bracket = rest.slice(bracketStart);
+        rest = rest.slice(0, bracketStart).trim();
+      }
+
       // Opening marker: ensure stack is aligned to parent level (depth-2)
       const parentDepth = depth - 2;
       while (clusterStack.length && clusterStack[clusterStack.length - 1].depth > parentDepth) {
@@ -1323,6 +2878,8 @@ function dslToDot(dslText) {
         id: `cluster_${clusters.length}`,
         label: rest,
         depth,
+        styleInner: bracket ? bracket.slice(1, -1).trim() : "",
+        srcLineNo: i + 1,
         nodeIds: [],
         children: [],
       };
@@ -1341,6 +2898,8 @@ function dslToDot(dslText) {
       const value = settingMatch[2].trim();
       if (key === "title") settings.title = value;
       else if (key === "background") settings.background = normalizeColor(value);
+      else if (key === "text colour" || key === "text color") settings.textColour = normalizeColor(value);
+      else if (key === "title size") settings.titleSize = parseLeadingNumber(value);
       else if (key === "default box colour" || key === "default box color") settings.defaultBoxColour = normalizeColor(value);
       else if (key === "default box shape") settings.defaultBoxShape = value.trim().toLowerCase();
       else if (key === "default box border") settings.defaultBoxBorder = value;
@@ -1400,6 +2959,13 @@ function dslToDot(dslText) {
           if (b.color) attrs.color = b.color;
           if (b.penwidth) attrs.penwidth = b.penwidth;
           if (b.style) addStyle(attrs, b.style);
+        }
+
+        // Relative node text sizing (multiplier vs default)
+        // Example: A:: Label [text size=1.2] or [text size=80%]
+        const textSizeScale = parseRelativeScale(kv["text size"] || kv.textsize || kv["text scale"] || kv.textscale);
+        if (Number.isFinite(textSizeScale) && textSizeScale > 0) {
+          attrs.fontsize = (BASE_NODE_FONT_SIZE * textSizeScale).toFixed(1);
         }
       }
 
@@ -1516,10 +3082,13 @@ function dslToDot(dslText) {
   const dot = [];
   dot.push("digraph G {");
   dot.push('  graph [fontname="Arial"];');
-  dot.push('  node [fontname="Arial", shape="box"];');
+  const nodeDefaults = { fontname: "Arial", shape: "box" };
+  if (settings.textColour) nodeDefaults.fontcolor = settings.textColour;
+  dot.push(`  node${toDotAttrs(nodeDefaults)};`);
   // Edge defaults (links)
   const edgeDefaults = { fontname: "Arial", fontsize: 12 };
   if (settings.defaultLinkColour) edgeDefaults.color = settings.defaultLinkColour;
+  if (settings.textColour) edgeDefaults.fontcolor = settings.textColour;
   if (settings.defaultLinkStyle) {
     const s = String(settings.defaultLinkStyle || "").trim().toLowerCase();
     if (["solid", "dotted", "dashed", "bold"].includes(s)) addStyle(edgeDefaults, s);
@@ -1528,10 +3097,13 @@ function dslToDot(dslText) {
   dot.push(`  edge${toDotAttrs(edgeDefaults)};`);
 
   if (settings.background) dot.push(`  bgcolor="${settings.background.replaceAll('"', '\\"')}";`);
+  if (settings.textColour) dot.push(`  fontcolor="${settings.textColour.replaceAll('"', '\\"')}";`);
   if (settings.title) {
     // Title (graph label): slightly larger by default, with a bit of extra space below.
     // Graphviz doesn't have a simple "margin-bottom for title", so we add a trailing newline.
-    dot.push(`  label="${settings.title.replaceAll('"', '\\"')}\\n"; labelloc="t"; fontsize="18";`);
+    const fsRaw = Number(settings.titleSize);
+    const fs = Number.isFinite(fsRaw) && fsRaw > 0 ? fsRaw : 18;
+    dot.push(`  label="${settings.title.replaceAll('"', '\\"')}\\n"; labelloc="t"; fontsize="${String(fs)}";`);
   }
   if (settings.direction) dot.push(`  rankdir="${settings.direction}";`);
   // Graphviz ranksep/nodesep are in inches; MapScript values are treated as "px-ish", so scale down.
@@ -1543,9 +3115,53 @@ function dslToDot(dslText) {
   function emitCluster(c, indent) {
     // Emit even if empty (so nested structure remains visible)
     dot.push(`${indent}subgraph ${c.id} {`);
-    dot.push(`${indent}  label="${c.label.replaceAll('"', '\\"')}";`);
-    dot.push(`${indent}  style="rounded";`);
-    dot.push(`${indent}  color="#cccccc";`);
+
+    // Cluster styling:
+    // - Default: rounded + light grey border (existing behavior)
+    // - Optional: allow cluster lines to override fill/border and title text styling
+    const clusterAttrs = {};
+    clusterAttrs.label = c.label;
+    addStyle(clusterAttrs, "rounded");
+    if (!clusterAttrs.color) clusterAttrs.color = "#cccccc";
+    if (settings.textColour) clusterAttrs.fontcolor = settings.textColour;
+
+    if (c.styleInner) {
+      const { kv } = parseBracketAttrs(`[${c.styleInner}]`);
+
+      // Fill (accept colour/color/background)
+      if (kv.colour || kv.color || kv.background) {
+        clusterAttrs.fillcolor = normalizeColor(kv.colour || kv.color || kv.background);
+        addStyle(clusterAttrs, "filled");
+      }
+
+      // Border
+      if (kv.border) {
+        const b = parseBorder(String(kv.border));
+        if (b.color) clusterAttrs.color = b.color;
+        if (b.penwidth) clusterAttrs.penwidth = b.penwidth;
+        if (b.style) addStyle(clusterAttrs, b.style);
+      }
+
+      // Cluster title text colour
+      if (kv["text colour"] || kv["text color"] || kv.textcolour || kv.textcolor) {
+        clusterAttrs.fontcolor = normalizeColor(kv["text colour"] || kv["text color"] || kv.textcolour || kv.textcolor);
+      }
+
+      // Cluster title text sizing (multiplier)
+      const textSizeScale = parseRelativeScale(kv["text size"] || kv.textsize || kv["text scale"] || kv.textscale);
+      if (Number.isFinite(textSizeScale) && textSizeScale > 0) {
+        clusterAttrs.fontsize = (BASE_CLUSTER_FONT_SIZE * textSizeScale).toFixed(1);
+      }
+    }
+
+    // Emit cluster attrs (stable order)
+    if (clusterAttrs.label != null) dot.push(`${indent}  label="${String(clusterAttrs.label).replaceAll('"', '\\"')}";`);
+    if (clusterAttrs.style) dot.push(`${indent}  style="${String(clusterAttrs.style).replaceAll('"', '\\"')}";`);
+    if (clusterAttrs.color) dot.push(`${indent}  color="${String(clusterAttrs.color).replaceAll('"', '\\"')}";`);
+    if (clusterAttrs.penwidth) dot.push(`${indent}  penwidth="${String(clusterAttrs.penwidth).replaceAll('"', '\\"')}";`);
+    if (clusterAttrs.fillcolor) dot.push(`${indent}  fillcolor="${String(clusterAttrs.fillcolor).replaceAll('"', '\\"')}";`);
+    if (clusterAttrs.fontcolor) dot.push(`${indent}  fontcolor="${String(clusterAttrs.fontcolor).replaceAll('"', '\\"')}";`);
+    if (clusterAttrs.fontsize) dot.push(`${indent}  fontsize="${String(clusterAttrs.fontsize).replaceAll('"', '\\"')}";`);
 
     for (const id of c.nodeIds) {
       clustered.add(id);
@@ -1657,6 +3273,35 @@ function parseNodeDefLine(lines, nodeId) {
     label: labelPart.trim(),
     styleInner,
   };
+}
+
+function parseClusterDefLineAt(lines, idx) {
+  const raw = lines[idx] || "";
+  const { code, comment } = stripCommentKeepSuffix(raw);
+  const trimmed = code.trim();
+  const m = trimmed.match(/^(-{2,})(.*)$/);
+  if (!m) return null;
+  const dashes = m[1];
+  const rest = String(m[2] || "").trim();
+  if (!rest) return null; // closing marker; not editable as a "box"
+  if (dashes.length % 2 !== 0) return null;
+  const { before: labelPart, inner: styleInner } = parseTrailingBracket(rest);
+  return {
+    idx,
+    comment,
+    dashes,
+    label: String(labelPart || "").trim(),
+    styleInner: String(styleInner || "").trim(),
+  };
+}
+
+function setClusterDefLineAt(lines, idx, { dashes, label, styleInner, comment }) {
+  const c = String(comment || "").trim();
+  const commentSuffix = c ? ` ${c}` : "";
+  const inner = String(styleInner || "").trim();
+  const styleSuffix = inner ? ` [${inner}]` : "";
+  lines[idx] = `${String(dashes || "").trim()}${String(label || "").trim()}${styleSuffix}${commentSuffix}`.trimEnd();
+  return true;
 }
 
 function setNodeDefLine(lines, nodeId, { label, styleInner }) {
@@ -1875,6 +3520,7 @@ function initVizInteractivity(editor, graphviz) {
   const modalMeta = document.getElementById("tm-viz-edit-meta");
   const modalDisabled = document.getElementById("tm-viz-edit-disabled");
   const nodeFields = document.getElementById("tm-viz-edit-node-fields");
+  const clusterFields = document.getElementById("tm-viz-edit-cluster-fields");
   const edgeFields = document.getElementById("tm-viz-edit-edge-fields");
   const nodeLabelInput = document.getElementById("tm-viz-node-label");
   const nodeFillInput = document.getElementById("tm-viz-node-fill-color");
@@ -1882,6 +3528,21 @@ function initVizInteractivity(editor, graphviz) {
   const nodeBwInput = document.getElementById("tm-viz-node-border-width");
   const nodeBsSel = document.getElementById("tm-viz-node-border-style");
   const nodeBcInput = document.getElementById("tm-viz-node-border-color");
+  const nodeTextSizeEnabled = document.getElementById("tm-viz-node-text-size-enabled");
+  const nodeTextSizeInput = document.getElementById("tm-viz-node-text-size");
+
+  // Cluster fields
+  const clusterLabelInput = document.getElementById("tm-viz-cluster-label");
+  const clusterFillEnabled = document.getElementById("tm-viz-cluster-fill-enabled");
+  const clusterFillInput = document.getElementById("tm-viz-cluster-fill");
+  const clusterBorderEnabled = document.getElementById("tm-viz-cluster-border-enabled");
+  const clusterBwInput = document.getElementById("tm-viz-cluster-border-width");
+  const clusterBsSel = document.getElementById("tm-viz-cluster-border-style");
+  const clusterBcInput = document.getElementById("tm-viz-cluster-border-color");
+  const clusterTextColourEnabled = document.getElementById("tm-viz-cluster-text-colour-enabled");
+  const clusterTextColourInput = document.getElementById("tm-viz-cluster-text-colour");
+  const clusterTextSizeEnabled = document.getElementById("tm-viz-cluster-text-size-enabled");
+  const clusterTextSizeInput = document.getElementById("tm-viz-cluster-text-size");
 
   // Node modal: add-link widgets
   const addDirSel = document.getElementById("tm-viz-add-edge-dir");
@@ -1906,9 +3567,32 @@ function initVizInteractivity(editor, graphviz) {
   const bs = globalThis.bootstrap;
   const modal = modalEl && bs?.Modal ? new bs.Modal(modalEl) : null;
 
-  let selection = null; // { type: "node", nodeId } | { type: "edge", lineNo, fromId, toId }
+  let selection = null; // { type: "node", nodeId } | { type: "cluster", clusterId } | { type: "edge", lineNo, fromId, toId }
   let canSave = false;
   let canDelete = false;
+  let suppressLiveApply = false; // prevents feedback loops while we populate widgets
+
+  // Keep node text size widgets in sync.
+  nodeTextSizeEnabled?.addEventListener("change", () => {
+    if (nodeTextSizeInput) nodeTextSizeInput.disabled = !nodeTextSizeEnabled.checked;
+  });
+
+  // Keep cluster widgets in sync.
+  clusterFillEnabled?.addEventListener("change", () => {
+    if (clusterFillInput) clusterFillInput.disabled = !clusterFillEnabled.checked;
+  });
+  clusterBorderEnabled?.addEventListener("change", () => {
+    const on = Boolean(clusterBorderEnabled.checked);
+    if (clusterBwInput) clusterBwInput.disabled = !on;
+    if (clusterBsSel) clusterBsSel.disabled = !on;
+    if (clusterBcInput) clusterBcInput.disabled = !on;
+  });
+  clusterTextColourEnabled?.addEventListener("change", () => {
+    if (clusterTextColourInput) clusterTextColourInput.disabled = !clusterTextColourEnabled.checked;
+  });
+  clusterTextSizeEnabled?.addEventListener("change", () => {
+    if (clusterTextSizeInput) clusterTextSizeInput.disabled = !clusterTextSizeEnabled.checked;
+  });
 
   function setActions({ save, del, message }) {
     canSave = Boolean(save);
@@ -2004,95 +3688,176 @@ function initVizInteractivity(editor, graphviz) {
     if (modal) modal.show();
   }
 
+  function buildClustersByIdFromLines(lines) {
+    // Must match dslToDot(): clusters get ids in the order opening markers appear.
+    const out = new Map(); // id -> { id, idx, dashes, label, styleInner, comment }
+    let n = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const parsed = parseClusterDefLineAt(lines, i);
+      if (!parsed) continue;
+      const id = `cluster_${n++}`;
+      out.set(id, { id, ...parsed });
+    }
+    return out;
+  }
+
   function refreshFormFromEditor() {
     if (!selection) return;
-    const lines = editor.getValue().split(/\r?\n/);
+    suppressLiveApply = true;
+    try {
+      const lines = editor.getValue().split(/\r?\n/);
 
-    clearVizSelection();
-    setActions({ save: true, del: true, message: "" });
+      clearVizSelection();
+      setActions({ save: true, del: true, message: "" });
 
-    if (selection.type === "node") {
-      if (modalTitle) modalTitle.textContent = "Edit node";
-      if (modalMeta) modalMeta.textContent = `Node: ${selection.nodeId}`;
-      nodeFields?.classList.remove("d-none");
-      edgeFields?.classList.add("d-none");
+      if (selection.type === "node") {
+        if (modalTitle) modalTitle.textContent = "Edit node";
+        if (modalMeta) modalMeta.textContent = `Node: ${selection.nodeId}`;
+        nodeFields?.classList.remove("d-none");
+        clusterFields?.classList.add("d-none");
+        edgeFields?.classList.add("d-none");
 
-      const parsed = parseNodeDefLine(lines, selection.nodeId);
-      if (!parsed) {
-        nodeFields?.classList.add("d-none");
-        setActions({
-          save: false,
-          del: false,
-          message:
-            "This node is implicit (created from a free-label link). To edit it with widgets, define it explicitly as a node line like: ID:: Label",
-        });
+        const parsed = parseNodeDefLine(lines, selection.nodeId);
+        if (!parsed) {
+          nodeFields?.classList.add("d-none");
+          setActions({
+            save: false,
+            del: false,
+            message:
+              "This node is implicit (created from a free-label link). To edit it with widgets, define it explicitly as a node line like: ID:: Label",
+          });
+          return;
+        }
+        if (nodeLabelInput) nodeLabelInput.value = parsed?.label ?? "";
+
+        const defaults = getDefaultNodeUi();
+        const fromAttrs = styleInnerToNodeUi(parsed?.styleInner || "");
+
+        const fillHex = fromAttrs?.fillHex || (defaults.hasFillDefault ? defaults.fillHex : null);
+        if (nodeFillInput) nodeFillInput.value = fillHex || "#ffffff";
+
+        const borderUi = fromAttrs?.borderUi || (defaults.hasBorderDefault ? defaults.borderUi : null);
+        if (nodeBwInput) nodeBwInput.value = String(borderUi?.width ?? 0);
+        if (nodeBsSel) nodeBsSel.value = borderUi?.style || "solid";
+        if (nodeBcInput) nodeBcInput.value = borderUi?.colorHex || "#999999";
+
+        const rounded = fromAttrs?.rounded ?? defaults.rounded;
+        if (nodeRoundedChk) nodeRoundedChk.checked = Boolean(rounded);
+
+        const textSizeScale = fromAttrs?.textSizeScale;
+        if (nodeTextSizeEnabled) nodeTextSizeEnabled.checked = Number.isFinite(textSizeScale) && textSizeScale !== 1;
+        if (nodeTextSizeInput) nodeTextSizeInput.value = String(Number.isFinite(textSizeScale) ? textSizeScale : 1);
+        if (nodeTextSizeInput) nodeTextSizeInput.disabled = !nodeTextSizeEnabled?.checked;
+
+        // Add-link widgets (only meaningful for editable explicit nodes)
+        const nodesById = buildNodesByIdFromDsl();
+        fillNodeSelectWithNew(addOtherSel, nodesById, "");
+        if (addDirSel) addDirSel.value = "out";
+        setNewNodeMode(addOtherSel?.value === "__new__");
+        setAddEdgeStatus("");
+
+        const defBorderUi = borderTextToUi(getDefaultEdgeBorderText());
+        if (addBwInput) addBwInput.value = String(defBorderUi.width ?? 1);
+        if (addBsSel) addBsSel.value = defBorderUi.style || "solid";
+        if (addBcInput) addBcInput.value = defBorderUi.colorHex || "#6c757d";
+        if (addEdgeLabelInput) addEdgeLabelInput.value = "";
+
         return;
       }
-      if (nodeLabelInput) nodeLabelInput.value = parsed?.label ?? "";
 
-      const defaults = getDefaultNodeUi();
-      const fromAttrs = styleInnerToNodeUi(parsed?.styleInner || "");
+      if (selection.type === "cluster") {
+        if (modalTitle) modalTitle.textContent = "Edit group box";
+        if (modalMeta) modalMeta.textContent = `Group: ${selection.clusterId}`;
+        nodeFields?.classList.add("d-none");
+        clusterFields?.classList.remove("d-none");
+        edgeFields?.classList.add("d-none");
 
-      const fillHex = fromAttrs?.fillHex || (defaults.hasFillDefault ? defaults.fillHex : null);
-      if (nodeFillInput) nodeFillInput.value = fillHex || "#ffffff";
+        // Clusters are always explicit lines; map from clusterId -> editor line.
+        const clustersById = buildClustersByIdFromLines(lines);
+        const c = clustersById.get(selection.clusterId);
+        if (!c) {
+          clusterFields?.classList.add("d-none");
+          setActions({ save: false, del: false, message: "This group box couldn't be mapped back to a cluster line in the editor." });
+          return;
+        }
 
-      const borderUi = fromAttrs?.borderUi || (defaults.hasBorderDefault ? defaults.borderUi : null);
-      if (nodeBwInput) nodeBwInput.value = String(borderUi?.width ?? 0);
-      if (nodeBsSel) nodeBsSel.value = borderUi?.style || "solid";
-      if (nodeBcInput) nodeBcInput.value = borderUi?.colorHex || "#999999";
+        setActions({ save: true, del: false, message: "Delete is disabled for group boxes (to avoid breaking nesting/closing markers)." });
 
-      const rounded = fromAttrs?.rounded ?? defaults.rounded;
-      if (nodeRoundedChk) nodeRoundedChk.checked = Boolean(rounded);
+        if (clusterLabelInput) clusterLabelInput.value = c.label || "";
 
-      // Add-link widgets (only meaningful for editable explicit nodes)
-      const nodesById = buildNodesByIdFromDsl();
-      fillNodeSelectWithNew(addOtherSel, nodesById, "");
-      if (addDirSel) addDirSel.value = "out";
-      setNewNodeMode(addOtherSel?.value === "__new__");
-      setAddEdgeStatus("");
+        const fromAttrs = styleInnerToClusterUi(c.styleInner || "");
 
-      const defBorderUi = borderTextToUi(getDefaultEdgeBorderText());
-      if (addBwInput) addBwInput.value = String(defBorderUi.width ?? 1);
-      if (addBsSel) addBsSel.value = defBorderUi.style || "solid";
-      if (addBcInput) addBcInput.value = defBorderUi.colorHex || "#6c757d";
-      if (addEdgeLabelInput) addEdgeLabelInput.value = "";
+        const fillHex = fromAttrs?.fillHex || null;
+        if (clusterFillEnabled) clusterFillEnabled.checked = Boolean(fillHex);
+        if (clusterFillInput) {
+          clusterFillInput.value = fillHex || "#ffffff";
+          clusterFillInput.disabled = !clusterFillEnabled?.checked;
+        }
 
-      return;
-    }
+        const borderUi = fromAttrs?.borderUi || null;
+        if (clusterBorderEnabled) clusterBorderEnabled.checked = Boolean(borderUi);
+        if (clusterBwInput) clusterBwInput.value = String(borderUi?.width ?? 1);
+        if (clusterBsSel) clusterBsSel.value = String(borderUi?.style || "solid");
+        if (clusterBcInput) clusterBcInput.value = String(borderUi?.colorHex || "#cccccc");
+        const borderOn = Boolean(clusterBorderEnabled?.checked);
+        if (clusterBwInput) clusterBwInput.disabled = !borderOn;
+        if (clusterBsSel) clusterBsSel.disabled = !borderOn;
+        if (clusterBcInput) clusterBcInput.disabled = !borderOn;
 
-    if (selection.type === "edge") {
-      if (modalTitle) modalTitle.textContent = "Edit link";
-      if (modalMeta) modalMeta.textContent = `Link: ${selection.fromId} -> ${selection.toId} (line ${selection.lineNo})`;
-      edgeFields?.classList.remove("d-none");
-      nodeFields?.classList.add("d-none");
+        const tc = fromAttrs?.textColourHex || null;
+        if (clusterTextColourEnabled) clusterTextColourEnabled.checked = Boolean(tc);
+        if (clusterTextColourInput) {
+          clusterTextColourInput.value = tc || "#111827";
+          clusterTextColourInput.disabled = !clusterTextColourEnabled?.checked;
+        }
 
-      const parsed = parseEdgeLine(lines, selection.lineNo);
-      const ep = parsed ? parseEdgeEndpoints(parsed.before) : null;
-      const isMulti = Boolean(ep && (ep.sources.length > 1 || ep.targets.length > 1));
-      // Multi-link line: allow style/label edits (apply to all generated edges), but disable rerouting.
-      if (edgeFromSel) edgeFromSel.disabled = isMulti;
-      if (edgeToSel) edgeToSel.disabled = isMulti;
-      setActions({
-        save: true,
-        del: !isMulti, // deleting a multi-link line is a bigger action; keep disabled here
-        message: isMulti
-          ? "This link comes from a multi-link line using '|'. Any label/border changes here apply to ALL links produced by that line. Rerouting source/target is disabled."
-          : "",
-      });
+        const ts = fromAttrs?.textSizeScale;
+        if (clusterTextSizeEnabled) clusterTextSizeEnabled.checked = Number.isFinite(ts) && ts !== 1;
+        if (clusterTextSizeInput) {
+          clusterTextSizeInput.value = String(Number.isFinite(ts) ? ts : 1);
+          clusterTextSizeInput.disabled = !clusterTextSizeEnabled?.checked;
+        }
 
-      if (edgeLabelInput) edgeLabelInput.value = parsed?.label ?? "";
+        return;
+      }
 
-      const nodesById = buildNodesByIdFromDsl();
-      fillNodeSelect(edgeFromSel, nodesById, selection.fromId);
-      fillNodeSelect(edgeToSel, nodesById, selection.toId);
+      if (selection.type === "edge") {
+        if (modalTitle) modalTitle.textContent = "Edit link";
+        if (modalMeta) modalMeta.textContent = `Link: ${selection.fromId} -> ${selection.toId} (line ${selection.lineNo})`;
+        edgeFields?.classList.remove("d-none");
+        nodeFields?.classList.add("d-none");
+        clusterFields?.classList.add("d-none");
 
-      const borderText = String(parsed?.border || "").trim() || getDefaultEdgeBorderText();
-      const ui = borderTextToUi(borderText);
-      // Debug: confirms what we parsed from the DSL line and what we loaded into widgets.
-      console.debug("[tm] edge modal load", { lineNo: selection.lineNo, parsed, defaultBorder: getDefaultEdgeBorderText(), ui });
-      if (edgeBwInput) edgeBwInput.value = String(ui.width ?? 0);
-      if (edgeBsSel) edgeBsSel.value = ui.style || "solid";
-      if (edgeBcInput) edgeBcInput.value = ui.colorHex || "#999999";
+        const parsed = parseEdgeLine(lines, selection.lineNo);
+        const ep = parsed ? parseEdgeEndpoints(parsed.before) : null;
+        const isMulti = Boolean(ep && (ep.sources.length > 1 || ep.targets.length > 1));
+        // Multi-link line: allow style/label edits (apply to all generated edges), but disable rerouting.
+        if (edgeFromSel) edgeFromSel.disabled = isMulti;
+        if (edgeToSel) edgeToSel.disabled = isMulti;
+        setActions({
+          save: true,
+          del: !isMulti, // deleting a multi-link line is a bigger action; keep disabled here
+          message: isMulti
+            ? "This link comes from a multi-link line using '|'. Any label/border changes here apply to ALL links produced by that line. Rerouting source/target is disabled."
+            : "",
+        });
+
+        if (edgeLabelInput) edgeLabelInput.value = parsed?.label ?? "";
+
+        const nodesById = buildNodesByIdFromDsl();
+        fillNodeSelect(edgeFromSel, nodesById, selection.fromId);
+        fillNodeSelect(edgeToSel, nodesById, selection.toId);
+
+        const borderText = String(parsed?.border || "").trim() || getDefaultEdgeBorderText();
+        const ui = borderTextToUi(borderText);
+        // Debug: confirms what we parsed from the DSL line and what we loaded into widgets.
+        console.debug("[tm] edge modal load", { lineNo: selection.lineNo, parsed, defaultBorder: getDefaultEdgeBorderText(), ui });
+        if (edgeBwInput) edgeBwInput.value = String(ui.width ?? 0);
+        if (edgeBsSel) edgeBsSel.value = ui.style || "solid";
+        if (edgeBcInput) edgeBcInput.value = ui.colorHex || "#999999";
+      }
+    } finally {
+      suppressLiveApply = false;
     }
   }
 
@@ -2102,10 +3867,134 @@ function initVizInteractivity(editor, graphviz) {
     renderNow(graphviz, editor);
   }
 
+  function applySelectionEdits({ closeAfter = false } = {}) {
+    // Purpose: apply current widget values back into the editor text (single-line patch) + rerender.
+    if (!selection || !canSave) return;
+    if (suppressLiveApply) return;
+
+    const lines = editor.getValue().split(/\r?\n/);
+    let changedIdx = -1;
+
+    if (selection.type === "node") {
+      const parsed = parseNodeDefLine(lines, selection.nodeId);
+      if (!parsed) return;
+      changedIdx = parsed.idx;
+
+      const fillHex = nodeFillInput?.value || "";
+      const border = uiToBorderText({
+        width: nodeBwInput?.value ?? 0,
+        style: nodeBsSel?.value ?? "solid",
+        colorHex: nodeBcInput?.value ?? "#999999",
+      });
+      const rounded = Boolean(nodeRoundedChk?.checked);
+      const textSizeScale = nodeTextSizeEnabled?.checked ? Number(nodeTextSizeInput?.value) : null;
+      if (nodeTextSizeEnabled?.checked && !(Number.isFinite(textSizeScale) && textSizeScale > 0)) return;
+
+      const styleInner = upsertNodeStyleInner(parsed.styleInner || "", {
+        fillHex: fillHex ? fillHex : null,
+        borderText: border || "",
+        rounded,
+        textSizeScale: Number.isFinite(textSizeScale) && textSizeScale > 0 ? textSizeScale : null,
+      });
+
+      const ok = setNodeDefLine(lines, selection.nodeId, {
+        label: nodeLabelInput?.value ?? "",
+        styleInner,
+      });
+      if (!ok) return;
+    }
+
+    if (selection.type === "cluster") {
+      const clustersById = buildClustersByIdFromLines(lines);
+      const c = clustersById.get(selection.clusterId);
+      if (!c) return;
+      changedIdx = c.idx;
+
+      const fillHex = clusterFillEnabled?.checked ? (clusterFillInput?.value || "") : null;
+      const borderText = clusterBorderEnabled?.checked
+        ? uiToBorderText({
+            width: clusterBwInput?.value ?? 0,
+            style: clusterBsSel?.value ?? "solid",
+            colorHex: clusterBcInput?.value ?? "#cccccc",
+          })
+        : "";
+      const textColourHex = clusterTextColourEnabled?.checked ? (clusterTextColourInput?.value || "") : null;
+      const textSizeScale = clusterTextSizeEnabled?.checked ? Number(clusterTextSizeInput?.value) : null;
+      if (clusterTextSizeEnabled?.checked && !(Number.isFinite(textSizeScale) && textSizeScale > 0)) return;
+
+      const nextInner = upsertClusterStyleInner(c.styleInner || "", {
+        fillHex: fillHex || null,
+        borderText: borderText || "",
+        textColourHex: textColourHex || null,
+        textSizeScale: Number.isFinite(textSizeScale) && textSizeScale > 0 ? textSizeScale : null,
+      });
+
+      setClusterDefLineAt(lines, c.idx, {
+        dashes: c.dashes,
+        label: String(clusterLabelInput?.value || "").trim() || c.label,
+        styleInner: nextInner,
+        comment: c.comment,
+      });
+    }
+
+    if (selection.type === "edge") {
+      changedIdx = selection.lineNo - 1;
+      const border = uiToBorderText({
+        width: edgeBwInput?.value ?? 0,
+        style: edgeBsSel?.value ?? "solid",
+        colorHex: edgeBcInput?.value ?? "#999999",
+      });
+
+      const nextFrom = edgeFromSel?.value || selection.fromId;
+      const nextTo = edgeToSel?.value || selection.toId;
+      const fromChanged = nextFrom !== selection.fromId;
+      const toChanged = nextTo !== selection.toId;
+      const nodesById = fromChanged || toChanged ? buildNodesByIdFromDsl() : null;
+
+      const ok = setEdgeLine(lines, selection.lineNo, {
+        fromId: fromChanged ? { old: selection.fromId, next: nextFrom } : null,
+        toId: toChanged ? { old: selection.toId, next: nextTo } : null,
+        label: edgeLabelInput?.value ?? "",
+        border,
+        nodesById,
+      });
+      if (!ok) return;
+
+      // Keep selection meta accurate if the user rerouted the edge.
+      selection = {
+        ...selection,
+        fromId: fromChanged ? nextFrom : selection.fromId,
+        toId: toChanged ? nextTo : selection.toId,
+      };
+    }
+
+    if (changedIdx >= 0) {
+      const ok = replaceEditorLine(editor, changedIdx, lines[changedIdx]);
+      if (!ok) return;
+      afterEditorMutation({ editor, graphviz });
+    }
+
+    if (closeAfter) modal?.hide();
+  }
+
   vizEl.addEventListener("click", (e) => {
+    // If the user just drag-panned, suppress the synthetic click fired on mouseup.
+    if (vizEl?.dataset?.tmIgnoreNextClick === "1") {
+      delete vizEl.dataset.tmIgnoreNextClick;
+      return;
+    }
+
     const nodeG = getClosestGraphvizGroup(e.target, "node");
+    const clusterG = getClosestGraphvizGroup(e.target, "cluster");
     const edgeG = getClosestGraphvizGroup(e.target, "edge");
-    if (!nodeG && !edgeG) return;
+    if (!nodeG && !clusterG && !edgeG) {
+      // Diagram background click: open diagram-wide style modal (background + title settings).
+      clearVizSelection();
+      const adv = document.getElementById("tm-style-advanced");
+      if (adv && adv.tagName === "DETAILS") adv.open = true;
+      document.getElementById("tm-editor-style")?.click();
+      return;
+    }
 
     clearVizSelection();
     (nodeG || edgeG)?.classList?.add("tm-viz-selected");
@@ -2114,6 +4003,15 @@ function initVizInteractivity(editor, graphviz) {
       const nodeId = getGraphvizTitleText(nodeG);
       if (!nodeId) return;
       selection = { type: "node", nodeId };
+      refreshFormFromEditor();
+      openModal();
+      return;
+    }
+
+    if (clusterG) {
+      const clusterId = getGraphvizTitleText(clusterG);
+      if (!clusterId || !String(clusterId).startsWith("cluster_")) return;
+      selection = { type: "cluster", clusterId };
       refreshFormFromEditor();
       openModal();
       return;
@@ -2132,62 +4030,46 @@ function initVizInteractivity(editor, graphviz) {
     }
   });
 
-  btnSave?.addEventListener("click", () => {
-    if (!selection || !canSave) return;
-    const lines = editor.getValue().split(/\r?\n/);
+  // Live preview in the viz edit modal: any change updates editor + rerenders.
+  function maybeLiveApply() {
+    if (suppressLiveApply) return;
+    applySelectionEdits({ closeAfter: false });
+  }
 
-    if (selection.type === "node") {
-      const parsed = parseNodeDefLine(lines, selection.nodeId);
-      if (!parsed) return setVizStatus("Edit failed: node must be defined as ID:: ...");
+  const liveEls = [
+    nodeLabelInput,
+    nodeFillInput,
+    nodeRoundedChk,
+    nodeBwInput,
+    nodeBsSel,
+    nodeBcInput,
+    nodeTextSizeEnabled,
+    nodeTextSizeInput,
+    clusterLabelInput,
+    clusterFillEnabled,
+    clusterFillInput,
+    clusterBorderEnabled,
+    clusterBwInput,
+    clusterBsSel,
+    clusterBcInput,
+    clusterTextColourEnabled,
+    clusterTextColourInput,
+    clusterTextSizeEnabled,
+    clusterTextSizeInput,
+    edgeLabelInput,
+    edgeFromSel,
+    edgeToSel,
+    edgeBwInput,
+    edgeBsSel,
+    edgeBcInput,
+  ].filter(Boolean);
+  for (const el of liveEls) {
+    el.addEventListener("input", maybeLiveApply);
+    el.addEventListener("change", maybeLiveApply);
+  }
 
-      const fillHex = nodeFillInput?.value || "";
-      const border = uiToBorderText({
-        width: nodeBwInput?.value ?? 0,
-        style: nodeBsSel?.value ?? "solid",
-        colorHex: nodeBcInput?.value ?? "#999999",
-      });
-      const rounded = Boolean(nodeRoundedChk?.checked);
-
-      const styleInner = upsertNodeStyleInner(parsed.styleInner || "", {
-        fillHex: fillHex ? fillHex : null,
-        borderText: border || "",
-        rounded,
-      });
-
-      const ok = setNodeDefLine(lines, selection.nodeId, {
-        label: nodeLabelInput?.value ?? "",
-        styleInner,
-      });
-      if (!ok) return setVizStatus("Edit failed: node must be defined as ID:: ...");
-      applyEditorLines(lines);
-      return;
-    }
-
-    if (selection.type === "edge") {
-      const border = uiToBorderText({
-        width: edgeBwInput?.value ?? 0,
-        style: edgeBsSel?.value ?? "solid",
-        colorHex: edgeBcInput?.value ?? "#999999",
-      });
-      console.debug("[tm] edge modal save", { lineNo: selection.lineNo, border });
-
-      const nextFrom = edgeFromSel?.value || selection.fromId;
-      const nextTo = edgeToSel?.value || selection.toId;
-      const fromChanged = nextFrom !== selection.fromId;
-      const toChanged = nextTo !== selection.toId;
-      const nodesById = fromChanged || toChanged ? buildNodesByIdFromDsl() : null;
-
-      const ok = setEdgeLine(lines, selection.lineNo, {
-        fromId: fromChanged ? { old: selection.fromId, next: nextFrom } : null,
-        toId: toChanged ? { old: selection.toId, next: nextTo } : null,
-        label: edgeLabelInput?.value ?? "",
-        border,
-        nodesById,
-      });
-      if (!ok) return setVizStatus("Edit failed: can't update this edge (multi-edge line or implicit label)");
-      applyEditorLines(lines);
-    }
-  });
+  // "Done" just closes (changes are applied live).
+  btnSave?.addEventListener("click", () => modal?.hide());
 
   // Add-link interactions (node modal)
   addOtherSel?.addEventListener("change", () => {
@@ -2522,6 +4404,7 @@ function initVizToolbar() {
   const viz = document.getElementById("tm-viz");
   if (viz) {
     let dragging = false;
+    let moved = false;
     let startX = 0;
     let startY = 0;
     let startLeft = 0;
@@ -2533,6 +4416,9 @@ function initVizToolbar() {
       // Left-button drag pans the scroll container.
       if (e.button !== 0) return;
       dragging = true;
+      moved = false;
+      // Reset any prior "ignore next click" guard once a new gesture starts.
+      delete viz.dataset.tmIgnoreNextClick;
       viz.style.cursor = "grabbing";
       document.body.style.userSelect = "none";
       startX = e.clientX;
@@ -2546,6 +4432,8 @@ function initVizToolbar() {
       if (!dragging) return;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
+      // Treat small jitter as a click, not a drag.
+      if (!moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) moved = true;
       viz.scrollLeft = startLeft - dx;
       viz.scrollTop = startTop - dy;
     });
@@ -2555,6 +4443,8 @@ function initVizToolbar() {
       dragging = false;
       viz.style.cursor = "grab";
       document.body.style.userSelect = "";
+      // Browsers often fire a click on mouseup after a drag; suppress the next click handler.
+      if (moved) viz.dataset.tmIgnoreNextClick = "1";
     });
   }
 
@@ -2665,6 +4555,263 @@ async function renderNow(graphviz, editor) {
   }
 }
 
+// -----------------------------
+// Chat UI (local-only for now)
+// -----------------------------
+
+function initChatUi({ editor, graphviz }) {
+  // NOTE: This is client-side and uses a Dify App API key.
+  // Security: do NOT hardcode the key into the repo; we store it in localStorage via a prompt.
+
+  const input = document.getElementById("tm-chat-input");
+  const btnSend = document.getElementById("tm-chat-send");
+  const btnClear = document.getElementById("tm-chat-clear");
+  const sendLabel = document.getElementById("tm-chat-send-label");
+  const sendSpinner = document.getElementById("tm-chat-send-spinner");
+  const historyEl = document.getElementById("tm-chat-history");
+  const historyDetails = document.getElementById("tm-chat-history-details");
+
+  const editorDetails = document.getElementById("tm-editor-details");
+
+  if (!input || !btnSend || !btnClear || !historyEl) return;
+
+  // Auto-grow chat input on focus/input, up to a maximum height.
+  // Purpose: keep the default compact (1 line) but allow long prompts without manual resizing.
+  const CHAT_INPUT_MAX_PX = 200;
+  const CHAT_INPUT_FOCUS_MIN_PX = 72; // ~4 lines at current font/line-height
+  function updateClearVisibility() {
+    // Clear is for the current input text (not history).
+    btnClear.classList.toggle("d-none", !String(input.value || "").trim());
+  }
+  function resizeChatInput(forceFocusMin = false) {
+    // Reset first so scrollHeight reflects the natural content height.
+    input.style.height = "auto";
+    const natural = input.scrollHeight || 0;
+    const clamped = Math.min(natural, CHAT_INPUT_MAX_PX);
+    const target = forceFocusMin ? Math.max(clamped, CHAT_INPUT_FOCUS_MIN_PX) : clamped;
+    input.style.height = `${Math.max(1, target)}px`;
+    input.style.overflowY = natural > CHAT_INPUT_MAX_PX ? "auto" : "hidden";
+  }
+
+  input.addEventListener("focus", () => {
+    resizeChatInput(true);
+    updateClearVisibility();
+  });
+  input.addEventListener("input", () => {
+    resizeChatInput(true);
+    updateClearVisibility();
+  });
+  input.addEventListener("blur", () => {
+    // Collapse back to 1 line if empty; otherwise keep a sane size.
+    if (!String(input.value || "").trim()) {
+      input.style.height = "";
+      input.style.overflowY = "hidden";
+      updateClearVisibility();
+      return;
+    }
+    resizeChatInput(false);
+    updateClearVisibility();
+  });
+
+  // Briefly open history when the AI posts a comment (so you notice it) if it's currently closed.
+  let historyAutoOpened = false;
+  let historyAutoCloseTimer = null;
+  let suppressNextHistoryToggle = false;
+  function brieflyRevealHistory() {
+    if (!historyDetails) return;
+    if (historyDetails.open) return;
+    historyAutoOpened = true;
+    suppressNextHistoryToggle = true; // opening programmatically triggers 'toggle'
+    historyDetails.open = true;
+    if (historyAutoCloseTimer) clearTimeout(historyAutoCloseTimer);
+    historyAutoCloseTimer = setTimeout(() => {
+      if (!historyDetails.open) return;
+      if (!historyAutoOpened) return; // user interacted; don't fight them
+      suppressNextHistoryToggle = true; // closing programmatically triggers 'toggle'
+      historyDetails.open = false;
+      historyAutoOpened = false;
+    }, 2500);
+  }
+  if (historyDetails) {
+    historyDetails.addEventListener("toggle", () => {
+      if (suppressNextHistoryToggle) {
+        suppressNextHistoryToggle = false;
+        return;
+      }
+      // If the user toggles it, cancel any pending auto-close.
+      historyAutoOpened = false;
+      if (historyAutoCloseTimer) clearTimeout(historyAutoCloseTimer);
+      historyAutoCloseTimer = null;
+    });
+  }
+
+  const messages = [];
+  let conversationId = "";
+  const difyBaseUrl = "https://api.dify.ai/v1";
+
+  function renderHistory() {
+    historyEl.innerHTML = "";
+    for (const m of messages) {
+      const div = document.createElement("div");
+      div.className = `tm-chat-msg ${m.role === "user" ? "tm-chat-msg-user" : "tm-chat-msg-assistant"}`;
+      div.textContent = m.text;
+      historyEl.appendChild(div);
+    }
+    historyEl.scrollTop = historyEl.scrollHeight;
+  }
+
+  function push(role, text) {
+    const t = String(text || "").trim();
+    if (!t) return;
+    messages.push({ role, text: t });
+    renderHistory();
+  }
+
+  function getOrCreateStableId(key) {
+    const existing = localStorage.getItem(key);
+    if (existing) return existing;
+    const id = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `tm_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    localStorage.setItem(key, id);
+    return id;
+  }
+
+  function getOrAskDifyApiKey() {
+    // Optional public deployment config:
+    // - Set in index.html: window.TM_DIFY_API_KEY = "..." (this key will be visible to users).
+    const globalKey = String(globalThis.TM_DIFY_API_KEY || "").trim();
+    if (globalKey) return globalKey;
+
+    const existing = localStorage.getItem("tm_dify_api_key");
+    if (existing) return existing;
+    const k = prompt("Paste your Dify App API key (stored locally in this browser):", "");
+    const key = String(k || "").trim();
+    if (!key) return null;
+    localStorage.setItem("tm_dify_api_key", key);
+    return key;
+  }
+
+  function extractJsonFromAnswer(answerText) {
+    // Dify returns the model response as plain text; we expect strict JSON per your app instruction.
+    const raw = String(answerText || "").trim();
+    if (!raw) return null;
+
+    // Common case: the model wraps JSON in a fenced code block.
+    if (raw.startsWith("```")) {
+      const lines = raw.split(/\r?\n/);
+      // Drop first fence line, drop last fence line if present.
+      const inner = lines.slice(1, lines[lines.length - 1].startsWith("```") ? -1 : undefined).join("\n").trim();
+      return inner || null;
+    }
+    return raw;
+  }
+
+  async function send() {
+    const msg = String(input.value || "").trim();
+    if (!msg) return;
+
+    const apiKey = getOrAskDifyApiKey();
+    if (!apiKey) return;
+
+    const userId = getOrCreateStableId("tm_dify_user");
+
+    push("user", msg);
+    input.value = "";
+    resizeChatInput(false);
+    updateClearVisibility();
+
+    btnSend.disabled = true;
+    btnClear.disabled = true;
+    input.disabled = true;
+    if (sendLabel) sendLabel.textContent = "Thinking…";
+    if (sendSpinner) sendSpinner.classList.remove("d-none");
+
+    try {
+      const currentDsl = editor.getValue();
+      const query = `Current diagram:\n\n${currentDsl}\n\nChat request:\n\n${msg}\n\nReturn ONLY valid JSON with keys: syntax, comments.`;
+
+      const r = await fetch(`${difyBaseUrl}/chat-messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inputs: {},
+          query,
+          response_mode: "blocking",
+          conversation_id: conversationId || "",
+          user: userId,
+        }),
+      });
+
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        throw new Error(`Dify API error (${r.status}): ${txt || r.statusText}`);
+      }
+
+      const data = await r.json();
+      conversationId = String(data?.conversation_id || conversationId || "");
+
+      const answer = String(data?.answer || "").trim();
+      const jsonText = extractJsonFromAnswer(answer);
+      if (!jsonText) throw new Error("Empty answer from Dify.");
+
+      const obj = JSON.parse(jsonText);
+      const nextSyntax = String(obj?.syntax || "").trim();
+      const comments = String(obj?.comments || "").trim();
+      if (!nextSyntax) throw new Error("Returned JSON is missing `syntax`.");
+
+      // Apply returned syntax directly to the editor (editor is the source of truth).
+      editor.setValue(nextSyntax, -1);
+      setMapScriptInUrl(editor.getValue());
+      await renderNow(graphviz, editor);
+
+      if (comments) {
+        push("assistant", comments);
+        brieflyRevealHistory();
+      } else {
+        push("assistant", "Applied update.");
+      }
+    } catch (e) {
+      push("assistant", `Error: ${e?.message || String(e)}`);
+    } finally {
+      btnSend.disabled = false;
+      btnClear.disabled = false;
+      input.disabled = false;
+      if (sendLabel) sendLabel.textContent = "Send";
+      if (sendSpinner) sendSpinner.classList.add("d-none");
+    }
+  }
+
+  btnSend.addEventListener("click", send);
+  input.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    send();
+  });
+
+  btnClear.addEventListener("click", () => {
+    input.value = "";
+    resizeChatInput(false);
+    updateClearVisibility();
+    input.focus();
+  });
+
+  // Ensure correct initial button state.
+  updateClearVisibility();
+
+  // When the editor is hidden behind a chevron, Ace needs a resize when revealed.
+  if (editorDetails) {
+    editorDetails.addEventListener("toggle", () => {
+      if (!editorDetails.open) return;
+      // Let layout settle, then resize Ace.
+      requestAnimationFrame(() => editor.resize());
+      setTimeout(() => editor.resize(), 60);
+    });
+  }
+
+}
+
 async function main() {
   initTabs();
   initSplitter();
@@ -2677,111 +4824,8 @@ async function main() {
     if (!vizHasUserZoomed) fitVizToContainerWidth();
   });
 
-  // Help panel: load from help.md (served by Live Server / Netlify)
-  try {
-    const r = await fetch("./help.md", { cache: "no-cache" });
-    const txt = await r.text();
-    const el = document.getElementById("tm-help-md");
-    if (el) {
-      // Render markdown to HTML (marked is loaded via <script> in index.html)
-      const md = globalThis.marked;
-      const tabs = ["intro", "usage", "syntax", "quickref", "admin"];
-      const sections = { intro: "", usage: "", syntax: "", admin: "" };
-      const quickrefEl = document.getElementById("tm-help-quickref");
-      const adminTabEl = document.getElementById("tm-help-admin-tab");
-      const adminSepEl = document.getElementById("tm-help-admin-sep");
-
-      // Only show the admin subtab when running locally.
-      if (adminTabEl) adminTabEl.classList.toggle("d-none", !IS_ADMIN);
-      if (adminSepEl) adminSepEl.classList.toggle("d-none", !IS_ADMIN);
-
-      function enhanceHelpCopyButtons(container) {
-        // Add a "Copy" button to each <pre> block (for help.md examples + quickref).
-        if (!container) return;
-        container.querySelectorAll("pre").forEach((pre) => {
-          if (pre.dataset.tmCopyEnhanced === "1") return;
-          pre.dataset.tmCopyEnhanced = "1";
-
-          const codeEl = pre.querySelector("code");
-          const text = (codeEl ? codeEl.textContent : pre.textContent) || "";
-
-          const wrap = document.createElement("div");
-          wrap.className = "tm-help-pre-wrap";
-          pre.parentNode?.insertBefore(wrap, pre);
-          wrap.appendChild(pre);
-
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "btn btn-sm btn-outline-secondary tm-help-copy-btn";
-          btn.textContent = "Copy";
-          btn.addEventListener("click", async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            try {
-              await copyTextToClipboard(text);
-              btn.textContent = "Copied";
-              setTimeout(() => (btn.textContent = "Copy"), 900);
-            } catch {
-              btn.textContent = "Failed";
-              setTimeout(() => (btn.textContent = "Copy"), 900);
-            }
-          });
-          wrap.insertBefore(btn, pre);
-        });
-      }
-
-      // Split by explicit headings in help.md: "## Intro", "## Usage", "## Syntax", "## Admin"
-      const lines = String(txt || "").split(/\r?\n/);
-      let current = null;
-      for (const line of lines) {
-        const m = line.match(/^##\s+(intro|usage|syntax|admin)\s*$/i);
-        if (m) {
-          current = m[1].toLowerCase();
-          continue;
-        }
-        if (current) sections[current] += `${line}\n`;
-      }
-
-      function setHelpTab(name) {
-        const tab = tabs.includes(name) ? name : "intro";
-        if (tab === "admin" && !IS_ADMIN) return setHelpTab("intro");
-        document.querySelectorAll(".tm-help-subtab").forEach((a) => {
-          a.classList.toggle("active", a.dataset.helpTab === tab);
-        });
-
-        // Toggle quickref vs markdown body
-        if (tab === "quickref") {
-          if (quickrefEl) quickrefEl.classList.remove("d-none");
-          el.classList.add("d-none");
-          enhanceHelpCopyButtons(quickrefEl);
-          return;
-        }
-
-        if (quickrefEl) quickrefEl.classList.add("d-none");
-        el.classList.remove("d-none");
-        if (md && typeof md.parse === "function") {
-          el.innerHTML = md.parse(sections[tab] || "", { gfm: true, breaks: true });
-        } else {
-          el.textContent = sections[tab] || "";
-        }
-        enhanceHelpCopyButtons(el);
-      }
-
-      // Wire clicks once
-      document.querySelectorAll(".tm-help-subtab").forEach((a) => {
-        a.addEventListener("click", (e) => {
-          e.preventDefault();
-          setHelpTab(a.dataset.helpTab);
-        });
-      });
-
-      // Default tab
-      setHelpTab("intro");
-    }
-  } catch (e) {
-    const el = document.getElementById("tm-help-md");
-    if (el) el.textContent = `Failed to load help.md: ${e?.message || String(e)}`;
-  }
+  // Help panel (shared with standalone /help page)
+  await initHelpFromMarkdown({ mdUrl: "./help.md", defaultTab: "intro", isStandalone: false, helpPathPrefix: "/help" });
 
   // Ace editor setup
   const editor = ace.edit("editor"); // global from ace.js
@@ -2796,8 +4840,26 @@ async function main() {
   editor.renderer.setShowGutter(false); // ensure gutter is hidden (Ace sometimes needs this)
   editor.renderer.setPadding(12); // add some breathing room around the text inside the editor
 
-  // Ace: colour picker popover that inserts rgb(...) (instead of #hex) for MapScript compatibility
-  initAceColourPicker(editor);
+  // Editor auto-grow: on focus (and while editing), expand Ace's height to fit its content
+  // like an auto-growing textarea. (No other UI elements change on focus.)
+  function resizeAceToContents() {
+    const lines = Math.max(1, editor.session.getLength());
+    const lh = editor.renderer.lineHeight || 16;
+    const pad = 24; // small breathing room
+    const contentPx = lines * lh + pad;
+
+    // Cap to (nearly) the viewport height so the editor never disappears off-screen.
+    // When content exceeds the cap, Ace will show its own scrollbars automatically.
+    const top = editor.container.getBoundingClientRect().top || 0;
+    const maxPx = Math.max(220, Math.floor(window.innerHeight - top - 24)); // keep a small bottom gap
+    const px = Math.min(contentPx, maxPx);
+
+    editor.container.style.height = `${px}px`;
+    editor.resize();
+  }
+  editor.on("focus", resizeAceToContents);
+  editor.on("change", resizeAceToContents);
+  window.addEventListener("resize", resizeAceToContents);
 
   // Restore editor from URL if present, otherwise seed a starter example.
   const fromUrl = getMapScriptFromUrl();
@@ -2806,8 +4868,29 @@ async function main() {
 
   editor.setValue(fromUrl ?? starter, -1);
 
+  // Legacy support: if URL contains #s=... (JSON styles), import into editor and then drop #s.
+  const legacyFromUrlStyles = getStyleSettingsFromUrl();
+  if (legacyFromUrlStyles && !editorHasStyleLines(editor.getValue())) {
+    upsertEditorStyleBlockFromUiStyleSettings(editor, coerceUiStyleSettings(legacyFromUrlStyles));
+  }
+  if (legacyFromUrlStyles) clearStyleSettingsFromUrl();
+  // Ensure URL always reflects the editor content.
+  setMapScriptInUrl(editor.getValue());
+
   // Graphviz WASM init
   const graphviz = await Graphviz.load();
+
+  // Chat UI (left panel)
+  initChatUi({ editor, graphviz });
+
+  // Browser history + Undo/Redo buttons
+  initHistoryNav({ editor, graphviz });
+
+  // Style modal (writes to URL + re-renders)
+  initStyleModal({ editor, graphviz });
+
+  // Editor: style the current node/link line (writes styles inline into that line)
+  initAceLineStylePopover({ editor, graphviz });
 
   // Gallery
   const refreshGallery = initGallery(editor, graphviz);
@@ -2928,13 +5011,20 @@ async function main() {
   initVizInteractivity(editor, graphviz);
 
   // Light “autocorrect/validate then render” on idle typing (kept minimal)
-  let timer = null;
   editor.session.on("change", () => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
+    if (suppressHistorySync) return;
+
+    // First change in a burst: create a new history entry. Subsequent changes update that entry.
+    if (!historyBurstActive) {
+      historyBurstActive = true;
+      pushMapScriptInUrl(editor.getValue());
+    }
+    if (historyBurstTimer) clearTimeout(historyBurstTimer);
+    historyBurstTimer = setTimeout(() => {
       const text = editor.getValue();
       setMapScriptInUrl(text);
       renderNow(graphviz, editor);
+      historyBurstActive = false; // next change starts a new history entry
     }, 350);
   });
 
