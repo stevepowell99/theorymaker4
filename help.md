@@ -10,6 +10,16 @@ You can work in three ways:
 - **AI**: ask the chat to update the diagram for you.
 - **Combination**: use AI for a first draft, then tweak/refine manually (or vice versa).
 
+Features (practical stuff you’ll use):
+
+- **Share/restore via URL**: the URL updates as you type; copy/paste it to restore the exact same map later.
+- **Undo / Redo**: use the top-right arrow buttons (these mirror browser Back/Forward).
+- **Style the whole diagram**: click the palette button (**Diagram style**) to change defaults like colours, borders, direction, spacing, etc.
+- **Save maps in this browser**: click **Save** to store the current map in LocalStorage (it will appear in Templates on this device/browser).
+- **Load examples or saved maps**: use **Templates** to open an example, or load a saved map.
+- **Edit by clicking the diagram**: click a node/link/group in the diagram to edit it (or delete it).
+- **Style a single line quickly**: in the Editor, use the small **Style** button that appears near the cursor to add/update a `[...]` style list on the current node/link/group line.
+
 If you’re new: think of it like this:
 
 - **Nodes** are the boxes in the diagram.
@@ -22,7 +32,7 @@ If you’re new: think of it like this:
 
 - **Editor (left)**: where you type MapScript.
 - **Viz (right)**: the rendered diagram.
-- **Gallery**: example maps + maps you saved in this browser.
+- **Templates**: example maps + maps you saved in this browser.
 
 ### Editor keyboard shortcuts (Ace)
 
@@ -61,7 +71,7 @@ Tips:
 ### Saving maps (LocalStorage)
 
 - Click **Save** to store the current map **in this browser only**.
-- Saved maps appear at the top of **Gallery**.
+- Saved maps appear at the top of **Templates**.
 
 ### Editing the diagram with clicks
 
@@ -94,7 +104,7 @@ Important notes:
 
 Admin features are enabled **only when running locally** on `http://localhost/...` (Live Server).
 
-- **Rebuild thumbnails**: Gallery → **Rebuild thumbnails** (admin-only).
+- **Rebuild thumbnails**: Templates → **Rebuild thumbnails** (admin-only).
 - **Save as standard example**: Editor → **Save** → **Copy standard example snippet**, then paste the snippet into `GALLERY_EXAMPLES` in `examples.js`.
 
 ## Syntax
@@ -126,16 +136,19 @@ Common settings:
 
 - **Title**: text title shown above the diagram.
 - **Background**: background colour (named colour or `rgb(r,g,b)`).
-- **Default box colour**: default node fill colour.
-- **Default box border**: default node border, like `1px solid gray`.
+- **Text colour**: default text colour for the **title + edge labels**.
+- **Default node text colour**: default text colour for **node labels**.
+- **Default group text colour**: default text colour for **group titles**.
+- **Default node colour**: default node fill colour.
+- **Default node border**: default node border, like `1px solid gray`.
 - **Default link colour**: default link/arrow colour.
 - **Default link style**: `solid | dotted | dashed | bold`.
 - **Default link width**: a number (interpreted like px), e.g. `2`.
-- **Default box shape**: `rounded` for rounded nodes.
-- **Default box shadow**: `none | subtle | medium | strong`.
+- **Default node shape**: `rounded` for rounded nodes.
+- **Default node shadow**: `none | subtle | medium | strong`.
 - **Direction**: `top-bottom | bottom-top | left-right | right-left`.
 - **Label wrap**: wraps node labels after N characters (best-effort).
-- **Rank gap / Node gap**: spacing controls (small numbers like `2`–`8` are typical).
+- **Spacing along / Spacing across**: spacing controls (small numbers like `2`–`8` are typical).
 
 Colour rules (keep it simple):
 
@@ -146,13 +159,16 @@ Example style block:
 
 ```
 Background: aliceblue
-Default box colour: wheat
-Default box shape: rounded
-Default box border: 1px dotted dimgray
+Text colour: dimgray
+Default node text colour: black
+Default group text colour: black
+Default node colour: wheat
+Default node shape: rounded
+Default node border: 1px dotted dimgray
 Default link colour: dimgray
 Default link style: dotted
 Default link width: 2
-Default box shadow: subtle
+Default node shadow: subtle
 Direction: left-right
 ```
 
@@ -206,10 +222,10 @@ A -> B [label=increases | border=1px dotted gray | label style=italic | label si
 
 Grouping boxes are just lines starting with dashes:
 
-- `--Label` opens a grouping box (level 1)
-- `----Label` opens a nested grouping box (level 2)
-- `----` closes the most recent level-2 grouping box
-- `--` closes the most recent level-1 grouping box (and anything nested)
+- `--Label` opens a group (level 1)
+- `----Label` opens a nested group (level 2)
+- `----` closes the most recent level-2 group
+- `--` closes the most recent level-1 group (and anything nested)
 
 Example:
 
@@ -227,15 +243,15 @@ D:: Error rate
 A | B -> C | D
 ```
 
-### 6b) Styling grouping boxes (optional)
+### 6b) Styling groups (optional)
 
-You can add a style list to a grouping box title line:
+You can add a style list to a group title line:
 
 ```
 --Drivers [colour=aliceblue | border=2px dotted dimgray | text colour=dimgray | text size=1.2]
 ```
 
-Supported grouping box attributes:
+Supported group attributes:
 
 - `colour=...` (or `color=...`, `background=...`): fill colour
 - `border=...`: border like `2px solid gray`

@@ -66,15 +66,14 @@
         <!-- Chat UI -->
         <div class="tm-panel-header border-bottom bg-white px-2 py-2">
           <div class="d-flex align-items-center justify-content-between gap-2">
-            <div class="small text-muted">chat</div>
           </div>
 
           <div class="input-group input-group-sm mt-2">
             <textarea
               id="tm-chat-input"
               class="form-control tm-chat-input"
-              rows="1"
-              placeholder="Ask to update the diagram contents and/or styles"
+              rows="2"
+              placeholder="Chat with AI to create a new diagram or update the existing diagram: contents and/or styles"
               aria-label="Chat input"
             ></textarea>
             <button
@@ -86,6 +85,15 @@
             >
               Clear
             </button>
+            <button
+              id="tm-chat-stop"
+              class="btn btn-outline-danger d-none"
+              type="button"
+              title="Stop"
+              aria-label="Stop"
+            >
+              Stop
+            </button>
             <button id="tm-chat-send" class="btn btn-primary" type="button">
               <span id="tm-chat-send-label">Send</span>
               <span id="tm-chat-send-spinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
@@ -93,10 +101,10 @@
           </div>
 
           <!-- History hidden behind a chevron (per request) -->
-          <details id="tm-chat-history-details" class="tm-details tm-chat-details mt-2">
+          <details id="tm-chat-history-details" class="tm-details tm-chat-details mt-2 d-none">
             <summary class="tm-details-summary">
               <i class="bi bi-chevron-right tm-chevron" aria-hidden="true"></i>
-              <span class="fw-semibold">history</span>
+              <span class="fw-semibold">chat history</span>
             </summary>
             <div id="tm-chat-history" class="tm-chat-history mt-2" aria-label="Chat history"></div>
           </details>
@@ -110,15 +118,6 @@
           </summary>
 
           <div class="tm-editor-wrap">
-            <div class="tm-panel-header border-bottom bg-white px-2 py-2">
-              <div class="d-flex align-items-center justify-content-between gap-2">
-                <div class="d-flex align-items-center gap-2">
-                  <button id="tm-editor-line-style" class="btn btn-sm btn-outline-secondary" type="button" title="Style the current line (node/link)">Current Line Style</button>
-                </div>
-              </div>
-
-            </div>
-
             <div id="editor" class="tm-editor" aria-label="Theory DSL editor"></div>
           </div>
         </details>
@@ -133,7 +132,7 @@
           <!-- Per spec: tabs are “just text along the top” -->
           <a href="#" class="tm-tab active" data-tab="viz">diagram</a>
           <span class="text-muted px-1">|</span>
-          <a href="#" class="tm-tab" data-tab="gallery">gallery</a>
+          <a href="#" class="tm-tab" data-tab="templates">templates</a>
           <span class="text-muted px-1">|</span>
           <a href="#" class="tm-tab" data-tab="help">help</a>
         </div>
@@ -147,112 +146,125 @@
             <div class="tm-viz-wrap" aria-label="Graph visualization output">
               <!-- Controls across the top of the Graphviz output (per spec) -->
               <div class="tm-viz-toolbar border-bottom bg-white px-2 py-2">
-                <div class="btn-group btn-group-sm" role="group" aria-label="Zoom controls">
-                  <button
-                    id="tm-zoom-out"
-                    class="btn btn-outline-secondary tm-icon-btn"
-                    type="button"
-                    aria-label="Zoom out"
-                    data-bs-toggle="tooltip"
-                    data-bs-title="Zoom out"
-                  >
-                    <i class="bi bi-zoom-out" aria-hidden="true"></i>
-                  </button>
-                  <button
-                    id="tm-zoom-reset"
-                    class="btn btn-outline-secondary tm-icon-btn"
-                    type="button"
-                    aria-label="Reset zoom"
-                    data-bs-toggle="tooltip"
-                    data-bs-title="Reset zoom"
-                  >
-                    <i class="bi bi-aspect-ratio" aria-hidden="true"></i>
-                  </button>
-                  <button
-                    id="tm-zoom-in"
-                    class="btn btn-outline-secondary tm-icon-btn"
-                    type="button"
-                    aria-label="Zoom in"
-                    data-bs-toggle="tooltip"
-                    data-bs-title="Zoom in"
-                  >
-                    <i class="bi bi-zoom-in" aria-hidden="true"></i>
-                  </button>
+                <div class="tm-toolbar-group">
+                  <div class="btn-group btn-group-sm" role="group" aria-label="Map controls">
+                    <button
+                      id="tm-zoom-out"
+                      class="btn btn-outline-secondary tm-icon-btn"
+                      type="button"
+                      aria-label="Zoom out"
+                      data-bs-toggle="tooltip"
+                      data-bs-title="Zoom out"
+                    >
+                      <i class="bi bi-zoom-out" aria-hidden="true"></i>
+                    </button>
+                    <button
+                      id="tm-zoom-reset"
+                      class="btn btn-outline-secondary tm-icon-btn"
+                      type="button"
+                      aria-label="Reset zoom"
+                      data-bs-toggle="tooltip"
+                      data-bs-title="Reset zoom"
+                    >
+                      <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                    </button>
+                    <button
+                      id="tm-zoom-in"
+                      class="btn btn-outline-secondary tm-icon-btn"
+                      type="button"
+                      aria-label="Zoom in"
+                      data-bs-toggle="tooltip"
+                      data-bs-title="Zoom in"
+                    >
+                      <i class="bi bi-zoom-in" aria-hidden="true"></i>
+                    </button>
+                  </div>
                 </div>
 
-                <div class="vr mx-2"></div>
+                <div class="vr mx-2 align-self-stretch"></div>
 
-                <div class="btn-group btn-group-sm" role="group" aria-label="Clipboard controls">
-                  <button
-                    id="tm-copy-raw-url"
-                    class="btn btn-outline-secondary tm-icon-btn"
-                    type="button"
-                    aria-label="Copy raw URL"
-                    data-bs-toggle="tooltip"
-                    data-bs-title="Copy raw URL (for restore)"
-                  >
-                    <i class="bi bi-clipboard" aria-hidden="true"></i>
-                  </button>
-                  <button
-                    id="tm-copy-link"
-                    class="btn btn-outline-secondary tm-icon-btn"
-                    type="button"
-                    aria-label="Copy formatted link"
-                    data-bs-toggle="tooltip"
-                    data-bs-title="Copy formatted HTML link"
-                  >
-                    <i class="bi bi-link-45deg" aria-hidden="true"></i>
-                  </button>
-                  <button
-                    id="tm-download-html"
-                    class="btn btn-outline-secondary tm-icon-btn"
-                    type="button"
-                    aria-label="Copy HTML package"
-                    data-bs-toggle="tooltip"
-                    data-bs-title="Copy HTML package (PNG + link)"
-                  >
-                    <i class="bi bi-filetype-html" aria-hidden="true"></i>
-                  </button>
+                <div class="tm-toolbar-group">
+                  <div class="btn-group btn-group-sm" role="group" aria-label="Save in browser controls">
+                    <button id="tm-editor-save" class="btn btn-outline-primary tm-icon-btn" type="button" aria-label="Save"
+                      data-bs-toggle="tooltip" data-bs-title="Save">
+                      <i class="bi bi-floppy" aria-hidden="true"></i>
+                    </button>
+                  </div>
                 </div>
 
-                <div class="vr mx-2"></div>
+                <div class="vr mx-2 align-self-stretch"></div>
 
-                <div class="btn-group btn-group-sm" role="group" aria-label="Export controls">
-                  <button
-                    id="tm-download-png"
-                    class="btn btn-outline-secondary tm-icon-btn"
-                    type="button"
-                    aria-label="Copy PNG"
-                    data-bs-toggle="tooltip"
-                    data-bs-title="Copy high-quality PNG"
-                  >
-                    <i class="bi bi-image" aria-hidden="true"></i>
-                  </button>
+                <div class="tm-toolbar-group">
+                  <div class="btn-group btn-group-sm" role="group">
+                    <button
+                      class="btn btn-outline-secondary dropdown-toggle tm-icon-btn"
+                      type="button"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                      aria-label="Copy and share options"
+                    >
+                      <i class="bi bi-share" aria-hidden="true"></i>
+                    </button>
+                    <ul class="dropdown-menu">
+                      <li><h6 class="dropdown-header">Copy to clipboard</h6></li>
+                      <li>
+                        <button id="tm-copy-raw-url" class="dropdown-item" type="button">
+                          <i class="bi bi-clipboard me-2" aria-hidden="true"></i>Raw URL
+                        </button>
+                      </li>
+                      <li>
+                        <button id="tm-copy-link" class="dropdown-item" type="button">
+                          <i class="bi bi-link-45deg me-2" aria-hidden="true"></i>Formatted link
+                        </button>
+                      </li>
+                      <li>
+                        <button id="tm-download-png" class="dropdown-item" type="button">
+                          <i class="bi bi-image me-2" aria-hidden="true"></i>PNG image
+                        </button>
+                      </li>
+                      <li>
+                        <button id="tm-download-html" class="dropdown-item" type="button">
+                          <i class="bi bi-filetype-html me-2" aria-hidden="true"></i>HTML package
+                        </button>
+                      </li>
+                      <li><hr class="dropdown-divider"></li>
+                      <li><h6 class="dropdown-header">Share to social</h6></li>
+                      <li>
+                        <button id="tm-share-bluesky" class="dropdown-item" type="button">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 568 501" class="me-2" style="display: inline-block; vertical-align: text-bottom;">
+                            <path d="M123.121 33.664C188.241 82.553 258.281 181.68 284 234.873c25.719-53.192 95.759-152.32 160.879-201.21C491.866-1.611 568-28.906 568 57.947c0 17.346-9.945 145.713-15.778 166.555-20.275 72.453-94.155 90.933-159.875 79.748C507.222 323.8 536.444 388.56 473.333 453.32c-119.86 122.992-172.272-30.859-185.702-70.281-2.462-7.227-3.614-10.608-3.631-7.733-.017-2.875-1.169.506-3.631 7.733-13.43 39.422-65.842 193.273-185.702 70.281-63.111-64.76-33.89-129.52 80.986-149.071-65.72 11.185-139.6-7.295-159.875-79.748C9.945 203.659 0 75.291 0 57.946 0-28.906 76.135-1.612 123.121 33.664Z"/>
+                          </svg>Bluesky
+                        </button>
+                      </li>
+                      <li>
+                        <button id="tm-share-twitter" class="dropdown-item" type="button">
+                          <i class="bi bi-twitter-x me-2" aria-hidden="true"></i>Twitter / X
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
 
-                <div class="vr mx-2"></div>
+                <div class="vr mx-2 align-self-stretch"></div>
 
-                <button
-                  id="tm-editor-style"
-                  class="btn btn-outline-secondary tm-icon-btn"
-                  type="button"
-                  aria-label="Diagram style"
-                  data-bs-toggle="tooltip"
-                  data-bs-title="Diagram style"
-                >
-                  <i class="bi bi-palette" aria-hidden="true"></i>
-                </button>
+                <div class="tm-toolbar-group">
+                  <div class="btn-group btn-group-sm" role="group" aria-label="Style controls">
+                    <button
+                      id="tm-editor-style"
+                      class="btn btn-outline-secondary tm-icon-btn"
+                      type="button"
+                      aria-label="Diagram style"
+                      data-bs-toggle="tooltip"
+                      data-bs-title="Diagram style"
+                    >
+                      <i class="bi bi-palette" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                </div>
 
-                <button
-                  id="tm-editor-save"
-                  class="btn btn-outline-primary tm-icon-btn"
-                  type="button"
-                  aria-label="Save"
-                  data-bs-toggle="tooltip"
-                  data-bs-title="Save"
-                >
-                  <i class="bi bi-floppy" aria-hidden="true"></i>
-                </button>
+                <div class="vr mx-2 align-self-stretch"></div>
+
+
 
                 <span id="tm-viz-status" class="tm-viz-status small text-muted ms-auto" aria-live="polite"></span>
               </div>
@@ -261,13 +273,13 @@
             </div>
           </section>
 
-          <!-- Gallery tab (placeholder) -->
-          <section id="tab-gallery" class="tm-tab-panel d-none p-3">
+          <!-- Templates tab -->
+          <section id="tab-templates" class="tm-tab-panel d-none p-3">
             <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
               <div>
-                <h6 class="mb-1">Gallery</h6>
+                <h6 class="mb-1">Templates</h6>
                 <div class="small text-muted">
-                  Click an item to load it into the editor (you’ll be asked whether to replace everything or only update styles).
+                  Click a template to load it into the editor.
                 </div>
               </div>
             </div>
@@ -281,12 +293,12 @@
               </div>
               <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
                 <div class="small text-muted">Thumbnails are saved per browser.</div>
-                <button id="tm-gallery-rebuild-thumbs" class="btn btn-sm btn-outline-secondary" type="button">
+                <button id="tm-templates-rebuild-thumbs" class="btn btn-sm btn-outline-secondary" type="button">
                   Rebuild thumbnails
                 </button>
               </div>
-              <div id="tm-gallery-saved-empty" class="small text-muted">No saved maps found yet.</div>
-              <div id="tm-gallery-saved" class="row g-3 d-none"></div>
+              <div id="tm-templates-saved-empty" class="small text-muted">No saved maps found yet.</div>
+              <div id="tm-templates-saved" class="row g-3 d-none"></div>
             </div>
 
             <div>
@@ -294,7 +306,7 @@
                 <h6 class="mb-2">Examples</h6>
                 <div class="small text-muted">16</div>
               </div>
-              <div id="tm-gallery-examples" class="row g-3"></div>
+              <div id="tm-templates-examples" class="row g-3"></div>
             </div>
           </section>
 
@@ -333,13 +345,13 @@
               <h6 class="mb-2">Quick reference</h6>
               <pre class="tm-help"><code>Title: My new graph
 Background: White
-Default box colour: red
-Default box shape: rounded
-Default box border: 1px dotted green
+Default node colour: red
+Default node shape: rounded
+Default node border: 1px dotted green
 Direction: top-bottom
 Label wrap: 20 characters
-Rank gap: 20
-Node gap: 20
+Spacing along: 20
+Spacing across: 20
 
 A:: Actual text for A[colour=red | border=1px solid blue]
 --A grouping box containing B and C
@@ -367,15 +379,41 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
     <!-- Subtle footer -->
     <footer class="border-top bg-white">
       <div class="container-fluid py-2">
-        <div class="small text-muted">
-          <a class="text-muted text-decoration-none" href="https://causalmap.app/">Causal Map Ltd</a>
-          <span class="px-1">·</span>
-          <a class="text-muted text-decoration-none" href="https://causalmap.app/">causalmap.app</a>
-          <span class="px-1">·</span>
-          <a class="text-muted text-decoration-none" href="https://github.com/stevepowell99/theorymaker4">github</a>
-          <span class="px-1">·</span>
-          <span>Licensed under </span>
-          <a class="text-muted text-decoration-none" rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY‑NC 4.0</a>
+        <div class="d-flex align-items-center justify-content-start small text-muted">
+          <!-- Footer links with matching icons (combined) -->
+          <div class="tm-footer-icons d-inline-flex align-items-center flex-nowrap text-nowrap">
+            <a
+              class="d-inline-flex align-items-center gap-1 text-muted text-decoration-none"
+              href="https://causalmap.app/"
+              title="Causal Map"
+              aria-label="Causal Map"
+            >
+              <img class="tm-footer-favicon" src="https://app.causalmap.app/favicon.png" alt="Causal Map" />
+              <span>Causal Map Ltd</span>
+            </a>
+            <span class="px-2">·</span>
+            <a
+              class="d-inline-flex align-items-center gap-1 text-muted text-decoration-none"
+              href="https://github.com/stevepowell99/theorymaker4"
+              title="GitHub"
+              aria-label="GitHub"
+            >
+              <i class="bi bi-github" aria-hidden="true"></i>
+              <span>github</span>
+            </a>
+            <span class="px-2">·</span>
+            <a
+              class="d-inline-flex align-items-center gap-1 text-muted text-decoration-none"
+              href="https://creativecommons.org/licenses/by-nc/4.0/"
+              rel="license"
+              title="Creative Commons BY-NC 4.0"
+              aria-label="Creative Commons BY-NC 4.0"
+            >
+              <i class="bi bi-cc-circle" aria-hidden="true"></i>
+              <i class="bi bi-cc-by" aria-hidden="true"></i>
+              <i class="bi bi-cc-nc" aria-hidden="true"></i>
+            </a>
+          </div>
         </div>
       </div>
     </footer>
@@ -396,33 +434,6 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
 
     <!-- App logic (module so we can import Graphviz WASM cleanly) -->
     <script type="module" src="./app.js"></script>
-
-    <!-- Gallery confirmation modal -->
-    <div class="modal fade" id="tm-gallery-modal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="tm-gallery-modal-title">Load map</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <div id="tm-gallery-modal-desc" class="small text-muted"></div>
-            <div class="alert alert-warning mt-3 mb-0">
-              This will change the editor content.
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button type="button" class="btn btn-outline-primary" id="tm-gallery-apply-styles">
-              Update styles only
-            </button>
-            <button type="button" class="btn btn-primary" id="tm-gallery-apply-all">
-              Replace entire editor
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <!-- Style modal (edit diagram-wide style settings without putting them in the editor text) -->
     <div class="modal fade" id="tm-style-modal" tabindex="-1" aria-hidden="true">
@@ -461,26 +472,34 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
             <div class="row g-3">
               <div class="col-12 col-md-6">
                 <label class="form-label mb-1" for="tm-style-direction">Direction</label>
-                <select id="tm-style-direction" class="form-select form-select-sm">
+                <!-- Keep the select (hidden) so existing JS continues to read/write direction consistently -->
+                <select id="tm-style-direction" class="form-select form-select-sm d-none">
                   <option value="LR">left → right</option>
                   <option value="RL">right → left</option>
                   <option value="TB">top → bottom</option>
                   <option value="BT">bottom → top</option>
                 </select>
+                <!-- UX: direction should be 4 buttons, not a dropdown -->
+                <div id="tm-style-direction-btns" class="btn-group btn-group-sm" role="group" aria-label="Direction">
+                  <button type="button" class="btn btn-outline-secondary" data-value="LR">L → R</button>
+                  <button type="button" class="btn btn-outline-secondary" data-value="RL">R → L</button>
+                  <button type="button" class="btn btn-outline-secondary" data-value="TB">T → B</button>
+                  <button type="button" class="btn btn-outline-secondary" data-value="BT">B → T</button>
+                </div>
               </div>
 
               <div class="col-12">
                 <div class="row g-2">
                   <div class="col-12 col-md-6">
                     <div class="d-flex align-items-center justify-content-between">
-                      <label class="form-label mb-1" for="tm-style-rank-gap">Rank gap</label>
+                      <label class="form-label mb-1" for="tm-style-rank-gap">Spacing along</label>
                       <div class="small text-muted"><span id="tm-style-rank-gap-val">4</span></div>
                     </div>
                     <input id="tm-style-rank-gap" class="form-range" type="range" min="0" max="20" step="1" value="4" />
                   </div>
                   <div class="col-12 col-md-6">
                     <div class="d-flex align-items-center justify-content-between">
-                      <label class="form-label mb-1" for="tm-style-node-gap">Node gap</label>
+                      <label class="form-label mb-1" for="tm-style-node-gap">Spacing across</label>
                       <div class="small text-muted"><span id="tm-style-node-gap-val">3</span></div>
                     </div>
                     <input id="tm-style-node-gap" class="form-range" type="range" min="0" max="20" step="1" value="3" />
@@ -494,7 +513,7 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
                   <summary class="tm-details-summary">
                     <i class="bi bi-chevron-right tm-chevron" aria-hidden="true"></i>
                     <span class="fw-semibold">More settings</span>
-                    <span class="small text-muted ms-2">background, box/link styles, label wrap…</span>
+                    <span class="small text-muted ms-2">background, node/link styles, label wrap…</span>
                   </summary>
 
                   <div class="mt-3 row g-3">
@@ -509,6 +528,16 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
                     </div>
 
                     <div class="col-12 col-md-6">
+                      <label class="form-label mb-1" for="tm-style-default-node-text-color">Default node text colour</label>
+                      <input id="tm-style-default-node-text-color" class="form-control form-control-sm form-control-color" type="color" value="#111827" />
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                      <label class="form-label mb-1" for="tm-style-default-group-text-color">Default group text colour</label>
+                      <input id="tm-style-default-group-text-color" class="form-control form-control-sm form-control-color" type="color" value="#111827" />
+                    </div>
+
+                    <div class="col-12 col-md-6">
                       <div class="d-flex align-items-center justify-content-between">
                         <label class="form-label mb-1" for="tm-style-title-size">Title size</label>
                         <div class="small text-muted"><span id="tm-style-title-size-val">18</span>pt</div>
@@ -517,21 +546,21 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
                     </div>
 
                     <div class="col-12 col-md-6">
-                      <label class="form-label mb-1" for="tm-style-box-fill">Default box colour</label>
-                      <input id="tm-style-box-fill" class="form-control form-control-sm form-control-color" type="color" value="#e7f5ff" />
+                      <label class="form-label mb-1" for="tm-style-node-fill">Default node colour</label>
+                      <input id="tm-style-node-fill" class="form-control form-control-sm form-control-color" type="color" value="#e7f5ff" />
                     </div>
 
                     <div class="col-12 col-md-6">
-                      <label class="form-label mb-1" for="tm-style-box-shape">Default box shape</label>
-                      <select id="tm-style-box-shape" class="form-select form-select-sm">
+                      <label class="form-label mb-1" for="tm-style-node-shape">Default node shape</label>
+                      <select id="tm-style-node-shape" class="form-select form-select-sm">
                         <option value="">square</option>
                         <option value="rounded">rounded</option>
                       </select>
                     </div>
 
                     <div class="col-12 col-md-6">
-                      <label class="form-label mb-1" for="tm-style-box-shadow">Default box shadow</label>
-                      <select id="tm-style-box-shadow" class="form-select form-select-sm">
+                      <label class="form-label mb-1" for="tm-style-node-shadow">Default node shadow</label>
+                      <select id="tm-style-node-shadow" class="form-select form-select-sm">
                         <option value="none">none</option>
                         <option value="subtle">subtle</option>
                         <option value="medium">medium</option>
@@ -540,15 +569,15 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
 
                     <div class="col-12">
                       <div class="d-flex align-items-center justify-content-between">
-                        <label class="form-label mb-1" for="tm-style-box-border-width">Default box border</label>
-                        <div class="small text-muted"><span id="tm-style-box-border-width-val">1</span>px</div>
+                        <label class="form-label mb-1" for="tm-style-node-border-width">Default node border</label>
+                        <div class="small text-muted"><span id="tm-style-node-border-width-val">1</span>px</div>
                       </div>
                       <div class="row g-2">
                         <div class="col-12 col-md-4">
-                          <input id="tm-style-box-border-width" class="form-range" type="range" min="0" max="6" step="1" value="1" />
+                          <input id="tm-style-node-border-width" class="form-range" type="range" min="0" max="6" step="1" value="1" />
                         </div>
                         <div class="col-12 col-md-4">
-                          <select id="tm-style-box-border-style" class="form-select form-select-sm">
+                          <select id="tm-style-node-border-style" class="form-select form-select-sm">
                             <option value="solid">solid</option>
                             <option value="dotted">dotted</option>
                             <option value="dashed">dashed</option>
@@ -556,7 +585,7 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
                           </select>
                         </div>
                         <div class="col-12 col-md-4">
-                          <input id="tm-style-box-border-color" class="form-control form-control-sm form-control-color" type="color" value="#1e90ff" />
+                          <input id="tm-style-node-border-color" class="form-control form-control-sm form-control-color" type="color" value="#1e90ff" />
                         </div>
                       </div>
                     </div>
@@ -689,7 +718,7 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
               <div class="row g-2 mt-2">
                 <div class="col-4">
                   <label class="form-label mb-1" for="tm-viz-node-border-width">Border width</label>
-                  <input id="tm-viz-node-border-width" class="form-control form-control-sm" type="number" min="0" step="1" />
+                  <input id="tm-viz-node-border-width" class="form-range tm-range-compact" type="range" min="0" max="12" step="1" value="1" />
                 </div>
                 <div class="col-4">
                   <label class="form-label mb-1" for="tm-viz-node-border-style">Border style</label>
@@ -713,7 +742,7 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
                 </div>
                 <div class="mt-1">
                   <label class="form-label mb-1" for="tm-viz-node-text-size">Scale (×)</label>
-                  <input id="tm-viz-node-text-size" class="form-control form-control-sm" type="number" min="0.5" max="2.5" step="0.1" value="1" />
+                  <input id="tm-viz-node-text-size" class="form-range tm-range-compact" type="range" min="0.5" max="2.5" step="0.1" value="1" />
                 </div>
               </div>
 
@@ -732,7 +761,12 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
                     </select>
                   </div>
                   <div class="col-12 col-md-8">
-                    <label class="form-label mb-1" for="tm-viz-add-edge-other">Other node</label>
+                    <div class="d-flex align-items-center justify-content-between">
+                      <label class="form-label mb-1" for="tm-viz-add-edge-other">Other node</label>
+                      <button id="tm-viz-add-edge-new-node-btn" type="button" class="btn btn-sm btn-outline-secondary py-0 px-2">
+                        New node
+                      </button>
+                    </div>
                     <select id="tm-viz-add-edge-other" class="form-select form-select-sm"></select>
                     <input
                       id="tm-viz-add-edge-new-label"
@@ -752,7 +786,7 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
                 <div class="row g-2 mt-2">
                   <div class="col-4">
                     <label class="form-label mb-1" for="tm-viz-add-edge-border-width">Border width</label>
-                    <input id="tm-viz-add-edge-border-width" class="form-control form-control-sm" type="number" min="0" step="1" />
+                    <input id="tm-viz-add-edge-border-width" class="form-range tm-range-compact" type="range" min="0" max="12" step="1" value="1" />
                   </div>
                   <div class="col-4">
                     <label class="form-label mb-1" for="tm-viz-add-edge-border-style">Border style</label>
@@ -769,9 +803,9 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
                   </div>
                 </div>
 
-                <div class="d-flex gap-2 mt-3">
+                <div class="d-flex gap-2 mt-3 align-items-center">
+                  <div id="tm-viz-add-edge-status" class="small text-muted me-auto"></div>
                   <button id="tm-viz-add-edge-btn" type="button" class="btn btn-sm btn-outline-primary">Add link</button>
-                  <div id="tm-viz-add-edge-status" class="small text-muted align-self-center"></div>
                 </div>
               </details>
             </div>
@@ -797,7 +831,7 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
                 <div class="row g-2 mt-1">
                   <div class="col-4">
                     <label class="form-label mb-1" for="tm-viz-cluster-border-width">Border width</label>
-                    <input id="tm-viz-cluster-border-width" class="form-control form-control-sm" type="number" min="0" step="1" />
+                    <input id="tm-viz-cluster-border-width" class="form-range tm-range-compact" type="range" min="0" max="12" step="1" value="1" />
                   </div>
                   <div class="col-4">
                     <label class="form-label mb-1" for="tm-viz-cluster-border-style">Border style</label>
@@ -830,7 +864,7 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
                 </div>
                 <div class="mt-1">
                   <label class="form-label mb-1" for="tm-viz-cluster-text-size">Scale (×)</label>
-                  <input id="tm-viz-cluster-text-size" class="form-control form-control-sm" type="number" min="0.5" max="2.5" step="0.1" value="1" />
+                  <input id="tm-viz-cluster-text-size" class="form-range tm-range-compact" type="range" min="0.5" max="2.5" step="0.1" value="1" />
                 </div>
               </div>
             </div>
@@ -854,7 +888,7 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
               <div class="row g-2 mt-2">
                 <div class="col-4">
                   <label class="form-label mb-1" for="tm-viz-edge-border-width">Border width</label>
-                  <input id="tm-viz-edge-border-width" class="form-control form-control-sm" type="number" min="0" step="1" />
+                  <input id="tm-viz-edge-border-width" class="form-range tm-range-compact" type="range" min="0" max="12" step="1" value="1" />
                 </div>
                 <div class="col-4">
                   <label class="form-label mb-1" for="tm-viz-edge-border-style">Border style</label>
@@ -913,7 +947,7 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
             <div class="row g-2 mt-1">
               <div class="col-4">
                 <label class="form-label mb-1" for="tm-ace-style-node-border-width">Width</label>
-                <input id="tm-ace-style-node-border-width" class="form-control form-control-sm" type="number" min="0" max="12" step="1" value="1" />
+                <input id="tm-ace-style-node-border-width" class="form-range tm-range-compact" type="range" min="0" max="12" step="1" value="1" />
               </div>
               <div class="col-4">
                 <label class="form-label mb-1" for="tm-ace-style-node-border-style">Style</label>
@@ -945,7 +979,7 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
             </div>
             <div class="mt-1">
               <label class="form-label mb-1" for="tm-ace-style-node-text-size">Scale (×)</label>
-              <input id="tm-ace-style-node-text-size" class="form-control form-control-sm" type="number" min="0.5" max="2.5" step="0.1" value="1" />
+              <input id="tm-ace-style-node-text-size" class="form-range tm-range-compact" type="range" min="0.5" max="2.5" step="0.1" value="1" />
             </div>
           </div>
         </div>
@@ -972,7 +1006,7 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
             <div class="row g-2 mt-1">
               <div class="col-4">
                 <label class="form-label mb-1" for="tm-ace-style-cluster-border-width">Width</label>
-                <input id="tm-ace-style-cluster-border-width" class="form-control form-control-sm" type="number" min="0" max="12" step="1" value="1" />
+                <input id="tm-ace-style-cluster-border-width" class="form-range tm-range-compact" type="range" min="0" max="12" step="1" value="1" />
               </div>
               <div class="col-4">
                 <label class="form-label mb-1" for="tm-ace-style-cluster-border-style">Style</label>
@@ -1005,7 +1039,7 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
             </div>
             <div class="mt-1">
               <label class="form-label mb-1" for="tm-ace-style-cluster-text-size">Scale (×)</label>
-              <input id="tm-ace-style-cluster-text-size" class="form-control form-control-sm" type="number" min="0.5" max="2.5" step="0.1" value="1" />
+              <input id="tm-ace-style-cluster-text-size" class="form-range tm-range-compact" type="range" min="0.5" max="2.5" step="0.1" value="1" />
             </div>
           </div>
         </div>
@@ -1029,7 +1063,7 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
             <div class="row g-2 mt-1">
               <div class="col-4">
                 <label class="form-label mb-1" for="tm-ace-style-edge-border-width">Width</label>
-                <input id="tm-ace-style-edge-border-width" class="form-control form-control-sm" type="number" min="0" max="12" step="1" value="1" />
+                <input id="tm-ace-style-edge-border-width" class="form-range tm-range-compact" type="range" min="0" max="12" step="1" value="1" />
               </div>
               <div class="col-4">
                 <label class="form-label mb-1" for="tm-ace-style-edge-border-style">Style</label>
@@ -1057,12 +1091,13 @@ D -> E [label=some edgelabel | border=1px solid | label style=italic | label siz
     <!-- Cursor-adjacent style button (appears near the cursor when the current line is styleable) -->
     <button
       id="tm-ace-cursor-style-btn"
-      class="btn btn-sm btn-outline-secondary tm-ace-cursor-style-btn d-none"
+      class="btn btn-sm btn-outline-secondary tm-ace-cursor-style-btn d-none d-inline-flex align-items-center gap-1"
       type="button"
       aria-label="Style this line"
       title="Style this line"
     >
       <i class="bi bi-brush" aria-hidden="true"></i>
+      <span data-tm-label>Style</span>
     </button>
   </body>
 </html>

@@ -23,7 +23,7 @@ body {
 
 /* Left editor panel (resizable) */
 .tm-left {
-  flex-shrink: 0; /* don't let Gallery/Help content squeeze the editor panel */
+  flex-shrink: 0; /* don't let Templates/Help content squeeze the editor panel */
   width: 36%;
   min-width: 240px;
   max-width: 75%;
@@ -48,6 +48,18 @@ body {
   /* Make placeholder a bit lighter + italic (without affecting typed text) */
   color: #adb5bd; /* Bootstrap "secondary" ish */
   font-style: italic;
+}
+
+/* Footer icons (CC / GitHub / favicon) */
+.tm-footer-icons i {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.tm-footer-favicon {
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 
 .tm-editor-wrap {
@@ -136,6 +148,23 @@ body {
   user-select: none;
 }
 
+.tm-toolbar-group {
+  /* Toolbar group = label + button(s) */
+  display: inline-flex;
+  /* Put label to the LEFT of the buttons (not above) */
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
+.tm-toolbar-label {
+  /* Keep labels subtle and compact */
+  font-size: 11px;
+  line-height: 1;
+  color: #6c757d; /* Bootstrap secondary */
+  white-space: nowrap;
+}
+
 .tm-icon-btn {
   width: 34px; /* consistent square buttons for icons */
   display: inline-flex;
@@ -158,12 +187,34 @@ body {
   padding: 12px;
   background: #fff;
   --tm-node-shadow: none; /* MapScript can override via Default box shadow */
+  position: relative; /* anchor for hover delete button */
 }
 
 /* Viz interactivity */
 .tm-viz svg .node,
 .tm-viz svg .edge {
   cursor: pointer;
+}
+
+/* Hover delete button (red X) shown when hovering nodes/links */
+.tm-viz-hover-delete {
+  position: absolute;
+  z-index: 30;
+  display: none;
+  line-height: 1;
+  padding: 0 6px;
+}
+
+.tm-viz-hover-delete.tm-show {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Compact sliders used for "width" and "size" widgets in small modals/popovers */
+.tm-range-compact {
+  width: 160px;
+  max-width: 100%;
 }
 
 .tm-viz svg .tm-viz-selected polygon,
@@ -285,36 +336,36 @@ body {
   border-radius: 4px;
 }
 
-/* Gallery */
-#tab-gallery {
+/* Templates */
+#tab-templates {
   /* Keep scrolling inside the right panel so switching tabs doesn't change overall page width. */
   overflow: auto;
 }
 
-.tm-gallery-card {
+.tm-templates-card {
   cursor: pointer;
 }
 
-.tm-gallery-card:hover {
+.tm-templates-card:hover {
   border-color: #0d6efd;
 }
 
-.tm-gallery-card {
+.tm-templates-card {
   position: relative;
 }
 
-.tm-gallery-actions {
+.tm-templates-actions {
   position: absolute;
   top: 8px;
   right: 8px;
   z-index: 2;
 }
 
-.tm-gallery-actions .btn {
+.tm-templates-actions .btn {
   background: rgba(255, 255, 255, 0.92);
 }
 
-.tm-gallery-thumb {
+.tm-templates-thumb {
   width: 100%;
   height: 140px;
   object-fit: cover;
@@ -322,7 +373,7 @@ body {
   background: #fff;
 }
 
-.tm-gallery-thumb-placeholder {
+.tm-templates-thumb-placeholder {
   width: 100%;
   height: 140px;
   border-bottom: 1px solid #e9ecef;

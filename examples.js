@@ -5,23 +5,23 @@
 export const GALLERY_EXAMPLES = [
   {
     id: "ex-01",
-    title: "Starter (grouping boxes + multi-links)",
-    desc: "A realistic starter map showing grouping boxes and multi-source/multi-target links.",
+    title: "Starter (groups + multi-links)",
+    desc: "A realistic starter map showing groups and multi-source/multi-target links.",
     dsl: `# Styles
 Background: aliceblue
-Default box colour: rgb(255, 224, 224)
-Default box shape: rounded
-Default box shadow: subtle
-Default box border: 1px dotted seagreen
+Default node colour: rgb(255, 224, 224)
+Default node shape: rounded
+Default node shadow: subtle
+Default node border: 1px dotted seagreen
 Direction: right-left
 Label wrap: 20
-Rank gap: 2
-Node gap: 2
+Spacing along: 2
+Spacing across: 2
 
 # Contents
 Title: Starter: change impacts
 
-## Nodes (and grouping boxes)
+## Nodes (and groups)
 A:: New policy rollout[colour=red | border=1px solid blue]
 --Outcomes
 B:: Customer adoption
@@ -46,14 +46,14 @@ P -> E [improves | 1px solid]`,
     desc: "Simple chain with clearer vertical flow.",
     dsl: `# Styles
 Background: white
-Default box colour: rgb(231, 245, 255)
-Default box shape: rounded
-Default box border: 1px solid dodgerblue
-Default box shadow: subtle
+Default node colour: rgb(231, 245, 255)
+Default node shape: rounded
+Default node border: 1px solid dodgerblue
+Default node shadow: subtle
 Direction: top-bottom
 Label wrap: 18
-Rank gap: 6
-Node gap: 4
+Spacing along: 6
+Spacing across: 4
 
 # Contents
 Title: Simple chain
@@ -71,14 +71,14 @@ B -> C [leads to | 1px solid gray]`,
     desc: "Edges can create nodes via free labels.",
     dsl: `# Styles
 Background: floralwhite
-Default box colour: wheat
-Default box shape: rounded
-Default box border: 1px dotted peru
-Default box shadow: none
+Default node colour: wheat
+Default node shape: rounded
+Default node border: 1px dotted peru
+Default node shadow: none
 Direction: left-right
 Label wrap: 22
-Rank gap: 4
-Node gap: 3
+Spacing along: 4
+Spacing across: 3
 
 # Contents
 Title: Implicit nodes
@@ -97,14 +97,14 @@ A -> "Side effect risk" [increases | 1px solid firebrick]
     desc: "Cross-product links using | on sources and targets.",
     dsl: `# Styles
 Background: whitesmoke
-Default box colour: gainsboro
-Default box shape: rounded
-Default box border: 1px solid gray
-Default box shadow: subtle
+Default node colour: gainsboro
+Default node shape: rounded
+Default node border: 1px solid gray
+Default node shadow: subtle
 Direction: left-right
 Label wrap: 16
-Rank gap: 4
-Node gap: 3
+Spacing along: 4
+Spacing across: 3
 
 # Contents
 Title: Drivers → outcomes
@@ -122,21 +122,21 @@ A | B -> C | D`,
   },
   {
     id: "ex-05",
-    title: "Nested grouping boxes (2 levels)",
-    desc: "Grouping boxes within grouping boxes to show structure.",
+    title: "Nested groups (2 levels)",
+    desc: "Groups within groups to show structure.",
     dsl: `# Styles
 Background: white
-Default box colour: rgb(222, 245, 222)
-Default box shape: rounded
-Default box border: 1px dotted seagreen
-Default box shadow: subtle
+Default node colour: rgb(222, 245, 222)
+Default node shape: rounded
+Default node border: 1px dotted seagreen
+Default node shadow: subtle
 Direction: top-bottom
 Label wrap: 20
-Rank gap: 5
-Node gap: 3
+Spacing along: 5
+Spacing across: 3
 
 # Contents
-Title: Nested grouping boxes
+Title: Nested groups
 
 --Organisation
 A:: Policy
@@ -155,14 +155,14 @@ B -> C [supports | 1px dotted seagreen]`,
     desc: "A small reinforcing loop.",
     dsl: `# Styles
 Background: rgb(11, 16, 32)
-Default box colour: rgb(31, 242, 168)
-Default box shape: rounded
-Default box border: 1px solid rgb(158, 197, 254)
-Default box shadow: medium
+Default node colour: rgb(31, 242, 168)
+Default node shape: rounded
+Default node border: 1px solid rgb(158, 197, 254)
+Default node shadow: medium
 Direction: left-right
 Label wrap: 18
-Rank gap: 4
-Node gap: 3
+Spacing along: 4
+Spacing across: 3
 
 # Contents
 Title: Reinforcing loop
@@ -180,7 +180,7 @@ C -> A [reinforces | 1px solid rgb(158, 197, 254)]`,
     title: "Trade-offs (two outcomes)",
     desc: "One cause pushes outcomes in opposite directions.",
     dsl: `# Styles
-Default box shape: rounded
+Default node shape: rounded
 
 # Contents
 Title: Trade-offs
@@ -198,14 +198,14 @@ A -> C [decreases | 1px solid firebrick]`,
     desc: "Multiple causes converge on a single outcome.",
     dsl: `# Styles
 Background: white
-Default box colour: mistyrose
-Default box shape: rounded
-Default box border: 1px dotted deeppink
-Default box shadow: subtle
+Default node colour: mistyrose
+Default node shape: rounded
+Default node border: 1px dotted deeppink
+Default node shadow: subtle
 Direction: right-left
 Label wrap: 17
-Rank gap: 4
-Node gap: 3
+Spacing along: 4
+Spacing across: 3
 
 # Contents
 Title: Fan-in
@@ -223,14 +223,14 @@ A | B | C -> D`,
     desc: "Cross-product with edge label.",
     dsl: `# Styles
 Background: white
-Default box colour: honeydew
-Default box shape: rounded
-Default box border: 1px solid seagreen
-Default box shadow: subtle
+Default node colour: honeydew
+Default node shape: rounded
+Default node border: 1px solid seagreen
+Default node shadow: subtle
 Direction: top-bottom
 Label wrap: 18
-Rank gap: 4
-Node gap: 3
+Spacing along: 4
+Spacing across: 3
 
 # Contents
 Title: Cross-product
@@ -253,14 +253,14 @@ A | B | C -> D | E [supports | 1px solid seagreen]`,
     desc: "A clean black/white style.",
     dsl: `# Styles
 Background: white
-Default box colour: white
-Default box shape: rounded
-Default box border: 1px solid black
-Default box shadow: none
+Default node colour: white
+Default node shape: rounded
+Default node border: 1px solid black
+Default node shadow: none
 Direction: left-right
 Label wrap: 22
-Rank gap: 4
-Node gap: 3
+Spacing along: 4
+Spacing across: 3
 
 # Contents
 Title: Minimal
@@ -278,14 +278,14 @@ B -> C`,
     desc: "A warmer background and subtle dotted edges.",
     dsl: `# Styles
 Background: bisque
-Default box colour: peachpuff
-Default box shape: rounded
-Default box border: 1px solid chocolate
-Default box shadow: subtle
+Default node colour: peachpuff
+Default node shape: rounded
+Default node border: 1px solid chocolate
+Default node shadow: subtle
 Direction: left-right
 Label wrap: 18
-Rank gap: 4
-Node gap: 3
+Spacing along: 4
+Spacing across: 3
 
 # Contents
 Title: Warm palette
@@ -299,18 +299,18 @@ B -> C [drives | 1px dotted chocolate]`,
   },
   {
     id: "ex-12",
-    title: "Cool palette + nested grouping box",
-    desc: "Cooler colours plus one nested grouping box.",
+    title: "Cool palette + nested group",
+    desc: "Cooler colours plus one nested group.",
     dsl: `# Styles
 Background: rgb(231, 245, 255)
-Default box colour: rgb(208, 235, 255)
-Default box shape: rounded
-Default box border: 1px solid dodgerblue
-Default box shadow: subtle
+Default node colour: rgb(208, 235, 255)
+Default node shape: rounded
+Default node border: 1px solid dodgerblue
+Default node shadow: subtle
 Direction: top-bottom
 Label wrap: 18
-Rank gap: 5
-Node gap: 3
+Spacing along: 5
+Spacing across: 3
 
 # Contents
 Title: Cool palette
@@ -332,14 +332,14 @@ B -> C`,
     desc: "Use clusters to separate overview and detail.",
     dsl: `# Styles
 Background: white
-Default box colour: whitesmoke
-Default box shape: rounded
-Default box border: 1px dotted dimgray
-Default box shadow: none
+Default node colour: whitesmoke
+Default node shape: rounded
+Default node border: 1px dotted dimgray
+Default node shadow: none
 Direction: left-right
 Label wrap: 18
-Rank gap: 5
-Node gap: 4
+Spacing along: 5
+Spacing across: 4
 
 # Contents
 Title: Overview vs detail
@@ -364,14 +364,14 @@ D -> B`,
     desc: "A map with a control mitigating a risk.",
     dsl: `# Styles
 Background: white
-Default box colour: rgb(255, 245, 245)
-Default box shape: rounded
-Default box border: 1px solid tomato
-Default box shadow: subtle
+Default node colour: rgb(255, 245, 245)
+Default node shape: rounded
+Default node border: 1px solid tomato
+Default node shadow: subtle
 Direction: left-right
 Label wrap: 18
-Rank gap: 4
-Node gap: 3
+Spacing along: 4
+Spacing across: 3
 
 # Contents
 Title: Risk control
@@ -392,14 +392,14 @@ D -> B [increases | 1px dotted tomato]`,
     desc: "A resource bottleneck affecting throughput.",
     dsl: `# Styles
 Background: white
-Default box colour: lavender
-Default box shape: rounded
-Default box border: 1px solid slateblue
-Default box shadow: subtle
+Default node colour: lavender
+Default node shape: rounded
+Default node border: 1px solid slateblue
+Default node shadow: subtle
 Direction: top-bottom
 Label wrap: 19
-Rank gap: 5
-Node gap: 3
+Spacing along: 5
+Spacing across: 3
 
 # Contents
 Title: Constraint
@@ -420,14 +420,14 @@ D -> C [reduces | 1px dotted slateblue]`,
     desc: "The smallest possible example.",
     dsl: `# Styles
 Background: white
-Default box colour: honeydew
-Default box shape: rounded
-Default box border: 1px solid seagreen
-Default box shadow: none
+Default node colour: honeydew
+Default node shape: rounded
+Default node border: 1px solid seagreen
+Default node shadow: none
 Direction: left-right
 Label wrap: 20
-Rank gap: 4
-Node gap: 3
+Spacing along: 4
+Spacing across: 3
 
 # Contents
 Title: Tiny
@@ -442,14 +442,14 @@ A -> B`,
     desc: "Classic pathway: outreach → knowledge/behaviour → service use → health outcomes, with constraints.",
     dsl: `# Styles
 Background: white
-Default box colour: rgb(231, 245, 255)
-Default box shape: rounded
-Default box border: 1px solid dodgerblue
-Default box shadow: subtle
+Default node colour: rgb(231, 245, 255)
+Default node shape: rounded
+Default node border: 1px solid dodgerblue
+Default node shadow: subtle
 Direction: left-right
 Label wrap: 20
-Rank gap: 4
-Node gap: 3
+Spacing along: 4
+Spacing across: 3
 
 # Contents
 Title: CHWs → maternal & newborn health
@@ -487,14 +487,14 @@ G -> E [limits | 1px dotted tomato]`,
     desc: "Income support shifts household constraints; shows trade-offs and implementation quality.",
     dsl: `# Styles
 Background: white
-Default box colour: rgb(245, 243, 255)
-Default box shape: rounded
-Default box border: 1px solid rebeccapurple
-Default box shadow: subtle
+Default node colour: rgb(245, 243, 255)
+Default node shape: rounded
+Default node border: 1px solid rebeccapurple
+Default node shadow: subtle
 Direction: top-bottom
 Label wrap: 22
-Rank gap: 5
-Node gap: 3
+Spacing along: 5
+Spacing across: 3
 
 # Contents
 Title: Cash transfers → household wellbeing
@@ -539,14 +539,14 @@ J -> K [reduces | 1px dotted tomato]`,
     desc: "Education ToC: professional development → practice change → learning, moderated by context.",
     dsl: `# Styles
 Background: white
-Default box colour: rgb(236, 253, 245)
-Default box shape: rounded
-Default box border: 1px solid seagreen
-Default box shadow: subtle
+Default node colour: rgb(236, 253, 245)
+Default node shape: rounded
+Default node border: 1px solid seagreen
+Default node shadow: subtle
 Direction: left-right
 Label wrap: 20
-Rank gap: 4
-Node gap: 3
+Spacing along: 4
+Spacing across: 3
 
 # Contents
 Title: Coaching → teaching quality → learning
@@ -588,14 +588,14 @@ J -> I [reduces | 1px dotted seagreen]`,
     desc: "Infrastructure plus social norms; includes uptake and maintenance as critical links.",
     dsl: `# Styles
 Background: white
-Default box colour: rgb(255, 245, 235)
-Default box shape: rounded
-Default box border: 1px solid peru
-Default box shadow: subtle
+Default node colour: rgb(255, 245, 235)
+Default node shape: rounded
+Default node border: 1px solid peru
+Default node shadow: subtle
 Direction: left-right
 Label wrap: 20
-Rank gap: 4
-Node gap: 3
+Spacing along: 4
+Spacing across: 3
 
 # Contents
 Title: Sanitation → exposure → child health
@@ -640,14 +640,14 @@ L -> E [influences | 1px dotted peru]`,
     desc: "Governance ToC: information + collective action → responsiveness → better services.",
     dsl: `# Styles
 Background: white
-Default box colour: rgb(245, 245, 245)
-Default box shape: rounded
-Default box border: 1px solid dimgray
-Default box shadow: none
+Default node colour: rgb(245, 245, 245)
+Default node shape: rounded
+Default node border: 1px solid dimgray
+Default node shadow: none
 Direction: top-bottom
 Label wrap: 22
-Rank gap: 5
-Node gap: 3
+Spacing along: 5
+Spacing across: 3
 
 # Contents
 Title: Citizen feedback → service quality

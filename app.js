@@ -26,6 +26,8 @@ let historyBurstTimer = null;
 const STYLE_SETTING_KEYS = [
   "background",
   "textColour",
+  "defaultNodeTextColour",
+  "defaultBoxTextColour",
   "titleSize",
   "defaultBoxColour",
   "defaultBoxShape",
@@ -36,8 +38,8 @@ const STYLE_SETTING_KEYS = [
   "defaultLinkWidth",
   "direction",
   "labelWrap",
-  "rankGap",
-  "nodeGap",
+  "spacingAlong",
+  "spacingAcross",
 ];
 
 // -----------------------------
@@ -86,18 +88,20 @@ function buildEditorStyleLinesFromUiStyleSettings(sIn) {
 
   if (s.background) lines.push(`Background: ${cssColorToEditorToken(s.background)}`);
   if (s.textColour) lines.push(`Text colour: ${cssColorToEditorToken(s.textColour)}`);
+  if (s.defaultNodeTextColour) lines.push(`Default node text colour: ${cssColorToEditorToken(s.defaultNodeTextColour)}`);
+  if (s.defaultBoxTextColour) lines.push(`Default group text colour: ${cssColorToEditorToken(s.defaultBoxTextColour)}`);
   if (Number.isFinite(Number(s.titleSize))) lines.push(`Title size: ${Math.round(Number(s.titleSize))}`);
-  if (s.defaultBoxColour) lines.push(`Default box colour: ${cssColorToEditorToken(s.defaultBoxColour)}`);
-  if (s.defaultBoxShape) lines.push(`Default box shape: ${String(s.defaultBoxShape).trim()}`);
-  if (s.defaultBoxShadow) lines.push(`Default box shadow: ${String(s.defaultBoxShadow).trim()}`);
-  if (s.defaultBoxBorder) lines.push(`Default box border: ${String(s.defaultBoxBorder).trim()}`);
+  if (s.defaultBoxColour) lines.push(`Default node colour: ${cssColorToEditorToken(s.defaultBoxColour)}`);
+  if (s.defaultBoxShape) lines.push(`Default node shape: ${String(s.defaultBoxShape).trim()}`);
+  if (s.defaultBoxShadow) lines.push(`Default node shadow: ${String(s.defaultBoxShadow).trim()}`);
+  if (s.defaultBoxBorder) lines.push(`Default node border: ${String(s.defaultBoxBorder).trim()}`);
   if (s.defaultLinkColour) lines.push(`Default link colour: ${cssColorToEditorToken(s.defaultLinkColour)}`);
   if (s.defaultLinkStyle) lines.push(`Default link style: ${String(s.defaultLinkStyle).trim()}`);
   if (Number.isFinite(Number(s.defaultLinkWidth))) lines.push(`Default link width: ${Math.round(Number(s.defaultLinkWidth))}`);
   if (s.direction) lines.push(`Direction: ${String(s.direction).trim()}`);
   if (Number.isFinite(Number(s.labelWrap))) lines.push(`Label wrap: ${Math.round(Number(s.labelWrap))}`);
-  if (Number.isFinite(Number(s.rankGap))) lines.push(`Rank gap: ${Math.round(Number(s.rankGap))}`);
-  if (Number.isFinite(Number(s.nodeGap))) lines.push(`Node gap: ${Math.round(Number(s.nodeGap))}`);
+  if (Number.isFinite(Number(s.spacingAlong))) lines.push(`Spacing along: ${Math.round(Number(s.spacingAlong))}`);
+  if (Number.isFinite(Number(s.spacingAcross))) lines.push(`Spacing across: ${Math.round(Number(s.spacingAcross))}`);
 
   return lines;
 }
@@ -154,26 +158,29 @@ function upsertEditorStyleBlockFromUiStyleSettings(editor, uiStyles) {
 
 // Supported *editor* settings line keys (eg "Background: ...") used by:
 // - splitMapScriptStylesAndContents()
-// - the "Current Line Style" button (so it can act on global style lines too)
+// - the cursor-adjacent "Style" button (so it can act on global style lines too)
 const SUPPORTED_SETTING_LINE_KEYS = new Set([
   "background",
   "text colour",
   "text color",
+  "default node text colour",
+  "default node text color",
+  "default group text colour",
+  "default group text color",
   "title size",
-  "default box colour",
-  "default box color",
-  "default box shape",
-  "default box border",
+  "default node colour",
+  "default node color",
+  "default node shape",
+  "default node border",
   "default link colour",
   "default link color",
   "default link style",
   "default link width",
-  "default box shadow",
-  "box shadow",
+  "default node shadow",
   "direction",
   "label wrap",
-  "rank gap",
-  "node gap",
+  "spacing along",
+  "spacing across",
 ]);
 
 // -----------------------------
@@ -194,9 +201,10 @@ const IS_ADMIN = isLocalLiveServer();
 // -----------------------------
 
 function initAceLineStylePopover({ editor, graphviz }) {
-  const btn = document.getElementById("tm-editor-line-style");
+  // Main UI trigger + preview: the cursor-adjacent style button.
+  const btn = document.getElementById("tm-ace-cursor-style-btn");
   const pop = document.getElementById("tm-ace-style-popover");
-  const cursorBtn = document.getElementById("tm-ace-cursor-style-btn");
+  const cursorBtn = btn; // same element: keep naming for readability in positioning logic
   const editorDetailsEl = document.getElementById("tm-editor-details");
   const meta = document.getElementById("tm-ace-style-meta");
   const none = document.getElementById("tm-ace-style-none");
@@ -248,6 +256,22 @@ function initAceLineStylePopover({ editor, graphviz }) {
   const closeBtn = close || apply; // single-button UI: Apply is the close button
   let suppressLiveApply = false; // prevents feedback loops while we populate widgets
 
+  function setBtnLabelText(el, text) {
+    // Cursor button has an icon + a dedicated label span; avoid overwriting the icon DOM.
+    const labelEl = el.querySelector("[data-tm-label]");
+    if (labelEl) labelEl.textContent = String(text || "");
+    else el.textContent = String(text || "");
+  }
+
+  function getBtnBaseLabel(el) {
+    // Cache the original label so we can append "· custom/default" without drifting.
+    if (el.dataset.tmBaseLabel) return el.dataset.tmBaseLabel;
+    const labelEl = el.querySelector("[data-tm-label]");
+    const base = (labelEl ? labelEl.textContent : el.textContent) || "Style";
+    el.dataset.tmBaseLabel = String(base || "Style");
+    return el.dataset.tmBaseLabel;
+  }
+
   function setStyleButtonPreview({ enabled, fillHex, borderUi, rounded }) {
     // Visual preview on the button itself (keep it simple, no extra DOM).
     if (!enabled) {
@@ -292,10 +316,9 @@ function initAceLineStylePopover({ editor, graphviz }) {
     btn.classList.add(enabled && isCustom ? "btn-outline-primary" : "btn-outline-secondary");
     btn.title = String(title || "").trim();
 
-    const baseLabel = btn.dataset.tmBaseLabel || btn.textContent || "Style";
-    if (!btn.dataset.tmBaseLabel) btn.dataset.tmBaseLabel = baseLabel;
-    if (!enabled) btn.textContent = baseLabel;
-    else btn.textContent = `${baseLabel} · ${isCustom ? "custom" : "default"}`;
+    const baseLabel = getBtnBaseLabel(btn);
+    if (!enabled) setBtnLabelText(btn, baseLabel);
+    else setBtnLabelText(btn, `${baseLabel} · ${isCustom ? "custom" : "default"}`);
 
     setStyleButtonPreview({
       enabled,
@@ -638,19 +661,22 @@ function initAceLineStylePopover({ editor, graphviz }) {
       "title size": "tm-style-title-size",
       "text colour": "tm-style-text-color",
       "text color": "tm-style-text-color",
-      "default box colour": "tm-style-box-fill",
-      "default box color": "tm-style-box-fill",
-      "default box shape": "tm-style-box-shape",
-      "default box border": "tm-style-box-border-width",
-      "default box shadow": "tm-style-box-shadow",
-      "box shadow": "tm-style-box-shadow",
+      "default node text colour": "tm-style-default-node-text-color",
+      "default node text color": "tm-style-default-node-text-color",
+      "default group text colour": "tm-style-default-group-text-color",
+      "default group text color": "tm-style-default-group-text-color",
+      "default node colour": "tm-style-node-fill",
+      "default node color": "tm-style-node-fill",
+      "default node shape": "tm-style-node-shape",
+      "default node border": "tm-style-node-border-width",
+      "default node shadow": "tm-style-node-shadow",
       "default link colour": "tm-style-link-color",
       "default link color": "tm-style-link-color",
       "default link style": "tm-style-link-style",
       "default link width": "tm-style-link-width",
       "label wrap": "tm-style-label-wrap",
-      "rank gap": "tm-style-rank-gap",
-      "node gap": "tm-style-node-gap",
+      "spacing along": "tm-style-rank-gap",
+      "spacing across": "tm-style-node-gap",
     };
 
     // Focus after the modal starts opening.
@@ -673,22 +699,25 @@ function initAceLineStylePopover({ editor, graphviz }) {
     const titleMap = {
       background: "Background",
       direction: "Direction",
-      "text colour": "Text colour",
-      "text color": "Text colour",
+      "text colour": "Text colour (title + edge labels)",
+      "text color": "Text colour (title + edge labels)",
+      "default node text colour": "Default node text colour",
+      "default node text color": "Default node text colour",
+      "default group text colour": "Default group text colour",
+      "default group text color": "Default group text colour",
       "title size": "Title size",
-      "default box colour": "Default box colour",
-      "default box color": "Default box colour",
-      "default box shape": "Default box shape",
-      "default box shadow": "Default box shadow",
-      "box shadow": "Default box shadow",
-      "default box border": "Default box border",
+      "default node colour": "Default node colour",
+      "default node color": "Default node colour",
+      "default node shape": "Default node shape",
+      "default node shadow": "Default node shadow",
+      "default node border": "Default node border",
       "default link colour": "Default link colour",
       "default link color": "Default link colour",
       "default link style": "Default link style",
       "default link width": "Default link width",
       "label wrap": "Label wrap",
-      "rank gap": "Rank gap",
-      "node gap": "Node gap",
+      "spacing along": "Spacing along",
+      "spacing across": "Spacing across",
     };
 
     const label = titleMap[key] || key;
@@ -767,7 +796,15 @@ function initAceLineStylePopover({ editor, graphviz }) {
       const { wrap, focusEl: f } = makeColorInput(cur.textColour || "#111827", (hex) => applyPatch({ textColour: normalizeColor(hex) }));
       settingModalBody.appendChild(wrap);
       focusEl = f;
-    } else if (key === "default box colour" || key === "default box color") {
+    } else if (key === "default node text colour" || key === "default node text color") {
+      const { wrap, focusEl: f } = makeColorInput(cur.defaultNodeTextColour || "#111827", (hex) => applyPatch({ defaultNodeTextColour: normalizeColor(hex) }));
+      settingModalBody.appendChild(wrap);
+      focusEl = f;
+    } else if (key === "default group text colour" || key === "default group text color") {
+      const { wrap, focusEl: f } = makeColorInput(cur.defaultBoxTextColour || "#111827", (hex) => applyPatch({ defaultBoxTextColour: normalizeColor(hex) }));
+      settingModalBody.appendChild(wrap);
+      focusEl = f;
+    } else if (key === "default node colour" || key === "default node color") {
       const { wrap, focusEl: f } = makeColorInput(cur.defaultBoxColour || "#e7f5ff", (hex) => applyPatch({ defaultBoxColour: normalizeColor(hex) }));
       settingModalBody.appendChild(wrap);
       focusEl = f;
@@ -801,15 +838,15 @@ function initAceLineStylePopover({ editor, graphviz }) {
       );
       settingModalBody.appendChild(wrap);
       focusEl = f;
-    } else if (key === "rank gap") {
-      const { wrap, focusEl: f } = makeRange({ min: 0, max: 20, step: 1, value: Number(cur.rankGap || 4), suffix: "" }, (v) =>
-        applyPatch({ rankGap: Number(v) })
+    } else if (key === "spacing along") {
+      const { wrap, focusEl: f } = makeRange({ min: 0, max: 20, step: 1, value: Number(cur.spacingAlong || 4), suffix: "" }, (v) =>
+        applyPatch({ spacingAlong: Number(v) })
       );
       settingModalBody.appendChild(wrap);
       focusEl = f;
-    } else if (key === "node gap") {
-      const { wrap, focusEl: f } = makeRange({ min: 0, max: 20, step: 1, value: Number(cur.nodeGap || 3), suffix: "" }, (v) =>
-        applyPatch({ nodeGap: Number(v) })
+    } else if (key === "spacing across") {
+      const { wrap, focusEl: f } = makeRange({ min: 0, max: 20, step: 1, value: Number(cur.spacingAcross || 3), suffix: "" }, (v) =>
+        applyPatch({ spacingAcross: Number(v) })
       );
       settingModalBody.appendChild(wrap);
       focusEl = f;
@@ -833,7 +870,7 @@ function initAceLineStylePopover({ editor, graphviz }) {
       );
       settingModalBody.appendChild(el);
       focusEl = f;
-    } else if (key === "default box shape") {
+    } else if (key === "default node shape") {
       const { el, focusEl: f } = makeSelect(
         [
           { value: "", label: "square" },
@@ -844,7 +881,7 @@ function initAceLineStylePopover({ editor, graphviz }) {
       );
       settingModalBody.appendChild(el);
       focusEl = f;
-    } else if (key === "default box shadow" || key === "box shadow") {
+    } else if (key === "default node shadow") {
       const { el, focusEl: f } = makeSelect(
         [
           { value: "none", label: "none" },
@@ -857,7 +894,7 @@ function initAceLineStylePopover({ editor, graphviz }) {
       );
       settingModalBody.appendChild(el);
       focusEl = f;
-    } else if (key === "default box border") {
+    } else if (key === "default node border") {
       const ui = borderTextToUi(String(cur.defaultBoxBorder || "1px solid rgb(30,144,255)"));
       const row = document.createElement("div");
       row.className = "row g-2";
@@ -1003,6 +1040,8 @@ function initAceLineStylePopover({ editor, graphviz }) {
       const ok = replaceEditorLine(editor, changedIdx, lines[changedIdx]);
       if (!ok) return;
       afterEditorMutation({ editor, graphviz });
+      // Keep the cursor-adjacent button preview in sync even if the cursor didn't move.
+      syncStyleButtonToCursorLine();
     }
 
     if (focusEditor) editor.focus();
@@ -1033,9 +1072,8 @@ function initAceLineStylePopover({ editor, graphviz }) {
     else if (info.type === "edge") (edgeLabel || edgeBorderEnabled)?.focus?.();
   }
 
-  btn.addEventListener("click", () => openStyleUiForCursorLine());
   // Use mousedown (not click) so Ace blur doesn't hide the button before the handler runs.
-  cursorBtn?.addEventListener("mousedown", (e) => {
+  btn.addEventListener("mousedown", (e) => {
     e.preventDefault();
     e.stopPropagation();
     openStyleUiForCursorLine();
@@ -1194,14 +1232,19 @@ function initStyleModal({ editor, graphviz }) {
   // Inputs
   const bg = document.getElementById("tm-style-background");
   const dir = document.getElementById("tm-style-direction");
-  const boxFill = document.getElementById("tm-style-box-fill");
-  const boxShape = document.getElementById("tm-style-box-shape");
-  const boxBorderW = document.getElementById("tm-style-box-border-width");
-  const boxBorderWVal = document.getElementById("tm-style-box-border-width-val");
-  const boxBorderStyle = document.getElementById("tm-style-box-border-style");
-  const boxBorderColor = document.getElementById("tm-style-box-border-color");
-  const boxShadow = document.getElementById("tm-style-box-shadow");
+  // Direction buttons (UX: 4 buttons, no dropdown)
+  const dirBtnsWrap = document.getElementById("tm-style-direction-btns");
+  const dirBtns = dirBtnsWrap ? Array.from(dirBtnsWrap.querySelectorAll('button[data-value]')) : [];
+  const boxFill = document.getElementById("tm-style-node-fill");
+  const boxShape = document.getElementById("tm-style-node-shape");
+  const boxBorderW = document.getElementById("tm-style-node-border-width");
+  const boxBorderWVal = document.getElementById("tm-style-node-border-width-val");
+  const boxBorderStyle = document.getElementById("tm-style-node-border-style");
+  const boxBorderColor = document.getElementById("tm-style-node-border-color");
+  const boxShadow = document.getElementById("tm-style-node-shadow");
   const textColor = document.getElementById("tm-style-text-color");
+  const defaultNodeTextColor = document.getElementById("tm-style-default-node-text-color");
+  const defaultGroupTextColor = document.getElementById("tm-style-default-group-text-color");
   const titleSize = document.getElementById("tm-style-title-size");
   const titleSizeVal = document.getElementById("tm-style-title-size-val");
   const linkColor = document.getElementById("tm-style-link-color");
@@ -1248,6 +1291,30 @@ function initStyleModal({ editor, graphviz }) {
   setRangeUi(nodeGap, nodeGapVal);
   setRangeUi(titleSize, titleSizeVal);
 
+  function setDirectionButtonsUi(value) {
+    if (!dirBtns.length) return;
+    const v = String(value || "LR");
+    for (const b of dirBtns) {
+      const on = String(b.dataset.value || "") === v;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+
+  // Clicking a direction button writes to the hidden select (source of truth for existing code)
+  if (dir && dirBtns.length) {
+    for (const b of dirBtns) {
+      b.addEventListener("click", () => {
+        const v = String(b.dataset.value || "LR");
+        dir.value = v;
+        setDirectionButtonsUi(v);
+        dir.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+    dir.addEventListener("change", () => setDirectionButtonsUi(dir.value));
+    setDirectionButtonsUi(dir.value || "LR");
+  }
+
   function setControlsFromStyleSettings(sIn) {
     suppressLiveApply = true;
     try {
@@ -1259,10 +1326,17 @@ function initStyleModal({ editor, graphviz }) {
       const tcRgb = resolveCssColorToRgb(s.textColour || "#111827") || { r: 17, g: 24, b: 39 };
       if (textColor) textColor.value = rgbToHex(tcRgb);
 
+      const ntcRgb = resolveCssColorToRgb(s.defaultNodeTextColour || "#111827") || { r: 17, g: 24, b: 39 };
+      if (defaultNodeTextColor) defaultNodeTextColor.value = rgbToHex(ntcRgb);
+
+      const btcRgb = resolveCssColorToRgb(s.defaultBoxTextColour || "#111827") || { r: 17, g: 24, b: 39 };
+      if (defaultGroupTextColor) defaultGroupTextColor.value = rgbToHex(btcRgb);
+
       if (titleSize) titleSize.value = String(Math.max(6, Math.min(72, Math.round(Number(s.titleSize || 18)))));
       syncRangeValueLabel(titleSize, titleSizeVal);
 
       if (dir) dir.value = String(s.direction || "LR");
+      setDirectionButtonsUi(dir?.value || "LR");
 
       const boxRgb = resolveCssColorToRgb(s.defaultBoxColour || "#e7f5ff") || { r: 231, g: 245, b: 255 };
       if (boxFill) boxFill.value = rgbToHex(boxRgb);
@@ -1286,10 +1360,10 @@ function initStyleModal({ editor, graphviz }) {
       if (labelWrap) labelWrap.value = String(Math.max(8, Math.min(40, Math.round(Number(s.labelWrap || 18)))));
       syncRangeValueLabel(labelWrap, labelWrapVal);
 
-      if (rankGap) rankGap.value = String(Math.max(0, Math.min(20, Math.round(Number(s.rankGap || 4)))));
+      if (rankGap) rankGap.value = String(Math.max(0, Math.min(20, Math.round(Number(s.spacingAlong || 4)))));
       syncRangeValueLabel(rankGap, rankGapVal);
 
-      if (nodeGap) nodeGap.value = String(Math.max(0, Math.min(20, Math.round(Number(s.nodeGap || 3)))));
+      if (nodeGap) nodeGap.value = String(Math.max(0, Math.min(20, Math.round(Number(s.spacingAcross || 3)))));
       syncRangeValueLabel(nodeGap, nodeGapVal);
     } finally {
       suppressLiveApply = false;
@@ -1300,6 +1374,8 @@ function initStyleModal({ editor, graphviz }) {
     const out = {};
     if (bg) out.background = normalizeColor(bg.value);
     if (textColor) out.textColour = normalizeColor(textColor.value);
+    if (defaultNodeTextColor) out.defaultNodeTextColour = normalizeColor(defaultNodeTextColor.value);
+    if (defaultGroupTextColor) out.defaultBoxTextColour = normalizeColor(defaultGroupTextColor.value);
     if (titleSize) out.titleSize = Number(titleSize.value);
     if (dir) out.direction = normalizeDirection(dir.value) || dir.value;
     if (boxFill) out.defaultBoxColour = normalizeColor(boxFill.value);
@@ -1319,8 +1395,8 @@ function initStyleModal({ editor, graphviz }) {
     if (linkStyle) out.defaultLinkStyle = String(linkStyle.value || "").trim().toLowerCase() || null;
     if (linkWidth) out.defaultLinkWidth = Number(linkWidth.value);
     if (labelWrap) out.labelWrap = Number(labelWrap.value);
-    if (rankGap) out.rankGap = Number(rankGap.value);
-    if (nodeGap) out.nodeGap = Number(nodeGap.value);
+    if (rankGap) out.spacingAlong = Number(rankGap.value);
+    if (nodeGap) out.spacingAcross = Number(nodeGap.value);
 
     return coerceUiStyleSettings(out);
   }
@@ -1608,7 +1684,7 @@ function initStyleModal({ editor, graphviz }) {
 }
 
 // -----------------------------
-// Gallery: examples + (optional) saved local maps
+// Templates: examples + (optional) saved local maps
 // -----------------------------
 
 const TM_SAVED_KEY_PREFIX = "tm_map:";
@@ -1646,7 +1722,7 @@ function buildStandardExampleSnippet({ id, title, desc, dsl }) {
 }
 
 function listSavedMapsFromLocalStorage() {
-  // Saved maps are optional; gallery shows them if present.
+  // Saved maps are optional; templates shows them if present.
   // Expected value: JSON { name, dsl, styleSettings?, savedAt, screenshotDataUrl? }
   const items = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -1680,7 +1756,7 @@ function makeSavedMapKey(name) {
 }
 
 async function captureVizPngDataUrl({ scale = 2 } = {}) {
-  // Capture the current Graphviz SVG as a PNG data URL (for gallery thumbnails).
+  // Capture the current Graphviz SVG as a PNG data URL (for template thumbnails).
   const svgEl = document.querySelector("#tm-viz svg");
   if (!svgEl) return null;
 
@@ -1724,7 +1800,7 @@ async function captureVizPngDataUrl({ scale = 2 } = {}) {
 }
 
 function saveMapToLocalStorage({ key, name, dsl, screenshotDataUrl }) {
-  // Stored format is read by Gallery (see listSavedMapsFromLocalStorage()).
+  // Stored format is read by Templates (see listSavedMapsFromLocalStorage()).
   const payload = {
     name,
     dsl,
@@ -1873,38 +1949,27 @@ function splitMapScriptStylesAndContents(text) {
   };
 }
 
-function initGallery(editor, graphviz) {
-  const examplesWrap = document.getElementById("tm-gallery-examples");
-  const savedWrap = document.getElementById("tm-gallery-saved");
-  const savedEmpty = document.getElementById("tm-gallery-saved-empty");
+function initTemplates(editor, graphviz) {
+  const examplesWrap = document.getElementById("tm-templates-examples");
+  const savedWrap = document.getElementById("tm-templates-saved");
+  const savedEmpty = document.getElementById("tm-templates-saved-empty");
   if (!examplesWrap) return null;
-
-  const modalEl = document.getElementById("tm-gallery-modal");
-  const modalTitle = document.getElementById("tm-gallery-modal-title");
-  const modalDesc = document.getElementById("tm-gallery-modal-desc");
-  const btnApplyAll = document.getElementById("tm-gallery-apply-all");
-  const btnApplyStyles = document.getElementById("tm-gallery-apply-styles");
-
-  const bs = globalThis.bootstrap;
-  const modal = modalEl && bs?.Modal ? new bs.Modal(modalEl) : null;
-
-  let selectedItem = null;
 
   function cardHtml(item, { isSaved }) {
     const badge = isSaved ? `<span class="badge text-bg-secondary ms-2">saved</span>` : "";
     const thumbUrl = isSaved ? item.screenshotDataUrl : EXAMPLE_THUMB_CACHE.get(item.id);
     const thumb = thumbUrl
-      ? `<img class="tm-gallery-thumb" src="${thumbUrl}" alt="" />`
-      : `<div class="tm-gallery-thumb-placeholder" aria-hidden="true"></div>`;
+      ? `<img class="tm-templates-thumb" src="${thumbUrl}" alt="" />`
+      : `<div class="tm-templates-thumb-placeholder" aria-hidden="true"></div>`;
 
     const deleteActions = isSaved
       ? `
-          <div class="tm-gallery-actions">
+          <div class="tm-templates-actions">
             <button
               type="button"
               class="btn btn-sm btn-outline-danger"
-              data-gallery-delete="1"
-              data-gallery-id="${item.id}"
+              data-template-delete="1"
+              data-template-id="${item.id}"
               aria-label="Delete saved map"
               title="Delete"
             >
@@ -1916,7 +1981,7 @@ function initGallery(editor, graphviz) {
 
     return `
       <div class="col-12 col-md-6 col-xl-4">
-        <div class="card tm-gallery-card h-100" role="button" tabindex="0" data-gallery-id="${item.id}" data-gallery-saved="${isSaved ? "1" : "0"}">
+        <div class="card tm-templates-card h-100" role="button" tabindex="0" data-template-id="${item.id}" data-template-saved="${isSaved ? "1" : "0"}">
           ${deleteActions}
           ${thumb}
           <div class="card-body">
@@ -1939,11 +2004,11 @@ function initGallery(editor, graphviz) {
       if (dataUrl) EXAMPLE_THUMB_CACHE.set(ex.id, dataUrl);
       // Yield to keep UI responsive.
       await new Promise((r) => setTimeout(r, 0));
-      renderGallery();
+      renderTemplates();
     }
   }
 
-  function renderGallery() {
+  function renderTemplates() {
     // Saved first (if any)
     const saved = listSavedMapsFromLocalStorage();
     if (savedWrap && savedEmpty) {
@@ -1970,33 +2035,13 @@ function initGallery(editor, graphviz) {
     return GALLERY_EXAMPLES.find((x) => x.id === id) || null;
   }
 
-  function openConfirm(item) {
-    selectedItem = item;
-    if (modalTitle) modalTitle.textContent = item.title || "Load map";
-    if (modalDesc) modalDesc.textContent = item.desc || "";
-    if (modal) modal.show();
-    else {
-      // If bootstrap JS isn't available, do nothing rather than inventing a second modal system.
-      // (Bootstrap JS is loaded in index.html.)
-    }
-  }
-
-  function applySelection(mode) {
-    if (!selectedItem) return;
-    const selectedDsl = String(selectedItem.dsl || "");
+  function loadTemplate(item) {
+    if (!item) return;
+    const selectedDsl = String(item.dsl || "");
     const styleFromItem =
-      selectedItem.styleSettings && typeof selectedItem.styleSettings === "object"
-        ? coerceUiStyleSettings(selectedItem.styleSettings)
+      item.styleSettings && typeof item.styleSettings === "object"
+        ? coerceUiStyleSettings(item.styleSettings)
         : coerceUiStyleSettings(pickStyleSettings(dslToDot(selectedDsl).settings));
-
-    if (mode === "styles") {
-      // Apply styles by writing style lines into the editor; keep contents unchanged.
-      upsertEditorStyleBlockFromUiStyleSettings(editor, styleFromItem);
-      afterEditorMutation({ editor, graphviz });
-      if (modal) modal.hide();
-      setActiveTab("viz");
-      return;
-    }
 
     // Replace entire editor content; ensure selected styles are present as style lines.
     editor.setValue(selectedDsl, -1);
@@ -2004,40 +2049,39 @@ function initGallery(editor, graphviz) {
       upsertEditorStyleBlockFromUiStyleSettings(editor, styleFromItem);
     }
     afterEditorMutation({ editor, graphviz });
-    if (modal) modal.hide(); // close gallery confirm modal after user choice
     setActiveTab("viz");
   }
 
   function onCardActivate(el) {
-    const id = el.getAttribute("data-gallery-id");
-    const isSaved = el.getAttribute("data-gallery-saved") === "1";
+    const id = el.getAttribute("data-template-id");
+    const isSaved = el.getAttribute("data-template-saved") === "1";
     const item = id ? getItemById(id, isSaved) : null;
     if (!item) return;
-    openConfirm(item);
+    loadTemplate(item);
   }
 
   function wireCardEvents(container) {
     container.addEventListener("click", (e) => {
-      const delBtn = e.target?.closest?.("[data-gallery-delete='1']");
+      const delBtn = e.target?.closest?.("[data-template-delete='1']");
       if (delBtn) {
         e.preventDefault();
         e.stopPropagation();
-        const key = delBtn.getAttribute("data-gallery-id");
+        const key = delBtn.getAttribute("data-template-id");
         if (!key) return;
         const ok = confirm("Delete this saved map from this browser? This cannot be undone.");
         if (!ok) return;
         localStorage.removeItem(key);
-        renderGallery();
+        renderTemplates();
         return;
       }
 
-      const card = e.target?.closest?.("[data-gallery-id]");
+      const card = e.target?.closest?.("[data-template-id]");
       if (!card) return;
       onCardActivate(card);
     });
     container.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.key !== " ") return;
-      const card = e.target?.closest?.("[data-gallery-id]");
+      const card = e.target?.closest?.("[data-template-id]");
       if (!card) return;
       e.preventDefault();
       onCardActivate(card);
@@ -2047,18 +2091,15 @@ function initGallery(editor, graphviz) {
   wireCardEvents(examplesWrap);
   if (savedWrap) wireCardEvents(savedWrap);
 
-  if (btnApplyAll) btnApplyAll.addEventListener("click", () => applySelection("all"));
-  if (btnApplyStyles) btnApplyStyles.addEventListener("click", () => applySelection("styles"));
-
-  renderGallery();
+  renderTemplates();
   // Start thumbnail generation after initial paint.
   setTimeout(() => {
     ensureExampleThumbnails();
   }, 0);
-  return renderGallery;
+  return renderTemplates;
 }
 
-async function rebuildSavedThumbnails({ editor, graphviz, refreshGallery }) {
+async function rebuildSavedThumbnails({ editor, graphviz, refreshTemplates }) {
   const saved = listSavedMapsFromLocalStorage();
   if (!saved.length) return;
 
@@ -2083,7 +2124,7 @@ async function rebuildSavedThumbnails({ editor, graphviz, refreshGallery }) {
     editor.setValue(current, -1);
     setMapScriptInUrl(editor.getValue());
     await renderNow(graphviz, editor);
-    if (typeof refreshGallery === "function") refreshGallery();
+    if (typeof refreshTemplates === "function") refreshTemplates();
     setVizStatus("Thumbnails rebuilt");
     suppressHistorySync = prevSuppress;
   }
@@ -2768,6 +2809,8 @@ function dslToDot(dslText) {
     title: null,
     background: null,
     textColour: null,
+    defaultNodeTextColour: null,
+    defaultBoxTextColour: null,
     defaultBoxColour: null,
     defaultBoxShape: null,
     defaultBoxBorder: null,
@@ -2777,8 +2820,8 @@ function dslToDot(dslText) {
     defaultLinkWidth: null,
     direction: null,
     labelWrap: null,
-    rankGap: null,
-    nodeGap: null,
+    spacingAlong: null,
+    spacingAcross: null,
   };
 
   const nodes = new Map(); // id -> { label, attrs }
@@ -2811,8 +2854,8 @@ function dslToDot(dslText) {
 
   function applyDefaults(nodeAttrs) {
     // Defaults are interpreted in DOT terms:
-    // - default box colour -> fillcolor + filled
-    // - default box border -> color/style/penwidth
+    // - default node colour -> fillcolor + filled
+    // - default node border -> color/style/penwidth
     if (settings.defaultBoxColour) {
       if (!nodeAttrs.fillcolor) nodeAttrs.fillcolor = settings.defaultBoxColour;
       addStyle(nodeAttrs, "filled");
@@ -2899,18 +2942,20 @@ function dslToDot(dslText) {
       if (key === "title") settings.title = value;
       else if (key === "background") settings.background = normalizeColor(value);
       else if (key === "text colour" || key === "text color") settings.textColour = normalizeColor(value);
+      else if (key === "default node text colour" || key === "default node text color") settings.defaultNodeTextColour = normalizeColor(value);
+      else if (key === "default group text colour" || key === "default group text color") settings.defaultBoxTextColour = normalizeColor(value);
       else if (key === "title size") settings.titleSize = parseLeadingNumber(value);
-      else if (key === "default box colour" || key === "default box color") settings.defaultBoxColour = normalizeColor(value);
-      else if (key === "default box shape") settings.defaultBoxShape = value.trim().toLowerCase();
-      else if (key === "default box border") settings.defaultBoxBorder = value;
+      else if (key === "default node colour" || key === "default node color") settings.defaultBoxColour = normalizeColor(value);
+      else if (key === "default node shape") settings.defaultBoxShape = value.trim().toLowerCase();
+      else if (key === "default node border") settings.defaultBoxBorder = value;
       else if (key === "default link colour" || key === "default link color") settings.defaultLinkColour = normalizeColor(value);
       else if (key === "default link style") settings.defaultLinkStyle = value.trim().toLowerCase();
       else if (key === "default link width") settings.defaultLinkWidth = parseLeadingNumber(value);
-      else if (key === "default box shadow" || key === "box shadow") settings.defaultBoxShadow = value;
+      else if (key === "default node shadow") settings.defaultBoxShadow = value;
       else if (key === "direction") settings.direction = normalizeDirection(value);
       else if (key === "label wrap") settings.labelWrap = parseLeadingNumber(value);
-      else if (key === "rank gap") settings.rankGap = parseLeadingNumber(value);
-      else if (key === "node gap") settings.nodeGap = parseLeadingNumber(value);
+      else if (key === "spacing along") settings.spacingAlong = parseLeadingNumber(value);
+      else if (key === "spacing across") settings.spacingAcross = parseLeadingNumber(value);
       continue;
     }
 
@@ -3083,7 +3128,7 @@ function dslToDot(dslText) {
   dot.push("digraph G {");
   dot.push('  graph [fontname="Arial"];');
   const nodeDefaults = { fontname: "Arial", shape: "box" };
-  if (settings.textColour) nodeDefaults.fontcolor = settings.textColour;
+  if (settings.defaultNodeTextColour) nodeDefaults.fontcolor = settings.defaultNodeTextColour;
   dot.push(`  node${toDotAttrs(nodeDefaults)};`);
   // Edge defaults (links)
   const edgeDefaults = { fontname: "Arial", fontsize: 12 };
@@ -3107,8 +3152,8 @@ function dslToDot(dslText) {
   }
   if (settings.direction) dot.push(`  rankdir="${settings.direction}";`);
   // Graphviz ranksep/nodesep are in inches; MapScript values are treated as "px-ish", so scale down.
-  if (Number.isFinite(settings.rankGap)) dot.push(`  ranksep="${settings.rankGap * 0.1}";`);
-  if (Number.isFinite(settings.nodeGap)) dot.push(`  nodesep="${settings.nodeGap * 0.1}";`);
+  if (Number.isFinite(settings.spacingAlong)) dot.push(`  ranksep="${settings.spacingAlong * 0.1}";`);
+  if (Number.isFinite(settings.spacingAcross)) dot.push(`  nodesep="${settings.spacingAcross * 0.1}";`);
 
   // Emit clusters (nested)
   const clustered = new Set();
@@ -3123,7 +3168,7 @@ function dslToDot(dslText) {
     clusterAttrs.label = c.label;
     addStyle(clusterAttrs, "rounded");
     if (!clusterAttrs.color) clusterAttrs.color = "#cccccc";
-    if (settings.textColour) clusterAttrs.fontcolor = settings.textColour;
+    if (settings.defaultBoxTextColour) clusterAttrs.fontcolor = settings.defaultBoxTextColour;
 
     if (c.styleInner) {
       const { kv } = parseBracketAttrs(`[${c.styleInner}]`);
@@ -3515,6 +3560,19 @@ function initVizInteractivity(editor, graphviz) {
   const vizEl = document.getElementById("tm-viz");
   if (!vizEl) return;
 
+  // Hover-only delete button (red X) for nodes/links (fast delete with confirm).
+  let hoverDeleteBtn = document.getElementById("tm-viz-hover-delete");
+  if (!hoverDeleteBtn) {
+    hoverDeleteBtn = document.createElement("button");
+    hoverDeleteBtn.id = "tm-viz-hover-delete";
+    hoverDeleteBtn.type = "button";
+    hoverDeleteBtn.className = "btn btn-sm btn-danger tm-viz-hover-delete";
+    hoverDeleteBtn.textContent = "×";
+    hoverDeleteBtn.setAttribute("aria-label", "Delete");
+    hoverDeleteBtn.title = "Delete";
+    vizEl.appendChild(hoverDeleteBtn);
+  }
+
   const modalEl = document.getElementById("tm-viz-edit-modal");
   const modalTitle = document.getElementById("tm-viz-edit-modal-title");
   const modalMeta = document.getElementById("tm-viz-edit-meta");
@@ -3547,6 +3605,7 @@ function initVizInteractivity(editor, graphviz) {
   // Node modal: add-link widgets
   const addDirSel = document.getElementById("tm-viz-add-edge-dir");
   const addOtherSel = document.getElementById("tm-viz-add-edge-other");
+  const addNewNodeBtn = document.getElementById("tm-viz-add-edge-new-node-btn");
   const addNewLabelInput = document.getElementById("tm-viz-add-edge-new-label");
   const addNewHint = document.getElementById("tm-viz-add-edge-new-hint");
   const addEdgeLabelInput = document.getElementById("tm-viz-add-edge-label");
@@ -3571,6 +3630,27 @@ function initVizInteractivity(editor, graphviz) {
   let canSave = false;
   let canDelete = false;
   let suppressLiveApply = false; // prevents feedback loops while we populate widgets
+
+  let hoverDeleteTarget = null; // { type: "node", nodeId } | { type: "edge", lineNo, fromId, toId }
+
+  function hideHoverDelete() {
+    hoverDeleteBtn?.classList?.remove("tm-show");
+    hoverDeleteTarget = null;
+  }
+
+  function showHoverDeleteAtSvgGroup(gEl, anchorEl = null) {
+    if (!hoverDeleteBtn || !gEl) return;
+    const vizRect = vizEl.getBoundingClientRect();
+    const r = (anchorEl || gEl).getBoundingClientRect();
+
+    // Convert viewport coordinates to coordinates inside the scrollable viz container.
+    const x = r.right - vizRect.left + vizEl.scrollLeft - 18;
+    const y = r.top - vizRect.top + vizEl.scrollTop + 2;
+
+    hoverDeleteBtn.style.left = `${Math.max(0, x)}px`;
+    hoverDeleteBtn.style.top = `${Math.max(0, y)}px`;
+    hoverDeleteBtn.classList.add("tm-show");
+  }
 
   // Keep node text size widgets in sync.
   nodeTextSizeEnabled?.addEventListener("change", () => {
@@ -3666,12 +3746,24 @@ function initVizInteractivity(editor, graphviz) {
 
   function fillNodeSelectWithNew(selectEl, nodesById, selectedId) {
     if (!selectEl) return;
+    // Important: do NOT call fillNodeSelect() here because it clears innerHTML (and would remove "New…")
     selectEl.innerHTML = "";
+
     const optNew = document.createElement("option");
     optNew.value = "__new__";
     optNew.textContent = "New…";
     selectEl.appendChild(optNew);
-    fillNodeSelect(selectEl, nodesById, selectedId);
+
+    const items = Array.from(nodesById.values()).sort((a, b) => String(a.label).localeCompare(String(b.label)));
+    for (const n of items) {
+      const opt = document.createElement("option");
+      opt.value = n.id;
+      opt.textContent = n.label === n.id ? n.label : `${n.label} (${n.id})`;
+      selectEl.appendChild(opt);
+    }
+
+    if (selectedId === "__new__") selectEl.value = "__new__";
+    else if (selectedId && nodesById.has(selectedId)) selectEl.value = selectedId;
   }
 
   function setAddEdgeStatus(msg) {
@@ -4030,6 +4122,67 @@ function initVizInteractivity(editor, graphviz) {
     }
   });
 
+  // Hover X for quick delete (does not open the modal).
+  vizEl.addEventListener("mousemove", (e) => {
+    if (!hoverDeleteBtn) return;
+    // Don't flicker when moving onto the button itself.
+    if (e.target === hoverDeleteBtn || hoverDeleteBtn.contains(e.target)) return;
+
+    const nodeG = getClosestGraphvizGroup(e.target, "node");
+    const edgeG = getClosestGraphvizGroup(e.target, "edge");
+    if (!nodeG && !edgeG) return hideHoverDelete();
+
+    if (nodeG) {
+      const nodeId = getGraphvizTitleText(nodeG);
+      if (!nodeId) return hideHoverDelete();
+      hoverDeleteTarget = { type: "node", nodeId };
+      return showHoverDeleteAtSvgGroup(nodeG);
+    }
+
+    if (edgeG) {
+      const title = getGraphvizTitleText(edgeG); // often "A->B"
+      const m = title.match(/^(.+)->(.+)$/);
+      const fromId = m ? m[1].trim() : "";
+      const toId = m ? m[2].trim() : "";
+      const lineNo = parseTmEdgeDomIdFromEl(e.target);
+      if (!fromId || !toId || !lineNo) return hideHoverDelete();
+      hoverDeleteTarget = { type: "edge", fromId, toId, lineNo };
+      // Prefer positioning over the edge label (closer to cursor) rather than the whole edge bbox.
+      const labelText = edgeG.querySelector("text");
+      return showHoverDeleteAtSvgGroup(edgeG, labelText);
+    }
+  });
+
+  vizEl.addEventListener("mouseleave", () => hideHoverDelete());
+
+  hoverDeleteBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!hoverDeleteTarget) return;
+
+    const lines = editor.getValue().split(/\r?\n/);
+
+    if (hoverDeleteTarget.type === "node") {
+      const ok = confirm(`Delete node "${hoverDeleteTarget.nodeId}" (and any links that mention it)?`);
+      if (!ok) return;
+      const next = deleteNodeEverywhere(lines, hoverDeleteTarget.nodeId);
+      applyEditorLines(next);
+      clearVizSelection();
+      hideHoverDelete();
+      return;
+    }
+
+    if (hoverDeleteTarget.type === "edge") {
+      const ok = confirm(`Delete link ${hoverDeleteTarget.fromId} -> ${hoverDeleteTarget.toId}?`);
+      if (!ok) return;
+      const did = deleteEdgeLine(lines, hoverDeleteTarget.lineNo);
+      if (!did) return setVizStatus("Delete failed: edge line not found");
+      applyEditorLines(lines);
+      clearVizSelection();
+      hideHoverDelete();
+    }
+  });
+
   // Live preview in the viz edit modal: any change updates editor + rerenders.
   function maybeLiveApply() {
     if (suppressLiveApply) return;
@@ -4075,6 +4228,13 @@ function initVizInteractivity(editor, graphviz) {
   addOtherSel?.addEventListener("change", () => {
     setNewNodeMode(addOtherSel.value === "__new__");
     setAddEdgeStatus("");
+  });
+
+  addNewNodeBtn?.addEventListener("click", () => {
+    if (!addOtherSel) return;
+    addOtherSel.value = "__new__";
+    addOtherSel.dispatchEvent(new Event("change", { bubbles: true }));
+    addNewLabelInput?.focus?.();
   });
 
   addDirSel?.addEventListener("change", () => {
@@ -4524,6 +4684,71 @@ function initVizToolbar() {
       setVizStatus(`Export failed: ${e?.message || String(e)}`);
     }
   });
+
+  const shareBlueskyBtn = document.getElementById("tm-share-bluesky");
+  const shareTwitterBtn = document.getElementById("tm-share-twitter");
+
+  shareBlueskyBtn?.addEventListener("click", async () => {
+    const svg = getVizSvgEl();
+    if (!svg) return setVizStatus("Nothing to share");
+
+    try {
+      // Copy HTML package to clipboard first
+      setVizStatus("Copying…");
+      const png = await svgToPngBlob(svg, { scale: 3 });
+      const dataUrl = await blobToDataUrl(png);
+      const linkHtml = getFormattedLinkHtml();
+      const title = String(lastVizSettings?.title || "Theorymaker map").trim() || "Theorymaker map";
+      const safeTitle = title.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+      const html = `<div>
+  <div style="font-family: Arial, sans-serif; font-size: 12pt;">
+    <div style="font-weight: 600; margin: 0 0 8px 0;">${safeTitle}</div>
+    <div><img alt="${safeTitle.replaceAll('"', "&quot;")}" src="${dataUrl}" /></div>
+    <div style="margin-top: 10px;">${linkHtml}</div>
+  </div>
+</div>`;
+      const text = `${title}\n${getRawRestoreUrl()}`;
+      await copyRichToClipboard({ html, text, pngBlob: png });
+
+      // Open Bluesky composer
+      const composeText = encodeURIComponent(text);
+      window.open(`https://bsky.app/intent/compose?text=${composeText}`, "_blank");
+      setVizStatus("Copied - paste into Bluesky");
+    } catch (e) {
+      setVizStatus(`Share failed: ${e?.message || String(e)}`);
+    }
+  });
+
+  shareTwitterBtn?.addEventListener("click", async () => {
+    const svg = getVizSvgEl();
+    if (!svg) return setVizStatus("Nothing to share");
+
+    try {
+      // Copy HTML package to clipboard first
+      setVizStatus("Copying…");
+      const png = await svgToPngBlob(svg, { scale: 3 });
+      const dataUrl = await blobToDataUrl(png);
+      const linkHtml = getFormattedLinkHtml();
+      const title = String(lastVizSettings?.title || "Theorymaker map").trim() || "Theorymaker map";
+      const safeTitle = title.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+      const html = `<div>
+  <div style="font-family: Arial, sans-serif; font-size: 12pt;">
+    <div style="font-weight: 600; margin: 0 0 8px 0;">${safeTitle}</div>
+    <div><img alt="${safeTitle.replaceAll('"', "&quot;")}" src="${dataUrl}" /></div>
+    <div style="margin-top: 10px;">${linkHtml}</div>
+  </div>
+</div>`;
+      const text = `${title}\n${getRawRestoreUrl()}`;
+      await copyRichToClipboard({ html, text, pngBlob: png });
+
+      // Open Twitter composer
+      const composeText = encodeURIComponent(text);
+      window.open(`https://twitter.com/intent/tweet?text=${composeText}`, "_blank");
+      setVizStatus("Copied - paste into Twitter");
+    } catch (e) {
+      setVizStatus(`Share failed: ${e?.message || String(e)}`);
+    }
+  });
 }
 
 function initTooltips() {
@@ -4544,7 +4769,11 @@ async function renderNow(graphviz, editor) {
 
   try {
     const svg = await graphviz.layout(dot, "svg", "dot");
-    document.getElementById("tm-viz").innerHTML = svg;
+    // Keep any overlay UI (eg hover delete button) across rerenders.
+    const viz = document.getElementById("tm-viz");
+    const hoverDeleteBtn = document.getElementById("tm-viz-hover-delete"); // may be null on first render
+    if (viz) viz.innerHTML = svg;
+    if (viz && hoverDeleteBtn) viz.appendChild(hoverDeleteBtn);
     // Default behavior: fill the panel width until user zooms manually.
     if (!vizHasUserZoomed) fitVizToContainerWidth();
     else applyVizScale(); // keep zoom consistent across rerenders
@@ -4566,6 +4795,7 @@ function initChatUi({ editor, graphviz }) {
   const input = document.getElementById("tm-chat-input");
   const btnSend = document.getElementById("tm-chat-send");
   const btnClear = document.getElementById("tm-chat-clear");
+  const btnStop = document.getElementById("tm-chat-stop");
   const sendLabel = document.getElementById("tm-chat-send-label");
   const sendSpinner = document.getElementById("tm-chat-send-spinner");
   const historyEl = document.getElementById("tm-chat-history");
@@ -4573,7 +4803,7 @@ function initChatUi({ editor, graphviz }) {
 
   const editorDetails = document.getElementById("tm-editor-details");
 
-  if (!input || !btnSend || !btnClear || !historyEl) return;
+  if (!input || !btnSend || !btnClear || !btnStop || !historyEl) return;
 
   // Auto-grow chat input on focus/input, up to a maximum height.
   // Purpose: keep the default compact (1 line) but allow long prompts without manual resizing.
@@ -4648,9 +4878,19 @@ function initChatUi({ editor, graphviz }) {
   const messages = [];
   let conversationId = "";
   const difyBaseUrl = "https://api.dify.ai/v1";
+  let activeChatAbortController = null; // AbortController for the current request (for Stop button)
 
   function renderHistory() {
     historyEl.innerHTML = "";
+    
+    // Show/hide the entire history details element based on whether there are messages
+    if (messages.length === 0) {
+      historyDetails.classList.add("d-none");
+      return;
+    } else {
+      historyDetails.classList.remove("d-none");
+    }
+    
     for (const m of messages) {
       const div = document.createElement("div");
       div.className = `tm-chat-msg ${m.role === "user" ? "tm-chat-msg-user" : "tm-chat-msg-assistant"}`;
@@ -4722,10 +4962,13 @@ function initChatUi({ editor, graphviz }) {
     btnSend.disabled = true;
     btnClear.disabled = true;
     input.disabled = true;
+    btnStop.disabled = false;
+    btnStop.classList.remove("d-none");
     if (sendLabel) sendLabel.textContent = "Thinking…";
     if (sendSpinner) sendSpinner.classList.remove("d-none");
 
     try {
+      activeChatAbortController = new AbortController();
       const currentDsl = editor.getValue();
       const query = `Current diagram:\n\n${currentDsl}\n\nChat request:\n\n${msg}\n\nReturn ONLY valid JSON with keys: syntax, comments.`;
 
@@ -4735,6 +4978,7 @@ function initChatUi({ editor, graphviz }) {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
+        signal: activeChatAbortController.signal,
         body: JSON.stringify({
           inputs: {},
           query,
@@ -4773,20 +5017,31 @@ function initChatUi({ editor, graphviz }) {
         push("assistant", "Applied update.");
       }
     } catch (e) {
-      push("assistant", `Error: ${e?.message || String(e)}`);
+      // If the user clicks Stop, fetch() throws an AbortError.
+      if (e?.name === "AbortError") push("assistant", "Stopped.");
+      else push("assistant", `Error: ${e?.message || String(e)}`);
     } finally {
+      activeChatAbortController = null;
       btnSend.disabled = false;
       btnClear.disabled = false;
       input.disabled = false;
+      btnStop.classList.add("d-none");
       if (sendLabel) sendLabel.textContent = "Send";
       if (sendSpinner) sendSpinner.classList.add("d-none");
     }
   }
 
   btnSend.addEventListener("click", send);
+  btnStop.addEventListener("click", () => {
+    if (!activeChatAbortController) return;
+    btnStop.disabled = true; // prevent double-click spam while abort resolves
+    activeChatAbortController.abort();
+  });
   input.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
-    e.preventDefault();
+    // Plain Enter sends. Shift+Enter / Ctrl+Enter should insert a newline (do NOT send).
+    if (e.shiftKey || e.ctrlKey) return;
+    e.preventDefault(); // prevent newline
     send();
   });
 
@@ -4892,11 +5147,11 @@ async function main() {
   // Editor: style the current node/link line (writes styles inline into that line)
   initAceLineStylePopover({ editor, graphviz });
 
-  // Gallery
-  const refreshGallery = initGallery(editor, graphviz);
+  // Templates
+  const refreshTemplates = initTemplates(editor, graphviz);
 
-  // Gallery: rebuild saved thumbnails on demand
-  const btnRebuildThumbs = document.getElementById("tm-gallery-rebuild-thumbs");
+  // Templates: rebuild saved thumbnails on demand
+  const btnRebuildThumbs = document.getElementById("tm-templates-rebuild-thumbs");
   if (btnRebuildThumbs) {
     if (!IS_ADMIN) {
       // Non-admins shouldn't see or use this (it can churn CPU + touch lots of LocalStorage).
@@ -4905,7 +5160,7 @@ async function main() {
       btnRebuildThumbs.addEventListener("click", async () => {
         const ok = confirm("Rebuild thumbnails for all saved maps in this browser? This may take a few seconds.");
         if (!ok) return;
-        await rebuildSavedThumbnails({ editor, graphviz, refreshGallery });
+        await rebuildSavedThumbnails({ editor, graphviz, refreshTemplates });
       });
     }
   }
@@ -4959,8 +5214,8 @@ async function main() {
         }
       }
 
-      // Refresh gallery so the saved map appears immediately.
-      if (typeof refreshGallery === "function") refreshGallery();
+      // Refresh templates so the saved map appears immediately.
+      if (typeof refreshTemplates === "function") refreshTemplates();
     }
 
     // Admin-only: modal with a separate click target for the file picker (required by browsers).

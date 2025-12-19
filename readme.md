@@ -18,14 +18,14 @@ Colours: use named colours (e.g. `red`, `aliceblue`) or `rgb(r,g,b)`. Note: `#` 
 
 # Styles
 Background: aliceblue
-Default box colour: red
-Default box shape: rounded
-Default box shadow: strong
-Default box border: 1px dotted green
+Default node colour: red
+Default node shape: rounded
+Default node shadow: strong
+Default node border: 1px dotted green
 Direction: right-left
 Label wrap: 20 characters
-Rank gap: 2
-Node gap: 2
+Spacing along: 2
+Spacing across: 2
 
 # Contents
 Title: My new graphete
