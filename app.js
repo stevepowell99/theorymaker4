@@ -1575,6 +1575,8 @@ function initStyleModal({ editor, graphviz }) {
             ...cur,
             background: cw.bg,
             textColour: pickBestTextColour(cw.bg, cw.box),
+            defaultNodeTextColour: pickBestTextColour(cw.box, cw.box), // node text on node fill
+            defaultBoxTextColour: pickBestTextColour(cw.bg, cw.box), // group title on diagram background
             defaultBoxColour: cw.box,
             defaultLinkColour: nextLinkHex,
             defaultBoxBorder: nextBorder,
@@ -1669,6 +1671,8 @@ function initStyleModal({ editor, graphviz }) {
     boxBorderColor,
     boxShadow,
     textColor,
+    defaultNodeTextColor,
+    defaultGroupTextColor,
     titleSize,
     linkColor,
     linkStyle,

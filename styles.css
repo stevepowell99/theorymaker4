@@ -46,7 +46,7 @@ body {
 
 .tm-chat-input::placeholder {
   /* Make placeholder a bit lighter + italic (without affecting typed text) */
-  color: #adb5bd; /* Bootstrap "secondary" ish */
+  color: #6c757d; /* Bootstrap "secondary" - darker */
   font-style: italic;
 }
 
