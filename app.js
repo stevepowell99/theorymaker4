@@ -29,6 +29,7 @@ const STYLE_SETTING_KEYS = [
   "defaultNodeTextColour",
   "defaultBoxTextColour",
   "titleSize",
+  "titlePosition",
   "defaultBoxColour",
   "defaultBoxShape",
   "defaultBoxBorder",
@@ -91,6 +92,7 @@ function buildEditorStyleLinesFromUiStyleSettings(sIn) {
   if (s.defaultNodeTextColour) lines.push(`Default node text colour: ${cssColorToEditorToken(s.defaultNodeTextColour)}`);
   if (s.defaultBoxTextColour) lines.push(`Default group text colour: ${cssColorToEditorToken(s.defaultBoxTextColour)}`);
   if (Number.isFinite(Number(s.titleSize))) lines.push(`Title size: ${Math.round(Number(s.titleSize))}`);
+  if (s.titlePosition) lines.push(`Title position: ${String(s.titlePosition).trim()}`);
   if (s.defaultBoxColour) lines.push(`Default node colour: ${cssColorToEditorToken(s.defaultBoxColour)}`);
   if (s.defaultBoxShape) lines.push(`Default node shape: ${String(s.defaultBoxShape).trim()}`);
   if (s.defaultBoxShadow) lines.push(`Default node shadow: ${String(s.defaultBoxShadow).trim()}`);
@@ -168,6 +170,7 @@ const SUPPORTED_SETTING_LINE_KEYS = new Set([
   "default group text colour",
   "default group text color",
   "title size",
+  "title position",
   "default node colour",
   "default node color",
   "default node shape",
@@ -713,6 +716,7 @@ function initAceLineStylePopover({ editor, graphviz }) {
       "default group text colour": "Default group text colour",
       "default group text color": "Default group text colour",
       "title size": "Title size",
+    "title position": "Title position",
       "default node colour": "Default node colour",
       "default node color": "Default node colour",
       "default node shape": "Default node shape",
@@ -838,6 +842,25 @@ function initAceLineStylePopover({ editor, graphviz }) {
         applyPatch({ titleSize: Number(v) })
       );
       settingModalBody.appendChild(wrap);
+      focusEl = f;
+    } else if (key === "title position") {
+      const initial = normalizeTitlePosition(cur.titlePosition) || "bottom-left";
+      const { el, focusEl: f } = makeSelect(
+        [
+          { value: "bottom-left", label: "bottom left" },
+          { value: "bottom-centre", label: "bottom centre" },
+          { value: "bottom-right", label: "bottom right" },
+          { value: "top-left", label: "top left" },
+          { value: "top-centre", label: "top centre" },
+          { value: "top-right", label: "top right" },
+        ],
+        initial,
+        (v) => {
+          const p = normalizeTitlePosition(v);
+          applyPatch({ titlePosition: p === "bottom-left" ? null : p });
+        }
+      );
+      settingModalBody.appendChild(el);
       focusEl = f;
     } else if (key === "label wrap") {
       const { wrap, focusEl: f } = makeRange({ min: 8, max: 40, step: 1, value: Number(cur.labelWrap || 18), suffix: "" }, (v) =>
@@ -1253,6 +1276,9 @@ function initStyleModal({ editor, graphviz }) {
   const defaultGroupTextColor = document.getElementById("tm-style-default-group-text-color");
   const titleSize = document.getElementById("tm-style-title-size");
   const titleSizeVal = document.getElementById("tm-style-title-size-val");
+  const titlePosition = document.getElementById("tm-style-title-position");
+  const titlePosBtnsWrap = document.getElementById("tm-style-title-position-btns");
+  const titlePosBtns = titlePosBtnsWrap ? Array.from(titlePosBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const linkColor = document.getElementById("tm-style-link-color");
   const linkStyle = document.getElementById("tm-style-link-style");
   const linkWidth = document.getElementById("tm-style-link-width");
@@ -1297,6 +1323,16 @@ function initStyleModal({ editor, graphviz }) {
     }
   }
 
+  function setTitlePositionButtonsUi(value) {
+    if (!titlePosBtns.length) return;
+    const v = normalizeTitlePosition(value) || "bottom-left";
+    for (const b of titlePosBtns) {
+      const on = String(b.dataset.value || "") === v;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+
   // Clicking a direction button writes to the hidden select (source of truth for existing code)
   if (dir && dirBtns.length) {
     for (const b of dirBtns) {
@@ -1309,6 +1345,20 @@ function initStyleModal({ editor, graphviz }) {
     }
     dir.addEventListener("change", () => setDirectionButtonsUi(dir.value));
     setDirectionButtonsUi(dir.value || "LR");
+  }
+
+  // Clicking a title-position button writes to the hidden select (source of truth)
+  if (titlePosition && titlePosBtns.length) {
+    for (const b of titlePosBtns) {
+      b.addEventListener("click", () => {
+        const v = String(b.dataset.value || "bottom-left");
+        titlePosition.value = v;
+        setTitlePositionButtonsUi(v);
+        titlePosition.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+    titlePosition.addEventListener("change", () => setTitlePositionButtonsUi(titlePosition.value));
+    setTitlePositionButtonsUi(titlePosition.value || "bottom-left");
   }
 
   function setControlsFromStyleSettings(sIn) {
@@ -1330,6 +1380,9 @@ function initStyleModal({ editor, graphviz }) {
 
       if (titleSize) titleSize.value = String(Math.max(6, Math.min(72, Math.round(Number(s.titleSize || 18)))));
       syncRangeValueLabel(titleSize, titleSizeVal);
+
+      if (titlePosition) titlePosition.value = normalizeTitlePosition(s.titlePosition) || "bottom-left";
+      setTitlePositionButtonsUi(titlePosition?.value || "bottom-left");
 
       if (dir) dir.value = String(s.direction || "LR");
       setDirectionButtonsUi(dir?.value || "LR");
@@ -1373,6 +1426,11 @@ function initStyleModal({ editor, graphviz }) {
     if (defaultNodeTextColor) out.defaultNodeTextColour = normalizeColor(defaultNodeTextColor.value);
     if (defaultGroupTextColor) out.defaultBoxTextColour = normalizeColor(defaultGroupTextColor.value);
     if (titleSize) out.titleSize = Number(titleSize.value);
+    if (titlePosition) {
+      const p = normalizeTitlePosition(titlePosition.value);
+      // Keep default bottom-left implicit (so we don't spam the editor with a redundant setting line).
+      if (p && p !== "bottom-left") out.titlePosition = p;
+    }
     if (dir) out.direction = normalizeDirection(dir.value) || dir.value;
     if (boxFill) out.defaultBoxColour = normalizeColor(boxFill.value);
     if (boxShape) out.defaultBoxShape = String(boxShape.value || "").trim().toLowerCase() || null;
@@ -1670,6 +1728,7 @@ function initStyleModal({ editor, graphviz }) {
     defaultNodeTextColor,
     defaultGroupTextColor,
     titleSize,
+    titlePosition,
     linkColor,
     linkStyle,
     linkWidth,
@@ -1681,6 +1740,151 @@ function initStyleModal({ editor, graphviz }) {
     el.addEventListener("input", applyLiveFromModal);
     el.addEventListener("change", applyLiveFromModal);
   }
+}
+
+function initTitleModal({ editor, graphviz }) {
+  // Purpose: small focused modal for editing title styling (size/colour/position).
+  const modalEl = document.getElementById("tm-title-modal");
+  if (!modalEl) return null;
+
+  const titleText = document.getElementById("tm-title-text");
+  const textColor = document.getElementById("tm-title-text-color");
+  const titleSize = document.getElementById("tm-title-size");
+  const titleSizeVal = document.getElementById("tm-title-size-val");
+  const titlePosition = document.getElementById("tm-title-position");
+  const titlePosBtnsWrap = document.getElementById("tm-title-position-btns");
+  const titlePosBtns = titlePosBtnsWrap ? Array.from(titlePosBtnsWrap.querySelectorAll('button[data-value]')) : [];
+
+  const bs = globalThis.bootstrap;
+  const modal = bs?.Modal ? new bs.Modal(modalEl) : null;
+  let suppressLiveApply = false;
+
+  function syncRangeValueLabel(rangeEl, valEl) {
+    if (!rangeEl || !valEl) return;
+    valEl.textContent = String(rangeEl.value);
+  }
+  if (titleSize && titleSizeVal) {
+    titleSize.addEventListener("input", () => syncRangeValueLabel(titleSize, titleSizeVal));
+    syncRangeValueLabel(titleSize, titleSizeVal);
+  }
+
+  function setTitlePositionButtonsUi(value) {
+    if (!titlePosBtns.length) return;
+    const v = normalizeTitlePosition(value) || "bottom-left";
+    for (const b of titlePosBtns) {
+      const on = String(b.dataset.value || "") === v;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+
+  if (titlePosition && titlePosBtns.length) {
+    for (const b of titlePosBtns) {
+      b.addEventListener("click", () => {
+        const v = String(b.dataset.value || "bottom-left");
+        titlePosition.value = v;
+        setTitlePositionButtonsUi(v);
+        titlePosition.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+    titlePosition.addEventListener("change", () => setTitlePositionButtonsUi(titlePosition.value));
+    setTitlePositionButtonsUi(titlePosition.value || "bottom-left");
+  }
+
+  function setControlsFromStyleSettings(sIn) {
+    suppressLiveApply = true;
+    try {
+      const s = sIn || {};
+      if (titleText) titleText.value = String(s.title || "").trim();
+      const tcRgb = resolveCssColorToRgb(s.textColour || "#111827") || { r: 17, g: 24, b: 39 };
+      if (textColor) textColor.value = rgbToHex(tcRgb);
+
+      if (titleSize) titleSize.value = String(Math.max(10, Math.min(36, Math.round(Number(s.titleSize || 18)))));
+      syncRangeValueLabel(titleSize, titleSizeVal);
+
+      if (titlePosition) titlePosition.value = normalizeTitlePosition(s.titlePosition) || "bottom-left";
+      setTitlePositionButtonsUi(titlePosition?.value || "bottom-left");
+    } finally {
+      suppressLiveApply = false;
+    }
+  }
+
+  function upsertTitleLineInEditor(nextTitleRaw) {
+    // Purpose: update/insert/remove the single "Title: ..." line in the editor (and remove duplicates).
+    const nextTitle = String(nextTitleRaw ?? "").trim();
+    const lines = editor.getValue().split(/\r?\n/);
+
+    const titleIdxs = [];
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = String(lines[i] || "").trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const { code } = stripCommentKeepSuffix(lines[i]);
+      if (/^\s*title\s*:\s*(.+)\s*$/i.test(code)) titleIdxs.push(i);
+    }
+
+    if (!titleIdxs.length) {
+      if (!nextTitle) return false;
+      // Insert after any leading blank/comment lines to keep top-of-file tidy.
+      let insertAt = 0;
+      while (insertAt < lines.length) {
+        const t = String(lines[insertAt] || "").trim();
+        if (t === "" || t.startsWith("#")) insertAt++;
+        else break;
+      }
+      lines.splice(insertAt, 0, `Title: ${nextTitle}`);
+      editor.setValue(lines.join("\n"), -1);
+      return true;
+    }
+
+    // If empty: delete all Title lines.
+    if (!nextTitle) {
+      for (let k = titleIdxs.length - 1; k >= 0; k--) lines.splice(titleIdxs[k], 1);
+      editor.setValue(lines.join("\n"), -1);
+      return true;
+    }
+
+    // Replace first, remove duplicates.
+    const firstIdx = titleIdxs[0];
+    const { comment } = stripCommentKeepSuffix(lines[firstIdx]);
+    lines[firstIdx] = `Title: ${nextTitle}${comment ? ` ${comment.trimStart()}` : ""}`.trimEnd();
+    for (let k = titleIdxs.length - 1; k >= 1; k--) lines.splice(titleIdxs[k], 1);
+    editor.setValue(lines.join("\n"), -1);
+    return true;
+  }
+
+  function applyLive() {
+    if (suppressLiveApply) return;
+    const parsed = dslToDot(editor.getValue()).settings;
+    const cur = coerceUiStyleSettings(pickStyleSettings(parsed));
+
+    // Title text is NOT a "style setting" in this app; it stays as a user-facing "Title: ..." line.
+    if (titleText) upsertTitleLineInEditor(titleText.value);
+
+    const patch = {};
+    if (textColor) patch.textColour = normalizeColor(textColor.value);
+    if (titleSize) patch.titleSize = Number(titleSize.value);
+    if (titlePosition) {
+      const p = normalizeTitlePosition(titlePosition.value);
+      patch.titlePosition = p === "bottom-left" ? null : p;
+    }
+
+    const next = { ...cur, ...patch };
+    upsertEditorStyleBlockFromUiStyleSettings(editor, next);
+    afterEditorMutation({ editor, graphviz });
+  }
+
+  const liveEls = [titleText, textColor, titleSize, titlePosition].filter(Boolean);
+  for (const el of liveEls) {
+    el.addEventListener("input", applyLive);
+    el.addEventListener("change", applyLive);
+  }
+
+  return function openTitleModal() {
+    const parsed = dslToDot(editor.getValue()).settings;
+    // Need `title` too (not in pickStyleSettings), so pass the parsed settings directly.
+    setControlsFromStyleSettings(parsed || {});
+    modal?.show();
+  };
 }
 
 // -----------------------------
@@ -2245,6 +2449,12 @@ function coerceUiStyleSettings(obj) {
       if (Number.isFinite(n) && n > 0) out[k] = n;
       continue;
     }
+    if (k === "titlePosition") {
+      const p = normalizeTitlePosition(v);
+      // Store only non-default positions in UI settings (default is bottom-left and can be implicit).
+      if (p && p !== "bottom-left") out[k] = p;
+      continue;
+    }
     out[k] = v;
   }
   return out;
@@ -2333,6 +2543,59 @@ function parseBorder(borderText) {
   if (style) out.style = style;
   if (color) out.color = color;
   return out;
+}
+
+function parseEdgeBorderLoosePart(partRaw) {
+  // Purpose: parse *partial* edge border specs so users can write:
+  // - [seagreen] (colour only)
+  // - [1px] (width only)
+  // - [dotted] (style only)
+  // - [1px solid] (width + style)
+  // - [1px solid seagreen] (full)
+  // - [solid seagreen] (style + colour)
+  const part = String(partRaw || "").trim();
+  if (!part) return {};
+
+  const normalizeColorIfValid = (token) => {
+    // Avoid treating arbitrary words (e.g. "decreases") as colours.
+    const rgb = resolveCssColorToRgb(token);
+    if (!rgb) return null;
+    return normalizeColor(token);
+  };
+
+  // Try full border text first (only works for WIDTH STYLE [COLOUR]).
+  const full = parseBorder(part);
+  if (full && (full.penwidth || full.style || full.color)) return full;
+
+  // Width only
+  const mW = part.match(/^(\d+)(px)?$/i);
+  if (mW) return { penwidth: mW[1] };
+
+  // Style only
+  const s = part.toLowerCase();
+  if (["solid", "dotted", "dashed", "bold"].includes(s)) return { style: s };
+
+  // Style + colour (no width)
+  const mSC = part.match(/^(solid|dotted|dashed|bold)\s+(.+)$/i);
+  if (mSC) {
+    const c = normalizeColorIfValid(mSC[2].trim());
+    const out = { style: mSC[1].toLowerCase() };
+    if (c) out.color = c;
+    return out;
+  }
+
+  // Colour only
+  const c = normalizeColorIfValid(part);
+  if (c) return { color: c };
+
+  return {};
+}
+
+function looksLikeEdgeStyleToken(token) {
+  const t = String(token || "").trim();
+  if (!t) return false;
+  const b = parseEdgeBorderLoosePart(t);
+  return Boolean(b && (b.penwidth || b.style || b.color));
 }
 
 function clampByte(n) {
@@ -2766,6 +3029,44 @@ function normalizeDirection(value) {
   return null;
 }
 
+function normalizeTitlePosition(value) {
+  // MapScript values accepted (case-insensitive):
+  // - top left|centre|center|right
+  // - bottom left|centre|center|right
+  // - also accept hyphen/underscore forms (e.g. "bottom-left")
+  // - single word shortcuts: left|centre|center|right map to bottom-*
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return null;
+
+  const compact = raw.replace(/[\s_-]+/g, "");
+  const mapCompact = new Map([
+    ["topleft", "top-left"],
+    ["topcenter", "top-centre"],
+    ["topcentre", "top-centre"],
+    ["topright", "top-right"],
+    ["bottomleft", "bottom-left"],
+    ["bottomcenter", "bottom-centre"],
+    ["bottomcentre", "bottom-centre"],
+    ["bottomright", "bottom-right"],
+    ["left", "bottom-left"],
+    ["center", "bottom-centre"],
+    ["centre", "bottom-centre"],
+    ["right", "bottom-right"],
+    ["top", "top-centre"],
+    ["bottom", "bottom-centre"],
+  ]);
+  const hit = mapCompact.get(compact);
+  return hit || null;
+}
+
+function titlePositionToGraphvizAttrs(titlePosition) {
+  // Default: bottom-left (preferred)
+  const p = normalizeTitlePosition(titlePosition) || "bottom-left";
+  const loc = p.startsWith("top") ? "t" : "b";
+  const just = p.endsWith("left") ? "l" : p.endsWith("right") ? "r" : "c";
+  return { labelloc: loc, labeljust: just };
+}
+
 function parseLeadingNumber(value) {
   const m = String(value || "").trim().match(/^-?\d+(\.\d+)?/);
   return m ? Number(m[0]) : null;
@@ -2811,6 +3112,7 @@ function dslToDot(dslText) {
     textColour: null,
     defaultNodeTextColour: null,
     defaultBoxTextColour: null,
+    titlePosition: null,
     defaultBoxColour: null,
     defaultBoxShape: null,
     defaultBoxBorder: null,
@@ -2945,6 +3247,7 @@ function dslToDot(dslText) {
       else if (key === "default node text colour" || key === "default node text color") settings.defaultNodeTextColour = normalizeColor(value);
       else if (key === "default group text colour" || key === "default group text color") settings.defaultBoxTextColour = normalizeColor(value);
       else if (key === "title size") settings.titleSize = parseLeadingNumber(value);
+      else if (key === "title position") settings.titlePosition = normalizeTitlePosition(value);
       else if (key === "default node colour" || key === "default node color") settings.defaultBoxColour = normalizeColor(value);
       else if (key === "default node shape") settings.defaultBoxShape = value.trim().toLowerCase();
       else if (key === "default node border") settings.defaultBoxBorder = value;
@@ -3076,26 +3379,34 @@ function dslToDot(dslText) {
         const labelStyleFromKv = kv["label style"] || kv.labelstyle || "";
         const labelSizeFromKv = kv["label size"] || kv.labelsize || "";
 
-        // Label/border (prefer explicit keys, else keep legacy loose parsing)
+        // Label/border (prefer explicit keys)
         if (labelFromKv) edgeAttrs.label = labelFromKv;
-        else if (loose[0]) edgeAttrs.label = loose[0];
 
-        const borderText = borderFromKv || (loose[1] ? String(loose[1]) : "");
-        if (borderText) {
-          const b = parseBorder(borderText);
+        // Border from explicit key: allow full or partial, just like loose tokens.
+        if (borderFromKv) {
+          const b = parseEdgeBorderLoosePart(borderFromKv);
           if (b.color) edgeAttrs.color = b.color;
           if (b.penwidth) edgeAttrs.penwidth = b.penwidth;
           if (b.style) addStyle(edgeAttrs, b.style);
         }
 
-        // If only one loose part and it looks like a border, treat it as style instead of label (legacy)
-        const onlyLoose = loose.length === 1 ? String(loose[0] || "") : "";
-        if (!labelFromKv && !borderFromKv && loose.length === 1 && /\b(px)?\b/i.test(onlyLoose) && /\b(solid|dotted|dashed)\b/i.test(onlyLoose)) {
-          delete edgeAttrs.label;
-          const b = parseBorder(onlyLoose);
-          if (b.color) edgeAttrs.color = b.color;
-          if (b.penwidth) edgeAttrs.penwidth = b.penwidth;
-          if (b.style) addStyle(edgeAttrs, b.style);
+        // Loose tokens (split by "|") are now more flexible:
+        // - first token is a label ONLY if it doesn't look like a style token (colour/width/style)
+        // - any remaining tokens are treated as style fragments (can be partial: colour-only, width-only, etc)
+        const looseTokens = Array.isArray(loose) ? loose.map((x) => String(x || "").trim()).filter(Boolean) : [];
+        if (!labelFromKv && looseTokens.length) {
+          if (!looksLikeEdgeStyleToken(looseTokens[0])) {
+            edgeAttrs.label = looseTokens[0];
+            looseTokens.shift();
+          }
+        }
+        if (!borderFromKv && looseTokens.length) {
+          for (const tok of looseTokens) {
+            const b = parseEdgeBorderLoosePart(tok);
+            if (b.color) edgeAttrs.color = b.color;
+            if (b.penwidth) edgeAttrs.penwidth = b.penwidth;
+            if (b.style) addStyle(edgeAttrs, b.style);
+          }
         }
 
         // Link label styling
@@ -3103,7 +3414,6 @@ function dslToDot(dslText) {
         const sz = parseLeadingNumber(labelSizeFromKv);
         if (Number.isFinite(sz) && sz > 0) edgeAttrs.fontsize = sz;
 
-        // If only one part and it looks like a border, treat it as style instead of label
       }
 
       for (const s of sources) {
@@ -3148,7 +3458,10 @@ function dslToDot(dslText) {
     // Graphviz doesn't have a simple "margin-bottom for title", so we add a trailing newline.
     const fsRaw = Number(settings.titleSize);
     const fs = Number.isFinite(fsRaw) && fsRaw > 0 ? fsRaw : 18;
-    dot.push(`  label="${settings.title.replaceAll('"', '\\"')}\\n"; labelloc="t"; fontsize="${String(fs)}";`);
+    const tp = titlePositionToGraphvizAttrs(settings.titlePosition);
+    dot.push(
+      `  label="${settings.title.replaceAll('"', '\\"')}\\n"; labelloc="${tp.labelloc}"; labeljust="${tp.labeljust}"; fontsize="${String(fs)}";`
+    );
   }
   if (settings.direction) dot.push(`  rankdir="${settings.direction}";`);
   // Graphviz ranksep/nodesep are in inches; MapScript values are treated as "px-ish", so scale down.
@@ -3556,9 +3869,10 @@ function parseTmEdgeDomIdFromEl(el) {
   return m ? Number(m[1]) : null;
 }
 
-function initVizInteractivity(editor, graphviz) {
+function initVizInteractivity(editor, graphviz, opts = {}) {
   const vizEl = document.getElementById("tm-viz");
   if (!vizEl) return;
+  const openTitleModal = typeof opts?.openTitleModal === "function" ? opts.openTitleModal : null;
 
   // Hover-only delete button (red X) for nodes/links (fast delete with confirm).
   let hoverDeleteBtn = document.getElementById("tm-viz-hover-delete");
@@ -3586,20 +3900,15 @@ function initVizInteractivity(editor, graphviz) {
   const nodeBwInput = document.getElementById("tm-viz-node-border-width");
   const nodeBsSel = document.getElementById("tm-viz-node-border-style");
   const nodeBcInput = document.getElementById("tm-viz-node-border-color");
-  const nodeTextSizeEnabled = document.getElementById("tm-viz-node-text-size-enabled");
   const nodeTextSizeInput = document.getElementById("tm-viz-node-text-size");
 
   // Cluster fields
   const clusterLabelInput = document.getElementById("tm-viz-cluster-label");
-  const clusterFillEnabled = document.getElementById("tm-viz-cluster-fill-enabled");
   const clusterFillInput = document.getElementById("tm-viz-cluster-fill");
-  const clusterBorderEnabled = document.getElementById("tm-viz-cluster-border-enabled");
   const clusterBwInput = document.getElementById("tm-viz-cluster-border-width");
   const clusterBsSel = document.getElementById("tm-viz-cluster-border-style");
   const clusterBcInput = document.getElementById("tm-viz-cluster-border-color");
-  const clusterTextColourEnabled = document.getElementById("tm-viz-cluster-text-colour-enabled");
   const clusterTextColourInput = document.getElementById("tm-viz-cluster-text-colour");
-  const clusterTextSizeEnabled = document.getElementById("tm-viz-cluster-text-size-enabled");
   const clusterTextSizeInput = document.getElementById("tm-viz-cluster-text-size");
 
   // Node modal: add-link widgets
@@ -3633,6 +3942,9 @@ function initVizInteractivity(editor, graphviz) {
 
   let hoverDeleteTarget = null; // { type: "node", nodeId } | { type: "edge", lineNo, fromId, toId }
 
+  // Baseline values captured when the modal opens; used to write ONLY changed attrs (and remove duplicates/redundant overrides).
+  let baseline = null;
+
   function hideHoverDelete() {
     hoverDeleteBtn?.classList?.remove("tm-show");
     hoverDeleteTarget = null;
@@ -3652,27 +3964,27 @@ function initVizInteractivity(editor, graphviz) {
     hoverDeleteBtn.classList.add("tm-show");
   }
 
-  // Keep node text size widgets in sync.
-  nodeTextSizeEnabled?.addEventListener("change", () => {
-    if (nodeTextSizeInput) nodeTextSizeInput.disabled = !nodeTextSizeEnabled.checked;
-  });
+  function getDiagramBackgroundHexFromEditor(dslText) {
+    const s = dslToDot(String(dslText || "")).settings || {};
+    const rgb = resolveCssColorToRgb(s.background || "#ffffff") || { r: 255, g: 255, b: 255 };
+    return rgbToHex(rgb);
+  }
 
-  // Keep cluster widgets in sync.
-  clusterFillEnabled?.addEventListener("change", () => {
-    if (clusterFillInput) clusterFillInput.disabled = !clusterFillEnabled.checked;
-  });
-  clusterBorderEnabled?.addEventListener("change", () => {
-    const on = Boolean(clusterBorderEnabled.checked);
-    if (clusterBwInput) clusterBwInput.disabled = !on;
-    if (clusterBsSel) clusterBsSel.disabled = !on;
-    if (clusterBcInput) clusterBcInput.disabled = !on;
-  });
-  clusterTextColourEnabled?.addEventListener("change", () => {
-    if (clusterTextColourInput) clusterTextColourInput.disabled = !clusterTextColourEnabled.checked;
-  });
-  clusterTextSizeEnabled?.addEventListener("change", () => {
-    if (clusterTextSizeInput) clusterTextSizeInput.disabled = !clusterTextSizeEnabled.checked;
-  });
+  function getDefaultGroupTextHexFromEditor(dslText) {
+    const s = dslToDot(String(dslText || "")).settings || {};
+    const rgb = resolveCssColorToRgb(s.defaultBoxTextColour || "#111827") || { r: 17, g: 24, b: 39 };
+    return rgbToHex(rgb);
+  }
+
+  function borderUiEquals(a, b) {
+    const aa = a || {};
+    const bb = b || {};
+    return (
+      Number(aa.width ?? 0) === Number(bb.width ?? 0) &&
+      String(aa.style || "solid") === String(bb.style || "solid") &&
+      String(aa.colorHex || "").toLowerCase() === String(bb.colorHex || "").toLowerCase()
+    );
+  }
 
   function setActions({ save, del, message }) {
     canSave = Boolean(save);
@@ -3798,6 +4110,7 @@ function initVizInteractivity(editor, graphviz) {
     suppressLiveApply = true;
     try {
       const lines = editor.getValue().split(/\r?\n/);
+      baseline = null;
 
       clearVizSelection();
       setActions({ save: true, del: true, message: "" });
@@ -3836,10 +4149,16 @@ function initVizInteractivity(editor, graphviz) {
         const rounded = fromAttrs?.rounded ?? defaults.rounded;
         if (nodeRoundedChk) nodeRoundedChk.checked = Boolean(rounded);
 
-        const textSizeScale = fromAttrs?.textSizeScale;
-        if (nodeTextSizeEnabled) nodeTextSizeEnabled.checked = Number.isFinite(textSizeScale) && textSizeScale !== 1;
-        if (nodeTextSizeInput) nodeTextSizeInput.value = String(Number.isFinite(textSizeScale) ? textSizeScale : 1);
-        if (nodeTextSizeInput) nodeTextSizeInput.disabled = !nodeTextSizeEnabled?.checked;
+        const textSizeScale = Number.isFinite(fromAttrs?.textSizeScale) ? Number(fromAttrs.textSizeScale) : 1;
+        if (nodeTextSizeInput) nodeTextSizeInput.value = String(textSizeScale);
+
+        baseline = {
+          type: "node",
+          fillHex: (fillHex || "#ffffff").toLowerCase(),
+          borderUi: { width: Number(borderUi?.width ?? 0), style: borderUi?.style || "solid", colorHex: borderUi?.colorHex || "#999999" },
+          rounded: Boolean(rounded),
+          textSizeScale,
+        };
 
         // Add-link widgets (only meaningful for editable explicit nodes)
         const nodesById = buildNodesByIdFromDsl();
@@ -3879,36 +4198,27 @@ function initVizInteractivity(editor, graphviz) {
 
         const fromAttrs = styleInnerToClusterUi(c.styleInner || "");
 
-        const fillHex = fromAttrs?.fillHex || null;
-        if (clusterFillEnabled) clusterFillEnabled.checked = Boolean(fillHex);
-        if (clusterFillInput) {
-          clusterFillInput.value = fillHex || "#ffffff";
-          clusterFillInput.disabled = !clusterFillEnabled?.checked;
-        }
+        const baselineFillHex = (fromAttrs?.fillHex || getDiagramBackgroundHexFromEditor(editor.getValue()) || "#ffffff").toLowerCase();
+        if (clusterFillInput) clusterFillInput.value = baselineFillHex;
 
-        const borderUi = fromAttrs?.borderUi || null;
-        if (clusterBorderEnabled) clusterBorderEnabled.checked = Boolean(borderUi);
-        if (clusterBwInput) clusterBwInput.value = String(borderUi?.width ?? 1);
-        if (clusterBsSel) clusterBsSel.value = String(borderUi?.style || "solid");
-        if (clusterBcInput) clusterBcInput.value = String(borderUi?.colorHex || "#cccccc");
-        const borderOn = Boolean(clusterBorderEnabled?.checked);
-        if (clusterBwInput) clusterBwInput.disabled = !borderOn;
-        if (clusterBsSel) clusterBsSel.disabled = !borderOn;
-        if (clusterBcInput) clusterBcInput.disabled = !borderOn;
+        const baselineBorderUi = fromAttrs?.borderUi || { width: 1, style: "solid", colorHex: "#cccccc" };
+        if (clusterBwInput) clusterBwInput.value = String(baselineBorderUi?.width ?? 1);
+        if (clusterBsSel) clusterBsSel.value = String(baselineBorderUi?.style || "solid");
+        if (clusterBcInput) clusterBcInput.value = String(baselineBorderUi?.colorHex || "#cccccc");
 
-        const tc = fromAttrs?.textColourHex || null;
-        if (clusterTextColourEnabled) clusterTextColourEnabled.checked = Boolean(tc);
-        if (clusterTextColourInput) {
-          clusterTextColourInput.value = tc || "#111827";
-          clusterTextColourInput.disabled = !clusterTextColourEnabled?.checked;
-        }
+        const baselineTextHex = (fromAttrs?.textColourHex || getDefaultGroupTextHexFromEditor(editor.getValue()) || "#111827").toLowerCase();
+        if (clusterTextColourInput) clusterTextColourInput.value = baselineTextHex;
 
-        const ts = fromAttrs?.textSizeScale;
-        if (clusterTextSizeEnabled) clusterTextSizeEnabled.checked = Number.isFinite(ts) && ts !== 1;
-        if (clusterTextSizeInput) {
-          clusterTextSizeInput.value = String(Number.isFinite(ts) ? ts : 1);
-          clusterTextSizeInput.disabled = !clusterTextSizeEnabled?.checked;
-        }
+        const baselineTextSizeScale = Number.isFinite(fromAttrs?.textSizeScale) ? Number(fromAttrs.textSizeScale) : 1;
+        if (clusterTextSizeInput) clusterTextSizeInput.value = String(baselineTextSizeScale);
+
+        baseline = {
+          type: "cluster",
+          fillHex: baselineFillHex,
+          borderUi: { width: Number(baselineBorderUi?.width ?? 1), style: String(baselineBorderUi?.style || "solid"), colorHex: String(baselineBorderUi?.colorHex || "#cccccc") },
+          textColourHex: baselineTextHex,
+          textSizeScale: baselineTextSizeScale,
+        };
 
         return;
       }
@@ -3972,21 +4282,31 @@ function initVizInteractivity(editor, graphviz) {
       if (!parsed) return;
       changedIdx = parsed.idx;
 
-      const fillHex = nodeFillInput?.value || "";
-      const border = uiToBorderText({
-        width: nodeBwInput?.value ?? 0,
-        style: nodeBsSel?.value ?? "solid",
-        colorHex: nodeBcInput?.value ?? "#999999",
-      });
-      const rounded = Boolean(nodeRoundedChk?.checked);
-      const textSizeScale = nodeTextSizeEnabled?.checked ? Number(nodeTextSizeInput?.value) : null;
-      if (nodeTextSizeEnabled?.checked && !(Number.isFinite(textSizeScale) && textSizeScale > 0)) return;
+      const base = baseline && baseline.type === "node" ? baseline : null;
+      if (!base) return;
+
+      const curFillHex = String(nodeFillInput?.value || "#ffffff").toLowerCase();
+      const curBorderUi = {
+        width: Number(nodeBwInput?.value ?? 0),
+        style: String(nodeBsSel?.value ?? "solid"),
+        colorHex: String(nodeBcInput?.value ?? "#999999"),
+      };
+      const curRounded = Boolean(nodeRoundedChk?.checked);
+      const curTextSizeScale = Number(nodeTextSizeInput?.value ?? 1);
+      if (!(Number.isFinite(curTextSizeScale) && curTextSizeScale > 0)) return;
+
+      const fillHex = curFillHex !== base.fillHex ? curFillHex : null;
+      const borderText = !borderUiEquals(curBorderUi, base.borderUi)
+        ? uiToBorderText({ width: curBorderUi.width, style: curBorderUi.style, colorHex: curBorderUi.colorHex })
+        : "";
+      const rounded = curRounded !== base.rounded ? curRounded : false;
+      const textSizeScale = curTextSizeScale !== base.textSizeScale ? curTextSizeScale : null;
 
       const styleInner = upsertNodeStyleInner(parsed.styleInner || "", {
-        fillHex: fillHex ? fillHex : null,
-        borderText: border || "",
+        fillHex,
+        borderText: borderText || "",
         rounded,
-        textSizeScale: Number.isFinite(textSizeScale) && textSizeScale > 0 ? textSizeScale : null,
+        textSizeScale,
       });
 
       const ok = setNodeDefLine(lines, selection.nodeId, {
@@ -4002,23 +4322,31 @@ function initVizInteractivity(editor, graphviz) {
       if (!c) return;
       changedIdx = c.idx;
 
-      const fillHex = clusterFillEnabled?.checked ? (clusterFillInput?.value || "") : null;
-      const borderText = clusterBorderEnabled?.checked
-        ? uiToBorderText({
-            width: clusterBwInput?.value ?? 0,
-            style: clusterBsSel?.value ?? "solid",
-            colorHex: clusterBcInput?.value ?? "#cccccc",
-          })
+      const base = baseline && baseline.type === "cluster" ? baseline : null;
+      if (!base) return;
+
+      const curFillHex = String(clusterFillInput?.value || "#ffffff").toLowerCase();
+      const curBorderUi = {
+        width: Number(clusterBwInput?.value ?? 1),
+        style: String(clusterBsSel?.value ?? "solid"),
+        colorHex: String(clusterBcInput?.value ?? "#cccccc"),
+      };
+      const curTextHex = String(clusterTextColourInput?.value || "#111827").toLowerCase();
+      const curTextSizeScale = Number(clusterTextSizeInput?.value ?? 1);
+      if (!(Number.isFinite(curTextSizeScale) && curTextSizeScale > 0)) return;
+
+      const fillHex = curFillHex !== base.fillHex ? curFillHex : null;
+      const borderText = !borderUiEquals(curBorderUi, base.borderUi)
+        ? uiToBorderText({ width: curBorderUi.width, style: curBorderUi.style, colorHex: curBorderUi.colorHex })
         : "";
-      const textColourHex = clusterTextColourEnabled?.checked ? (clusterTextColourInput?.value || "") : null;
-      const textSizeScale = clusterTextSizeEnabled?.checked ? Number(clusterTextSizeInput?.value) : null;
-      if (clusterTextSizeEnabled?.checked && !(Number.isFinite(textSizeScale) && textSizeScale > 0)) return;
+      const textColourHex = curTextHex !== base.textColourHex ? curTextHex : null;
+      const textSizeScale = curTextSizeScale !== base.textSizeScale ? curTextSizeScale : null;
 
       const nextInner = upsertClusterStyleInner(c.styleInner || "", {
-        fillHex: fillHex || null,
+        fillHex,
         borderText: borderText || "",
-        textColourHex: textColourHex || null,
-        textSizeScale: Number.isFinite(textSizeScale) && textSizeScale > 0 ? textSizeScale : null,
+        textColourHex,
+        textSizeScale,
       });
 
       setClusterDefLineAt(lines, c.idx, {
@@ -4080,6 +4408,17 @@ function initVizInteractivity(editor, graphviz) {
     const clusterG = getClosestGraphvizGroup(e.target, "cluster");
     const edgeG = getClosestGraphvizGroup(e.target, "edge");
     if (!nodeG && !clusterG && !edgeG) {
+      // Title click: open title-only modal (size/colour/position).
+      const title = String(lastVizSettings?.title || "").trim();
+      const textEl = e.target?.closest?.("g.graph text") || null;
+      const clicked = String(textEl?.textContent || "").trim();
+      if (openTitleModal && title && clicked === title) {
+        clearVizSelection();
+        hideHoverDelete();
+        openTitleModal();
+        return;
+      }
+
       // Diagram background click: open diagram-wide style modal (background + title settings).
       clearVizSelection();
       const morePanel = document.getElementById("tm-style-more-panel");
@@ -4202,18 +4541,13 @@ function initVizInteractivity(editor, graphviz) {
     nodeBwInput,
     nodeBsSel,
     nodeBcInput,
-    nodeTextSizeEnabled,
     nodeTextSizeInput,
     clusterLabelInput,
-    clusterFillEnabled,
     clusterFillInput,
-    clusterBorderEnabled,
     clusterBwInput,
     clusterBsSel,
     clusterBcInput,
-    clusterTextColourEnabled,
     clusterTextColourInput,
-    clusterTextSizeEnabled,
     clusterTextSizeInput,
     edgeLabelInput,
     edgeFromSel,
@@ -4455,6 +4789,77 @@ function enhanceEdgeHitTargets() {
 
     // Put hit path before the visible path so visuals stay unchanged
     g.insertBefore(hit, path);
+  });
+}
+
+function repositionEdgeLabels() {
+  // Position edge labels on the edge path by calculating where a Graphviz-style
+  // connector from the label center to the edge would intersect the edge.
+  const svg = getVizSvgEl();
+  if (!svg) return;
+
+  svg.querySelectorAll("g.edge").forEach((g) => {
+    const path = g.querySelector("path");
+    const textEl = g.querySelector("text");
+    if (!path || !textEl) return;
+
+    // Get label's current position in SVG coordinate space
+    const bbox = textEl.getBBox();
+    const labelCx = bbox.x + bbox.width / 2;
+    const labelCy = bbox.y + bbox.height / 2;
+
+    // Find the closest point on the edge path to the label center
+    const pathLen = path.getTotalLength();
+    let closestDist = Infinity;
+    let closestPoint = null;
+
+    // Sample the path at fine intervals to find closest point
+    const samples = Math.max(50, Math.ceil(pathLen / 2));
+    for (let i = 0; i <= samples; i++) {
+      const t = (i / samples) * pathLen;
+      const pt = path.getPointAtLength(t);
+      const dx = pt.x - labelCx;
+      const dy = pt.y - labelCy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestPoint = pt;
+      }
+    }
+
+    if (!closestPoint) return;
+
+    // Set text anchor to middle for proper centering
+    textEl.setAttribute("text-anchor", "middle");
+    textEl.setAttribute("dominant-baseline", "central");
+    
+    // Position the label center at the closest point on the edge
+    textEl.setAttribute("x", closestPoint.x);
+    textEl.setAttribute("y", closestPoint.y);
+    
+    // Remove any transform that Graphviz might have added
+    textEl.removeAttribute("transform");
+
+    // Recalculate bbox after repositioning
+    const newBbox = textEl.getBBox();
+
+    // Add semi-transparent white background
+    let bgRect = g.querySelector(".tm-edge-label-bg");
+    if (!bgRect) {
+      bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bgRect.classList.add("tm-edge-label-bg");
+      g.insertBefore(bgRect, textEl);
+    }
+
+    // Position background rect behind the text with padding
+    const padding = 3;
+    bgRect.setAttribute("x", newBbox.x - padding);
+    bgRect.setAttribute("y", newBbox.y - padding);
+    bgRect.setAttribute("width", newBbox.width + padding * 2);
+    bgRect.setAttribute("height", newBbox.height + padding * 2);
+    bgRect.setAttribute("rx", "2");
+    bgRect.setAttribute("fill", "rgba(255, 255, 255, 0.7)");
+    bgRect.setAttribute("stroke", "none");
   });
 }
 
@@ -4784,6 +5189,7 @@ async function renderNow(graphviz, editor) {
     if (!vizHasUserZoomed) fitVizToContainerWidth();
     else applyVizScale(); // keep zoom consistent across rerenders
     enhanceEdgeHitTargets(); // easier clicking on links
+    repositionEdgeLabels(); // position labels on the edge path
   } catch (e) {
     showErrors([...(errors || []), `Graphviz error: ${e?.message || String(e)}`]);
     document.getElementById("tm-viz").innerHTML = "";
@@ -4791,12 +5197,11 @@ async function renderNow(graphviz, editor) {
 }
 
 // -----------------------------
-// Chat UI (local-only for now)
+// Chat UI
 // -----------------------------
 
 function initChatUi({ editor, graphviz }) {
-  // NOTE: This is client-side and uses a Dify App API key.
-  // Security: do NOT hardcode the key into the repo; we store it in localStorage via a prompt.
+  // NOTE: API key is stored server-side in Netlify Functions environment variables.
 
   const input = document.getElementById("tm-chat-input");
   const btnSend = document.getElementById("tm-chat-send");
@@ -4883,7 +5288,6 @@ function initChatUi({ editor, graphviz }) {
 
   const messages = [];
   let conversationId = "";
-  const difyBaseUrl = "https://api.dify.ai/v1";
   let activeChatAbortController = null; // AbortController for the current request (for Stop button)
 
   function renderHistory() {
@@ -4921,21 +5325,6 @@ function initChatUi({ editor, graphviz }) {
     return id;
   }
 
-  function getOrAskDifyApiKey() {
-    // Optional public deployment config:
-    // - Set in index.html: window.TM_DIFY_API_KEY = "..." (this key will be visible to users).
-    const globalKey = String(globalThis.TM_DIFY_API_KEY || "").trim();
-    if (globalKey) return globalKey;
-
-    const existing = localStorage.getItem("tm_dify_api_key");
-    if (existing) return existing;
-    const k = prompt("Paste your Dify App API key (stored locally in this browser):", "");
-    const key = String(k || "").trim();
-    if (!key) return null;
-    localStorage.setItem("tm_dify_api_key", key);
-    return key;
-  }
-
   function extractJsonFromAnswer(answerText) {
     // Dify returns the model response as plain text; we expect strict JSON per your app instruction.
     const raw = String(answerText || "").trim();
@@ -4954,9 +5343,6 @@ function initChatUi({ editor, graphviz }) {
   async function send() {
     const msg = String(input.value || "").trim();
     if (!msg) return;
-
-    const apiKey = getOrAskDifyApiKey();
-    if (!apiKey) return;
 
     const userId = getOrCreateStableId("tm_dify_user");
 
@@ -4978,10 +5364,9 @@ function initChatUi({ editor, graphviz }) {
       const currentDsl = editor.getValue();
       const query = `Current diagram:\n\n${currentDsl}\n\nChat request:\n\n${msg}\n\nReturn ONLY valid JSON with keys: syntax, comments.`;
 
-      const r = await fetch(`${difyBaseUrl}/chat-messages`, {
+      const r = await fetch("/.netlify/functions/chat", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
         signal: activeChatAbortController.signal,
@@ -4996,7 +5381,7 @@ function initChatUi({ editor, graphviz }) {
 
       if (!r.ok) {
         const txt = await r.text().catch(() => "");
-        throw new Error(`Dify API error (${r.status}): ${txt || r.statusText}`);
+        throw new Error(`Chat API error (${r.status}): ${txt || r.statusText}`);
       }
 
       const data = await r.json();
@@ -5004,7 +5389,7 @@ function initChatUi({ editor, graphviz }) {
 
       const answer = String(data?.answer || "").trim();
       const jsonText = extractJsonFromAnswer(answer);
-      if (!jsonText) throw new Error("Empty answer from Dify.");
+      if (!jsonText) throw new Error("Empty answer from AI.");
 
       const obj = JSON.parse(jsonText);
       const nextSyntax = String(obj?.syntax || "").trim();
@@ -5150,6 +5535,9 @@ async function main() {
   // Style modal (writes to URL + re-renders)
   initStyleModal({ editor, graphviz });
 
+  // Title-only modal (opened when clicking the title in the diagram)
+  const openTitleModal = initTitleModal({ editor, graphviz });
+
   // Editor: style the current node/link line (writes styles inline into that line)
   initAceLineStylePopover({ editor, graphviz });
 
@@ -5269,7 +5657,7 @@ async function main() {
   }
 
   // Viz interactivity (click-to-edit)
-  initVizInteractivity(editor, graphviz);
+  initVizInteractivity(editor, graphviz, { openTitleModal });
 
   // Light “autocorrect/validate then render” on idle typing (kept minimal)
   editor.session.on("change", () => {

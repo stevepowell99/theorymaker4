@@ -135,6 +135,7 @@ Settings look like `Key: Value` and usually go near the top.
 Common settings:
 
 - **Title**: text title shown above the diagram.
+- **Title position**: where the title is placed: `bottom-left | bottom-centre | bottom-right | top-left | top-centre | top-right`.
 - **Background**: background colour (named colour or `rgb(r,g,b)`).
 - **Text colour**: default text colour for the **title + edge labels**.
 - **Default node text colour**: default text colour for **node labels**.
@@ -210,6 +211,21 @@ Optional link label + border:
 
 ```
 A -> B [increases | 1px dotted gray]
+```
+
+Flexible link styling (partial specs):
+
+- Parts inside `[...]` are separated by `|`.
+- If the **first** part looks like a style token (colour / width / style), it is treated as **style**, not a label.
+- Anything you don’t specify uses the diagram defaults (Default link colour/style/width).
+
+Examples:
+
+```
+A -> B [seagreen]                  # colour only
+A -> B [increases | 1px]           # label + width only
+A -> B [increases | dotted]        # label + style only
+A -> B [increases | solid seagreen]# label + style + colour
 ```
 
 Optional link label style + size (use `key=value` inside the brackets):
