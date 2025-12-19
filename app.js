@@ -649,8 +649,15 @@ function initAceLineStylePopover({ editor, graphviz }) {
 
   function openStylesModalForSettingKey(keyLower) {
     // Reuse the existing Styles modal (diagram-wide) rather than inventing a second UI.
-    const adv = document.getElementById("tm-style-advanced");
-    if (adv && adv.tagName === "DETAILS") adv.open = true;
+    // Open the "More settings" accordion panel since these settings are there.
+    const morePanel = document.getElementById("tm-style-more-panel");
+    if (morePanel) {
+      const bsCollapse = globalThis.bootstrap?.Collapse;
+      if (bsCollapse) {
+        const collapse = bsCollapse.getOrCreateInstance(morePanel);
+        collapse.show();
+      }
+    }
 
     // Button exists in the toolbar and already opens the modal.
     document.getElementById("tm-editor-style")?.click();
@@ -1227,7 +1234,6 @@ function initStyleModal({ editor, graphviz }) {
   // Preset grids
   const presetColourwaysEl = document.getElementById("tm-style-presets-colourways");
   const presetStylesEl = document.getElementById("tm-style-presets-styles");
-  const advancedDetails = document.getElementById("tm-style-advanced");
 
   // Inputs
   const bg = document.getElementById("tm-style-background");
@@ -1261,16 +1267,6 @@ function initStyleModal({ editor, graphviz }) {
   const bs = globalThis.bootstrap;
   const modal = bs?.Modal ? new bs.Modal(modalEl) : null;
   let suppressLiveApply = false; // prevents feedback loops while we populate widgets
-
-  // Default UX: keep "More settings" closed unless something explicitly opens it.
-  // (Details state persists across modal opens otherwise.)
-  if (advancedDetails && advancedDetails.tagName === "DETAILS") {
-    // Some browsers restore <details> open state across reload/back-forward cache; force closed on init.
-    advancedDetails.open = false;
-    modalEl.addEventListener("hidden.bs.modal", () => {
-      advancedDetails.open = false;
-    });
-  }
 
   function syncRangeValueLabel(rangeEl, valEl) {
     if (!rangeEl || !valEl) return;
@@ -4086,8 +4082,14 @@ function initVizInteractivity(editor, graphviz) {
     if (!nodeG && !clusterG && !edgeG) {
       // Diagram background click: open diagram-wide style modal (background + title settings).
       clearVizSelection();
-      const adv = document.getElementById("tm-style-advanced");
-      if (adv && adv.tagName === "DETAILS") adv.open = true;
+      const morePanel = document.getElementById("tm-style-more-panel");
+      if (morePanel) {
+        const bsCollapse = globalThis.bootstrap?.Collapse;
+        if (bsCollapse) {
+          const collapse = bsCollapse.getOrCreateInstance(morePanel);
+          collapse.show();
+        }
+      }
       document.getElementById("tm-editor-style")?.click();
       return;
     }
