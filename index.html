@@ -1,4 +1,4 @@
-idgets have <!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -23,6 +23,9 @@ idgets have <!doctype html>
 
     <!-- App styling -->
     <link rel="stylesheet" href="./styles.css" />
+
+    <!-- Intro.js (guided tour) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intro.js@7.2.0/minified/introjs.min.css" />
   </head>
 
   <body>
@@ -30,6 +33,18 @@ idgets have <!doctype html>
     <nav class="navbar navbar-expand-lg navbar-light border-bottom bg-white">
       <div class="container-fluid">
         <a class="navbar-brand fw-semibold" href="#">theorymaker</a>
+
+        <!-- Mobile: hamburger menu for switching between screens -->
+        <button
+          class="navbar-toggler d-lg-none ms-2"
+          type="button"
+          data-bs-toggle="offcanvas"
+          data-bs-target="#tm-mobile-nav"
+          aria-controls="tm-mobile-nav"
+          aria-label="Open menu"
+        >
+          <span class="navbar-toggler-icon" aria-hidden="true"></span>
+        </button>
 
         <!-- History controls: mirrors browser back/forward (discrete undo/redo) -->
         <div class="ms-auto d-flex align-items-center gap-2">
@@ -55,16 +70,45 @@ idgets have <!doctype html>
               <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
             </button>
           </div>
+
+          <!-- Guided tour -->
+          <button
+            id="tm-tour"
+            class="btn btn-outline-secondary btn-sm tm-icon-btn"
+            type="button"
+            aria-label="Tour"
+            data-bs-toggle="tooltip"
+            data-bs-title="Tour"
+          >
+            <i class="bi bi-magic" aria-hidden="true"></i>
+          </button>
         </div>
       </div>
     </nav>
+
+    <!-- Mobile: offcanvas navigation (single-screen mode) -->
+    <div class="offcanvas offcanvas-start" tabindex="-1" id="tm-mobile-nav" aria-labelledby="tm-mobile-nav-label">
+      <div class="offcanvas-header">
+        <h5 class="offcanvas-title" id="tm-mobile-nav-label">theorymaker</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+      </div>
+      <div class="offcanvas-body">
+        <div class="list-group">
+          <button type="button" class="list-group-item list-group-item-action" data-tm-screen="chat">Chat</button>
+          <button type="button" class="list-group-item list-group-item-action" data-tm-screen="editor">Editor</button>
+          <button type="button" class="list-group-item list-group-item-action" data-tm-screen="diagram">Diagram</button>
+          <button type="button" class="list-group-item list-group-item-action" data-tm-screen="templates">Templates</button>
+          <button type="button" class="list-group-item list-group-item-action" data-tm-screen="help">Help</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Main layout: editor | splitter | right panel -->
     <main class="tm-main">
       <!-- Left: Chat (default) + Editor (behind chevron) -->
       <section id="tm-left" class="tm-left">
         <!-- Chat UI -->
-        <div class="tm-panel-header border-bottom bg-white px-2 py-2">
+        <div id="tm-chat-panel" class="tm-panel-header border-bottom bg-white px-2 py-2">
           <div class="d-flex align-items-center justify-content-between gap-2">
           </div>
 
@@ -127,7 +171,7 @@ idgets have <!doctype html>
       <div id="tm-splitter" class="tm-splitter" role="separator" aria-orientation="vertical" aria-label="Resize editor"></div>
 
       <!-- Right: tabs + content -->
-      <section class="tm-right">
+      <section id="tm-right" class="tm-right">
         <div class="tm-tabs border-bottom bg-white px-2 py-2">
           <!-- Per spec: tabs are “just text along the top” -->
           <a href="#" class="tm-tab active" data-tab="viz">diagram</a>
@@ -434,6 +478,9 @@ A -> B [increases | 1px]</code></pre>
       crossorigin="anonymous"
       defer
     ></script>
+
+    <!-- Intro.js (guided tour) -->
+    <script src="https://cdn.jsdelivr.net/npm/intro.js@7.2.0/minified/intro.min.js" defer></script>
 
     <!-- App logic (module so we can import Graphviz WASM cleanly) -->
     <script type="module" src="./app.js"></script>

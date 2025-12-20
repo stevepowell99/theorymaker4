@@ -13,6 +13,73 @@ body {
   flex-direction: column;
 }
 
+/* -----------------------------
+   Intro.js: make the tour feel Bootstrap-native
+   ----------------------------- */
+
+.tm-intro-tooltip.introjs-tooltip {
+  /* Bigger tooltip for desktop, but still clamps on small screens */
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  font-size: 150%; /* 50% larger tour text overall */
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.14);
+}
+
+.tm-intro-tooltip .introjs-tooltiptext {
+  font-size: 1em;
+  line-height: 1.4;
+}
+
+/* Footer/button bar layout: left = don't-show checkbox, right = nav buttons */
+.tm-intro-tooltip .introjs-tooltipbuttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tm-intro-tooltip .tm-intro-footer {
+  margin-right: auto; /* push the buttons to the right */
+}
+
+/* Bootstrap's .small would shrink tour text; keep it consistent inside the tour */
+.tm-intro-tooltip .small {
+  font-size: 1em;
+}
+
+/* Make footer controls (Back/Next + Don't show again) smaller than the main tour text */
+.tm-intro-tooltip .introjs-tooltipbuttons,
+.tm-intro-tooltip .introjs-tooltipbuttons .introjs-button,
+.tm-intro-tooltip .tm-intro-footer .form-check-label {
+  font-size: 0.72em;
+}
+
+.tm-intro-tooltip .tm-intro-footer .form-check-input {
+  transform: scale(0.9);
+  transform-origin: left center;
+}
+
+/* Make "Skip" act as a small close button */
+.tm-intro-tooltip .introjs-skipbutton {
+  text-decoration: none;
+  color: #6c757d; /* Bootstrap secondary */
+  font-weight: 700;
+  font-size: 1.25em;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 999px;
+}
+
+.tm-intro-tooltip .introjs-skipbutton:hover {
+  background: rgba(108, 117, 125, 0.12);
+  color: #495057;
+}
+
+.tm-intro-tooltip .introjs-button {
+  border-radius: 8px;
+  font-size: 1em;
+}
+
 /* Main area fills the remaining viewport between navbar and footer */
 .tm-main {
   flex: 1 1 auto;
@@ -570,6 +637,33 @@ body {
 
 details[open] .tm-chevron {
   transform: rotate(90deg);
+}
+
+/* -----------------------------
+   Mobile: single-screen mode (hamburger menu)
+   - Below Bootstrap lg, we show ONE panel at a time via JS (Chat/Editor/Diagram/Templates/Help)
+   - Make whichever panel is visible fill the width; hide splitter + top-right tabs
+   ----------------------------- */
+@media (max-width: 991.98px) {
+  .tm-left {
+    width: 100% !important;
+    min-width: 0;
+    max-width: 100% !important;
+    border: 0;
+  }
+
+  .tm-right {
+    width: 100% !important;
+    min-width: 0;
+  }
+
+  .tm-splitter {
+    display: none;
+  }
+
+  .tm-tabs {
+    display: none; /* hamburger replaces tabs on narrow screens */
+  }
 }
 
 

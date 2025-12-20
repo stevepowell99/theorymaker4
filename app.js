@@ -1209,6 +1209,82 @@ function setActiveTab(tabName) {
   });
 }
 
+// Mobile screens: Chat | Editor | Diagram | Templates | Help
+// - On narrow screens (below Bootstrap lg), show ONE screen at a time via the hamburger menu.
+// - On wider screens, restore the normal split layout.
+function initMobileScreens({ editor }) {
+  const mq = globalThis.matchMedia?.("(max-width: 991.98px)"); // Bootstrap lg breakpoint
+  if (!mq) return;
+
+  const left = document.getElementById("tm-left");
+  const right = document.getElementById("tm-right");
+  const splitter = document.getElementById("tm-splitter");
+  const chatPanel = document.getElementById("tm-chat-panel");
+  const editorDetails = document.getElementById("tm-editor-details");
+  const offcanvasEl = document.getElementById("tm-mobile-nav");
+
+  if (!left || !right || !splitter || !chatPanel || !editorDetails) return;
+
+  const bs = globalThis.bootstrap;
+  const offcanvas = offcanvasEl && bs?.Offcanvas ? bs.Offcanvas.getOrCreateInstance(offcanvasEl) : null;
+
+  function setActiveMenuItem(screen) {
+    document.querySelectorAll("[data-tm-screen]").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.tmScreen === screen);
+    });
+  }
+
+  function applyDesktopLayout() {
+    left.classList.remove("d-none");
+    right.classList.remove("d-none");
+    splitter.classList.remove("d-none");
+    chatPanel.classList.remove("d-none");
+    editorDetails.classList.remove("d-none");
+  }
+
+  function applyMobileScreen(screen) {
+    const s = String(screen || "diagram");
+    const isLeft = s === "chat" || s === "editor";
+    const isRight = s === "diagram" || s === "templates" || s === "help";
+
+    left.classList.toggle("d-none", !isLeft);
+    right.classList.toggle("d-none", !isRight);
+    splitter.classList.add("d-none");
+
+    chatPanel.classList.toggle("d-none", s !== "chat");
+    editorDetails.classList.toggle("d-none", s !== "editor");
+
+    if (s === "editor") {
+      editorDetails.open = true;
+      requestAnimationFrame(() => editor?.resize?.());
+      setTimeout(() => editor?.resize?.(), 60);
+    }
+
+    if (s === "diagram") setActiveTab("viz");
+    if (s === "templates") setActiveTab("templates");
+    if (s === "help") setActiveTab("help");
+
+    setActiveMenuItem(s);
+  }
+
+  function syncToViewport() {
+    if (!mq.matches) applyDesktopLayout();
+    else applyMobileScreen("diagram"); // default on mobile
+  }
+
+  document.querySelectorAll("[data-tm-screen]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      applyMobileScreen(btn.dataset.tmScreen);
+      offcanvas?.hide?.();
+    });
+  });
+
+  mq.addEventListener?.("change", syncToViewport);
+  window.addEventListener("resize", syncToViewport);
+
+  syncToViewport();
+}
+
 function initTabs() {
   document.querySelectorAll(".tm-tab").forEach((a) => {
     a.addEventListener("click", (e) => {
@@ -4192,7 +4268,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
           return;
         }
 
-        setActions({ save: true, del: false, message: "Delete is disabled for group boxes (to avoid breaking nesting/closing markers)." });
+        setActions({ save: true, del: false, message: "" });
 
         if (clusterLabelInput) clusterLabelInput.value = c.label || "";
 
@@ -5171,6 +5247,162 @@ function initTooltips() {
     .forEach((el) => new bootstrap.Tooltip(el, { trigger: "hover focus" }));
 }
 
+// -----------------------------
+// Intro.js guided tour (on load + rerun from navbar)
+// -----------------------------
+
+const TM_INTRO_TOUR_HIDE_KEY = "tm_intro_tour_hide_v1";
+
+function isElementVisible(el) {
+  // Purpose: include only elements that are actually visible (not hidden/collapsed) when the tour starts.
+  if (!el) return false;
+  const cs = globalThis.getComputedStyle ? getComputedStyle(el) : null;
+  if (!cs) return false;
+  if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return false;
+  const r = el.getBoundingClientRect?.();
+  if (!r) return false;
+  return r.width > 0 && r.height > 0;
+}
+
+function startIntroTour({ force = false } = {}) {
+  // Purpose: start the tour (auto on first load; manual via navbar always works).
+  const introJsFactory = globalThis.introJs;
+  if (typeof introJsFactory !== "function") return;
+
+  if (!force && localStorage.getItem(TM_INTRO_TOUR_HIDE_KEY) === "1") return;
+
+  const stepsAll = [
+    {
+      // Centered welcome step
+      intro: `
+        <div class="fw-semibold mb-1">Welcome to theorymaker</div>
+        <div class="text-muted small">
+          Create and update simple or complex diagrams using text or AI.
+        </div>
+        <div class="text-muted small">
+          Great for Theory of Change diagrams.
+        </div>
+        <ul class="mt-3 mb-0 ps-3">
+          <li>🆓 Free</li>
+          <li>📝 Use a simple text “language” to quickly create and style complex diagrams</li>
+          <li>🤖 And/or get help from AI</li>
+          <li>⚡ Updates in real time as you type</li>
+          <li>🔗 Share via a URL</li>
+        </ul>
+      `.trim(),
+    },
+    {
+      element: "#tm-left",
+      intro: "Left side: chat with the AI and/or write text in the editor to define your diagram.",
+      position: "right",
+    },
+    {
+      element: "#tm-chat-input",
+      intro: "Tell the AI what you want, or use the manual editor below.",
+      position: "right",
+    },
+    {
+      element: "#tm-chat-send",
+      intro: "Send your message to the AI. (Enter to send; Shift+Enter for a newline.)",
+      position: "right",
+    },
+    {
+      element: ".tm-editor-details-summary",
+      intro: "Manual editor: click here to open the text editor.",
+      position: "right",
+    },
+    {
+      element: ".tm-tab.active",
+      intro: "These tabs switch between the diagram, templates, and help.",
+      position: "bottom",
+    },
+    {
+      element: "#tm-viz",
+      intro: "Your diagram renders here. You can click on nodes and links to edit them or apply styles.",
+      position: "left",
+    },
+    {
+      element: ".tm-viz-toolbar",
+      intro: "Diagram toolbar: zoom, save, export, share, and style.",
+      position: "bottom",
+    },
+    {
+      element: '.tm-tab[data-tab="templates"]',
+      intro: "Templates: load any diagrams you saved in this browser or pick an example to start from.",
+      position: "bottom",
+    },
+    {
+      element: '.tm-tab[data-tab="help"]',
+      intro: "Help: usage notes and a quick reference on how to use text to create your diagram.",
+      position: "bottom",
+    },
+    {
+      element: "#tm-undo",
+      intro: "Undo/redo: steps through edit history (back/forward).",
+      position: "bottom",
+    },
+    {
+      element: "#tm-tour",
+      intro: "Rerun this tour any time from here.",
+      position: "bottom",
+    },
+  ];
+
+  // Only keep steps that target elements currently visible (startup-visible elements only)
+  const steps = stepsAll.filter((s) => {
+    if (!s?.element) return true; // welcome step
+    const el = document.querySelector(s.element);
+    return isElementVisible(el);
+  });
+
+  const intro = introJsFactory();
+  intro.setOptions({
+    steps,
+    tooltipClass: "tm-intro-tooltip",
+    showProgress: true,
+    showBullets: false,
+    keyboardNavigation: true, // arrow keys
+    exitOnOverlayClick: true, // click outside to dismiss
+    nextLabel: "Next",
+    prevLabel: "Back",
+    skipLabel: "×",
+    doneLabel: "Done",
+  });
+
+  function syncDontShowFooter() {
+    // Purpose: keep "Don't show again" in the footer (button bar) on the first step only.
+    const cur = Number(intro?._currentStep);
+    const buttons = document.querySelector(".tm-intro-tooltip .introjs-tooltipbuttons");
+    if (!buttons) return;
+
+    const existing = buttons.querySelector("#tm-intro-footer");
+    if (cur !== 0) {
+      existing?.remove();
+      return;
+    }
+
+    if (existing) return;
+    const footer = document.createElement("div");
+    footer.id = "tm-intro-footer";
+    footer.className = "tm-intro-footer form-check m-0";
+    footer.innerHTML = `
+      <input class="form-check-input" type="checkbox" id="tm-intro-dontshow" />
+      <label class="form-check-label small" for="tm-intro-dontshow">Don’t show again</label>
+    `.trim();
+    buttons.prepend(footer);
+  }
+
+  function persistDontShowAgain() {
+    const cb = document.getElementById("tm-intro-dontshow");
+    if (cb && cb.checked) localStorage.setItem(TM_INTRO_TOUR_HIDE_KEY, "1");
+  }
+
+  intro.onafterchange(syncDontShowFooter);
+  intro.onexit(persistDontShowAgain);
+  intro.oncomplete(persistDontShowAgain);
+  intro.start();
+}
+
 async function renderNow(graphviz, editor) {
   const dsl = editor.getValue();
   const { dot, errors, settings } = dslToDot(dsl);
@@ -5364,20 +5596,50 @@ function initChatUi({ editor, graphviz }) {
       const currentDsl = editor.getValue();
       const query = `Current diagram:\n\n${currentDsl}\n\nChat request:\n\n${msg}\n\nReturn ONLY valid JSON with keys: syntax, comments.`;
 
-      const r = await fetch("/.netlify/functions/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        signal: activeChatAbortController.signal,
-        body: JSON.stringify({
-          inputs: {},
-          query,
-          response_mode: "blocking",
-          conversation_id: conversationId || "",
-          user: userId,
-        }),
-      });
+      // Local dev: call Dify directly with user's key
+      const isLocal = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+      let r;
+
+      if (isLocal) {
+        const apiKey = localStorage.getItem("tm_dify_api_key") || prompt("Paste your Dify App API key (local dev only):");
+        if (!apiKey) {
+          push("assistant", "API key required for local development.");
+          return;
+        }
+        localStorage.setItem("tm_dify_api_key", apiKey);
+
+        r = await fetch("https://api.dify.ai/v1/chat-messages", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          signal: activeChatAbortController.signal,
+          body: JSON.stringify({
+            inputs: {},
+            query,
+            response_mode: "blocking",
+            conversation_id: conversationId || "",
+            user: userId,
+          }),
+        });
+      } else {
+        // Production: use Netlify Function
+        r = await fetch("/.netlify/functions/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          signal: activeChatAbortController.signal,
+          body: JSON.stringify({
+            inputs: {},
+            query,
+            response_mode: "blocking",
+            conversation_id: conversationId || "",
+            user: userId,
+          }),
+        });
+      }
 
       if (!r.ok) {
         const txt = await r.text().catch(() => "");
@@ -5509,6 +5771,8 @@ async function main() {
 
   // Restore editor from URL if present, otherwise seed a starter example.
   const fromUrl = getMapScriptFromUrl();
+  const isMobile = Boolean(globalThis.matchMedia?.("(max-width: 991.98px)")?.matches);
+  const suppressAutoTour = isMobile && !fromUrl; // per request: on mobile with empty URL, don't auto-run Intro.js
   // Default starter (when no URL): use the "Trade-offs" example from the gallery.
   const starter = (GALLERY_EXAMPLES.find((it) => it.id === "ex-07") || GALLERY_EXAMPLES[0]).dsl;
 
@@ -5522,6 +5786,9 @@ async function main() {
   if (legacyFromUrlStyles) clearStyleSettingsFromUrl();
   // Ensure URL always reflects the editor content.
   setMapScriptInUrl(editor.getValue());
+
+  // Mobile: single-screen mode via hamburger menu (do this early so first paint is the Diagram screen)
+  initMobileScreens({ editor });
 
   // Graphviz WASM init
   const graphviz = await Graphviz.load();
@@ -5680,6 +5947,10 @@ async function main() {
   // Initial render
   setMapScriptInUrl(editor.getValue());
   await renderNow(graphviz, editor);
+
+  // Guided tour: auto-run on first load; rerunnable via navbar button
+  document.getElementById("tm-tour")?.addEventListener("click", () => startIntroTour({ force: true }));
+  if (!suppressAutoTour) startIntroTour({ force: false });
 }
 
 main();
