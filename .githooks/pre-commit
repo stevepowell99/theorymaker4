@@ -1,0 +1,17 @@
+#!/bin/sh
+# Delete Windows Explorer noise files before committing.
+set -eu
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# Find any desktop.ini files (case-insensitive), delete them, and stage deletions.
+COUNT="$(find "$ROOT" -type f -iname 'desktop.ini' -print | wc -l | tr -d '[:space:]')"
+if [ "${COUNT:-0}" != "0" ]; then
+  find "$ROOT" -type f -iname 'desktop.ini' -delete
+  git add -u >/dev/null 2>&1
+  echo "pre-commit: deleted ${COUNT} desktop.ini file(s)"
+fi
+
+exit 0
+
+

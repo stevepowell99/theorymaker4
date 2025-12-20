@@ -87,4 +87,12 @@ Provide a nice gallery with say 16 example maps with different styles and conten
 
 CC BY‑NC 4.0 (see `LICENSE`).
 
+## Git hooks (Windows)
+
+This repo keeps Git hooks in `.githooks/`. Enable them once per clone:
+
+```powershell
+git config core.hooksPath .githooks
+```
+
 
