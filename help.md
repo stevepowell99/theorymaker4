@@ -6,7 +6,7 @@ Theorymaker is for creating Theories of Change and similar diagrams.
 
 🔥💥⛔**Use another tool** if:
 - If you want a different kind of diagram, which does not simply involve multiple nodes, links and grouping boxes
-- If you want custom positions for your diagram components. Theorymaker is opinionated about positioning. It is not drag-and-drop.
+- If you want custom positions for your diagram components. Theorymaker is opinionated about positioning (auto layout). It is not freeform drag-and-drop positioning.
 - If you want fully-featured ToC software with indicators, monitoring ...
 
 😀😇🎖️**Theormaker is great because**:
@@ -100,6 +100,8 @@ Tips:
 - Click a **node** to change its label/styling or delete it.
 - Click a **link** to change its endpoints/label/styling or delete it.
 - Click a **group box** to edit its title/styling.
+- **Shift+drag** a node onto a **group box** to move that node (or your current multi-selection) into that group. Drop on empty space to move it out of groups.
+  - Note: this only works for nodes that have an explicit `ID:: ...` line (implicit nodes can’t be moved into groups).
 
 ### Styling quickly from the Editor
 
@@ -400,3 +402,12 @@ Because `#` starts a comment in MapScript. Use named colours (e.g. `red`) or `rg
 ### Why aren’t my linked nodes appearing inside groups?
 
 Groups only contain nodes that are explicitly defined with `ID:: ...` while the group is open; links don’t “pull” nodes into groups.
+
+### Can I drag nodes into/out of groups?
+
+Yes (pseudo drag/drop): **Shift+drag** a node onto a group box to move it into that group (if you have multiple nodes selected via the checkbox UI, dragging a selected node moves the whole selection). Drop on empty space to move the node(s) back out to top-level.
+
+Limitations:
+
+- This only works for nodes with an explicit `ID:: ...` line.
+- The target group must have a closing line (`--` / `----`) for the drop to work.

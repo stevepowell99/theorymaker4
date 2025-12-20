@@ -44,6 +44,98 @@ const STYLE_SETTING_KEYS = [
 ];
 
 // -----------------------------
+// Range sliders: "lightly exponential" response curve (midpoint ≈ 1/4)
+// - Keep existing HTML min/max/step.
+// - Map thumb position -> actual value via t^2.
+// - When setting a slider from an existing value, use inverse (sqrt) so the thumb doesn't jump.
+// -----------------------------
+const TM_RANGE_EXP = 2;
+
+function clampNumber(n, lo, hi) {
+  const x = Number(n);
+  const a = Number(lo);
+  const b = Number(hi);
+  if (!Number.isFinite(x)) return Number.isFinite(a) ? a : 0;
+  if (Number.isFinite(a) && x < a) return a;
+  if (Number.isFinite(b) && x > b) return b;
+  return x;
+}
+
+function rangeGetNums(rangeEl) {
+  const min = Number(rangeEl?.min);
+  const max = Number(rangeEl?.max);
+  const step = Number(rangeEl?.step);
+  const v = Number(rangeEl?.value);
+  return {
+    min: Number.isFinite(min) ? min : 0,
+    max: Number.isFinite(max) ? max : 100,
+    step: Number.isFinite(step) && step > 0 ? step : null,
+    v: Number.isFinite(v) ? v : 0,
+  };
+}
+
+function decimalsFromStep(step) {
+  const raw = String(step ?? "");
+  if (!raw || raw.toLowerCase() === "any") return 0;
+  const m = raw.match(/\.(\d+)/);
+  return m ? m[1].length : 0;
+}
+
+function formatByStep(n, step) {
+  const d = decimalsFromStep(step);
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "";
+  return d > 0 ? x.toFixed(d) : String(Math.round(x));
+}
+
+function rangeGetActualValue(rangeEl, exp = TM_RANGE_EXP) {
+  if (!rangeEl) return null;
+  const { min, max, step, v } = rangeGetNums(rangeEl);
+  const span = max - min;
+  if (!(Number.isFinite(span) && span > 0)) return min;
+
+  const t = clampNumber((v - min) / span, 0, 1);
+  const p = Number(exp);
+  const k = Number.isFinite(p) && p > 0 ? p : TM_RANGE_EXP;
+  let actual = min + span * Math.pow(t, k);
+
+  // Snap in ACTUAL space (so integer sliders still yield integers).
+  if (step) actual = min + Math.round((actual - min) / step) * step;
+  return clampNumber(actual, min, max);
+}
+
+function rangeSetThumbFromActualValue(rangeEl, actual, exp = TM_RANGE_EXP) {
+  if (!rangeEl) return;
+  const { min, max, step } = rangeGetNums(rangeEl);
+  const span = max - min;
+  if (!(Number.isFinite(span) && span > 0)) {
+    rangeEl.value = String(min);
+    return;
+  }
+
+  let want = Number(actual);
+  if (!Number.isFinite(want)) want = min;
+  if (step) want = min + Math.round((want - min) / step) * step; // keep stable
+  want = clampNumber(want, min, max);
+
+  const p = Number(exp);
+  const k = Number.isFinite(p) && p > 0 ? p : TM_RANGE_EXP;
+  const t = clampNumber((want - min) / span, 0, 1);
+  const thumbT = Math.pow(t, 1 / k);
+  let thumb = min + span * thumbT;
+
+  // Snap thumb in thumb-space so the browser accepts it cleanly.
+  if (step) thumb = min + Math.round((thumb - min) / step) * step;
+  rangeEl.value = String(clampNumber(thumb, min, max));
+}
+
+function syncRangeValueLabelExp(rangeEl, valEl, { suffix = "" } = {}) {
+  if (!rangeEl || !valEl) return;
+  const actual = rangeGetActualValue(rangeEl);
+  valEl.textContent = `${formatByStep(actual, rangeEl.step)}${suffix || ""}`;
+}
+
+// -----------------------------
 // Ace: incremental (undo-friendly) edits
 // -----------------------------
 
@@ -869,13 +961,14 @@ function initAceLineStylePopover({ editor, graphviz }) {
       range.min = String(min);
       range.max = String(max);
       range.step = String(step);
-      range.value = String(value);
       const sync = () => {
-        val.textContent = `${range.value}${suffix || ""}`;
-        onInput(range.value);
+        const actual = rangeGetActualValue(range);
+        val.textContent = `${formatByStep(actual, range.step)}${suffix || ""}`;
+        onInput(actual);
       };
       range.addEventListener("input", sync);
       range.addEventListener("change", sync);
+      rangeSetThumbFromActualValue(range, value);
       sync();
       top.appendChild(document.createElement("div"));
       top.appendChild(val);
@@ -982,7 +1075,6 @@ function initAceLineStylePopover({ editor, graphviz }) {
           { value: "solid", label: "solid" },
           { value: "dotted", label: "dotted" },
           { value: "dashed", label: "dashed" },
-          { value: "bold", label: "bold" },
         ],
         String(cur.defaultLinkStyle || ""),
         (v) => applyPatch({ defaultLinkStyle: String(v || "").trim().toLowerCase() || null })
@@ -1031,7 +1123,7 @@ function initAceLineStylePopover({ editor, graphviz }) {
       colS.className = "col-4";
       const s = document.createElement("select");
       s.className = "form-select form-select-sm";
-      ["solid", "dotted", "dashed", "bold"].forEach((x) => {
+      ["solid", "dotted", "dashed"].forEach((x) => {
         const o = document.createElement("option");
         o.value = x;
         o.textContent = x;
@@ -1468,11 +1560,17 @@ function initStyleModal({ editor, graphviz }) {
   const dirBtns = dirBtnsWrap ? Array.from(dirBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const boxFill = document.getElementById("tm-style-node-fill");
   const boxShape = document.getElementById("tm-style-node-shape");
+  const boxShapeBtnsWrap = document.getElementById("tm-style-node-shape-btns");
+  const boxShapeBtns = boxShapeBtnsWrap ? Array.from(boxShapeBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const boxBorderW = document.getElementById("tm-style-node-border-width");
   const boxBorderWVal = document.getElementById("tm-style-node-border-width-val");
   const boxBorderStyle = document.getElementById("tm-style-node-border-style");
+  const boxBorderStyleBtnsWrap = document.getElementById("tm-style-node-border-style-btns");
+  const boxBorderStyleBtns = boxBorderStyleBtnsWrap ? Array.from(boxBorderStyleBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const boxBorderColor = document.getElementById("tm-style-node-border-color");
   const boxShadow = document.getElementById("tm-style-node-shadow");
+  const boxShadowBtnsWrap = document.getElementById("tm-style-node-shadow-btns");
+  const boxShadowBtns = boxShadowBtnsWrap ? Array.from(boxShadowBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const textColor = document.getElementById("tm-style-text-color");
   const defaultNodeTextColor = document.getElementById("tm-style-default-node-text-color");
   const defaultGroupTextColor = document.getElementById("tm-style-default-group-text-color");
@@ -1483,6 +1581,8 @@ function initStyleModal({ editor, graphviz }) {
   const titlePosBtns = titlePosBtnsWrap ? Array.from(titlePosBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const linkColor = document.getElementById("tm-style-link-color");
   const linkStyle = document.getElementById("tm-style-link-style");
+  const linkStyleBtnsWrap = document.getElementById("tm-style-link-style-btns");
+  const linkStyleBtns = linkStyleBtnsWrap ? Array.from(linkStyleBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const linkWidth = document.getElementById("tm-style-link-width");
   const linkWidthVal = document.getElementById("tm-style-link-width-val");
   const labelWrap = document.getElementById("tm-style-label-wrap");
@@ -1531,14 +1631,9 @@ function initStyleModal({ editor, graphviz }) {
     lastRequestedPanel = "presets";
   }
 
-  function syncRangeValueLabel(rangeEl, valEl) {
-    if (!rangeEl || !valEl) return;
-    valEl.textContent = String(rangeEl.value);
-  }
-
   function setRangeUi(rangeEl, valEl) {
     if (!rangeEl || !valEl) return;
-    const sync = () => syncRangeValueLabel(rangeEl, valEl);
+    const sync = () => syncRangeValueLabelExp(rangeEl, valEl);
     rangeEl.addEventListener("input", sync);
     sync();
   }
@@ -1549,6 +1644,30 @@ function initStyleModal({ editor, graphviz }) {
   setRangeUi(rankGap, rankGapVal);
   setRangeUi(nodeGap, nodeGapVal);
   setRangeUi(titleSize, titleSizeVal);
+
+  function setButtonsUi(btns, value) {
+    const v = String(value ?? "");
+    for (const b of btns || []) {
+      const bv = String(b?.dataset?.value ?? "");
+      const on = bv === v;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+
+  function wireButtonsToSelect(selectEl, btns) {
+    if (!selectEl || !btns?.length) return;
+    for (const b of btns) {
+      b.addEventListener("click", () => {
+        const v = b?.dataset?.value;
+        selectEl.value = v == null ? "" : String(v);
+        setButtonsUi(btns, selectEl.value);
+        selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+    selectEl.addEventListener("change", () => setButtonsUi(btns, selectEl.value));
+    setButtonsUi(btns, selectEl.value);
+  }
 
   function syncSpacingAxisLabels(direction) {
     // Purpose: show user-facing spacing in screen axes (horizontal/vertical), not "along/across".
@@ -1613,6 +1732,12 @@ function initStyleModal({ editor, graphviz }) {
     setTitlePositionButtonsUi(titlePosition.value || "bottom-left");
   }
 
+  // Button groups (preferred UI) write to hidden selects (source of truth).
+  wireButtonsToSelect(boxShape, boxShapeBtns);
+  wireButtonsToSelect(boxShadow, boxShadowBtns);
+  wireButtonsToSelect(boxBorderStyle, boxBorderStyleBtns);
+  wireButtonsToSelect(linkStyle, linkStyleBtns);
+
   function setControlsFromStyleSettings(sIn) {
     suppressLiveApply = true;
     try {
@@ -1630,8 +1755,8 @@ function initStyleModal({ editor, graphviz }) {
       const btcRgb = resolveCssColorToRgb(s.defaultBoxTextColour || "#111827") || { r: 17, g: 24, b: 39 };
       if (defaultGroupTextColor) defaultGroupTextColor.value = rgbToHex(btcRgb);
 
-      if (titleSize) titleSize.value = String(Math.max(6, Math.min(72, Math.round(Number(s.titleSize || 18)))));
-      syncRangeValueLabel(titleSize, titleSizeVal);
+      if (titleSize) rangeSetThumbFromActualValue(titleSize, Math.max(6, Math.min(72, Math.round(Number(s.titleSize || 18)))));
+      syncRangeValueLabelExp(titleSize, titleSizeVal);
 
       if (titlePosition) titlePosition.value = normalizeTitlePosition(s.titlePosition) || "bottom-left";
       setTitlePositionButtonsUi(titlePosition?.value || "bottom-left");
@@ -1643,31 +1768,35 @@ function initStyleModal({ editor, graphviz }) {
       const boxRgb = resolveCssColorToRgb(s.defaultBoxColour || "#e7f5ff") || { r: 231, g: 245, b: 255 };
       if (boxFill) boxFill.value = rgbToHex(boxRgb);
       if (boxShape) boxShape.value = String(s.defaultBoxShape || "");
+      setButtonsUi(boxShapeBtns, boxShape?.value);
 
       const b = borderTextToUi(s.defaultBoxBorder || "1px solid rgb(30,144,255)");
-      if (boxBorderW) boxBorderW.value = String(Math.max(0, Math.min(6, Math.round(b.width || 1))));
+      if (boxBorderW) rangeSetThumbFromActualValue(boxBorderW, Math.max(0, Math.min(6, Math.round(b.width || 1))));
       if (boxBorderStyle) boxBorderStyle.value = String(b.style || "solid");
+      setButtonsUi(boxBorderStyleBtns, boxBorderStyle?.value);
       if (boxBorderColor) boxBorderColor.value = String(b.colorHex || "#1e90ff");
-      syncRangeValueLabel(boxBorderW, boxBorderWVal);
+      syncRangeValueLabelExp(boxBorderW, boxBorderWVal);
 
       // Default node shadow: prefer "medium" when no explicit setting is present.
       if (boxShadow) boxShadow.value = String(s.defaultBoxShadow || "medium");
+      setButtonsUi(boxShadowBtns, boxShadow?.value);
 
       const linkRgb = resolveCssColorToRgb(s.defaultLinkColour || "#6c757d") || { r: 108, g: 117, b: 125 };
       if (linkColor) linkColor.value = rgbToHex(linkRgb);
       if (linkStyle) linkStyle.value = String(s.defaultLinkStyle || "");
+      setButtonsUi(linkStyleBtns, linkStyle?.value);
 
-      if (linkWidth) linkWidth.value = String(Math.max(1, Math.min(6, Math.round(Number(s.defaultLinkWidth || 1)))));
-      syncRangeValueLabel(linkWidth, linkWidthVal);
+      if (linkWidth) rangeSetThumbFromActualValue(linkWidth, Math.max(1, Math.min(6, Math.round(Number(s.defaultLinkWidth || 1)))));
+      syncRangeValueLabelExp(linkWidth, linkWidthVal);
 
-      if (labelWrap) labelWrap.value = String(Math.max(8, Math.min(40, Math.round(Number(s.labelWrap || 18)))));
-      syncRangeValueLabel(labelWrap, labelWrapVal);
+      if (labelWrap) rangeSetThumbFromActualValue(labelWrap, Math.max(8, Math.min(40, Math.round(Number(s.labelWrap || 18)))));
+      syncRangeValueLabelExp(labelWrap, labelWrapVal);
 
-      if (rankGap) rankGap.value = String(Math.max(0, Math.min(20, Math.round(Number(s.spacingAlong || 4)))));
-      syncRangeValueLabel(rankGap, rankGapVal);
+      if (rankGap) rangeSetThumbFromActualValue(rankGap, Math.max(0, Math.min(20, Math.round(Number(s.spacingAlong || 4)))));
+      syncRangeValueLabelExp(rankGap, rankGapVal);
 
-      if (nodeGap) nodeGap.value = String(Math.max(0, Math.min(20, Math.round(Number(s.spacingAcross || 3)))));
-      syncRangeValueLabel(nodeGap, nodeGapVal);
+      if (nodeGap) rangeSetThumbFromActualValue(nodeGap, Math.max(0, Math.min(20, Math.round(Number(s.spacingAcross || 3)))));
+      syncRangeValueLabelExp(nodeGap, nodeGapVal);
     } finally {
       suppressLiveApply = false;
     }
@@ -1679,7 +1808,7 @@ function initStyleModal({ editor, graphviz }) {
     if (textColor) out.textColour = normalizeColor(textColor.value);
     if (defaultNodeTextColor) out.defaultNodeTextColour = normalizeColor(defaultNodeTextColor.value);
     if (defaultGroupTextColor) out.defaultBoxTextColour = normalizeColor(defaultGroupTextColor.value);
-    if (titleSize) out.titleSize = Number(titleSize.value);
+    if (titleSize) out.titleSize = rangeGetActualValue(titleSize);
     if (titlePosition) {
       const p = normalizeTitlePosition(titlePosition.value);
       // Keep default bottom-left implicit (so we don't spam the editor with a redundant setting line).
@@ -1693,7 +1822,7 @@ function initStyleModal({ editor, graphviz }) {
     // Border text stays in our existing "Npx style rgb(...)" format.
     if (boxBorderW && boxBorderStyle && boxBorderColor) {
       out.defaultBoxBorder = uiToBorderText({
-        width: Number(boxBorderW.value),
+        width: rangeGetActualValue(boxBorderW),
         style: String(boxBorderStyle.value || "solid"),
         colorHex: String(boxBorderColor.value || "#999999"),
       }) || null;
@@ -1701,10 +1830,10 @@ function initStyleModal({ editor, graphviz }) {
 
     if (linkColor) out.defaultLinkColour = normalizeColor(linkColor.value);
     if (linkStyle) out.defaultLinkStyle = String(linkStyle.value || "").trim().toLowerCase() || null;
-    if (linkWidth) out.defaultLinkWidth = Number(linkWidth.value);
-    if (labelWrap) out.labelWrap = Number(labelWrap.value);
-    if (rankGap) out.spacingAlong = Number(rankGap.value);
-    if (nodeGap) out.spacingAcross = Number(nodeGap.value);
+    if (linkWidth) out.defaultLinkWidth = rangeGetActualValue(linkWidth);
+    if (labelWrap) out.labelWrap = rangeGetActualValue(labelWrap);
+    if (rankGap) out.spacingAlong = rangeGetActualValue(rankGap);
+    if (nodeGap) out.spacingAcross = rangeGetActualValue(nodeGap);
 
     return coerceUiStyleSettings(out);
   }
@@ -1909,8 +2038,6 @@ function initStyleModal({ editor, graphviz }) {
       { name: "Rounded / dotted", shape: "rounded", bw: 2, bs: "dotted", ew: 2, es: "dotted", shadow: "subtle" },
       { name: "Square / dashed", shape: "", bw: 2, bs: "dashed", ew: 2, es: "dashed", shadow: "none" },
       { name: "Rounded / dashed", shape: "rounded", bw: 2, bs: "dashed", ew: 2, es: "dashed", shadow: "subtle" },
-      { name: "Square / bold", shape: "", bw: 4, bs: "bold", ew: 4, es: "bold", shadow: "none" },
-      { name: "Rounded / bold", shape: "rounded", bw: 4, bs: "bold", ew: 4, es: "bold", shadow: "medium" },
       { name: "Soft shadow", shape: "rounded", bw: 1, bs: "solid", ew: 1, es: "solid", shadow: "medium" },
       { name: "Flat + crisp", shape: "", bw: 1, bs: "solid", ew: 1, es: "solid", shadow: "none" },
     ];
@@ -2027,13 +2154,9 @@ function initTitleModal({ editor, graphviz }) {
 
   let suppressLiveApply = false;
 
-  function syncRangeValueLabel(rangeEl, valEl) {
-    if (!rangeEl || !valEl) return;
-    valEl.textContent = String(rangeEl.value);
-  }
   if (titleSize && titleSizeVal) {
-    titleSize.addEventListener("input", () => syncRangeValueLabel(titleSize, titleSizeVal));
-    syncRangeValueLabel(titleSize, titleSizeVal);
+    titleSize.addEventListener("input", () => syncRangeValueLabelExp(titleSize, titleSizeVal));
+    syncRangeValueLabelExp(titleSize, titleSizeVal);
   }
 
   function setTitlePositionButtonsUi(value) {
@@ -2081,8 +2204,8 @@ function initTitleModal({ editor, graphviz }) {
         const n = parseLeadingNumber(kv["text size"] || kv.textsize || kv["text scale"] || kv.textscale);
         if (Number.isFinite(n) && n > 0) ts = n;
       }
-      if (titleSize) titleSize.value = String(Math.max(10, Math.min(36, Math.round(Number(ts || 18)))));
-      syncRangeValueLabel(titleSize, titleSizeVal);
+      if (titleSize) rangeSetThumbFromActualValue(titleSize, Math.max(10, Math.min(36, Math.round(Number(ts || 18)))));
+      syncRangeValueLabelExp(titleSize, titleSizeVal);
 
       if (titlePosition) titlePosition.value = normalizeTitlePosition(s.titlePosition) || "bottom-left";
       setTitlePositionButtonsUi(titlePosition?.value || "bottom-left");
@@ -2193,7 +2316,7 @@ function initTitleModal({ editor, graphviz }) {
     const keepTc = wantTc && normalizeColor(globalTc) !== wantTc ? textColor.value : null;
 
     const baseTitleSize = Number.isFinite(Number(parsed?.titleSize)) && Number(parsed.titleSize) > 0 ? Number(parsed.titleSize) : 18;
-    const curSz = titleSize ? Number(titleSize.value) : null;
+    const curSz = titleSize ? rangeGetActualValue(titleSize) : null;
     const keepSz = Number.isFinite(curSz) && curSz > 0 && Math.round(curSz) !== Math.round(baseTitleSize) ? curSz : null;
 
     const nextInner = upsertTitleStyleInner(existingInner, {
@@ -2932,7 +3055,7 @@ function parseBorder(borderText) {
   const widthMatch = widthPart.match(/^(\d+)(px)?$/i);
   const penwidth = widthMatch ? widthMatch[1] : null;
 
-  const style = ["solid", "dotted", "dashed", "bold"].includes(stylePart.toLowerCase())
+  const style = ["solid", "dotted", "dashed"].includes(stylePart.toLowerCase())
     ? stylePart.toLowerCase()
     : null;
 
@@ -2973,10 +3096,10 @@ function parseEdgeBorderLoosePart(partRaw) {
 
   // Style only
   const s = part.toLowerCase();
-  if (["solid", "dotted", "dashed", "bold"].includes(s)) return { style: s };
+  if (["solid", "dotted", "dashed"].includes(s)) return { style: s };
 
   // Style + colour (no width)
-  const mSC = part.match(/^(solid|dotted|dashed|bold)\s+(.+)$/i);
+  const mSC = part.match(/^(solid|dotted|dashed)\s+(.+)$/i);
   if (mSC) {
     const c = normalizeColorIfValid(mSC[2].trim());
     const out = { style: mSC[1].toLowerCase() };
@@ -3064,7 +3187,7 @@ function parseBorderRaw(borderText) {
   const widthMatch = widthPart.match(/^(\d+)(px)?$/i);
   const penwidth = widthMatch ? Number(widthMatch[1]) : null;
 
-  const style = ["solid", "dotted", "dashed", "bold"].includes(stylePart.toLowerCase())
+  const style = ["solid", "dotted", "dashed"].includes(stylePart.toLowerCase())
     ? stylePart.toLowerCase()
     : null;
 
@@ -3150,7 +3273,8 @@ function borderTextToUi(borderText) {
 
   const b = parseBorderRaw(raw);
   const width = Number.isFinite(b.penwidth) ? b.penwidth : 1;
-  const style = b.style || "solid";
+  // No "bold" border style in our UI; treat any legacy "bold" as "solid".
+  const style = b.style === "bold" ? "solid" : b.style || "solid";
 
   const rgb = resolveCssColorToRgb(b.colorRaw || "");
   const colorHex = rgb ? rgbToHex(rgb) : "#999999";
@@ -3161,7 +3285,9 @@ function borderTextToUi(borderText) {
 function uiToBorderText({ width, style, colorHex }) {
   const w = Number(width);
   if (!Number.isFinite(w) || w <= 0) return "";
-  const s = String(style || "solid").trim() || "solid";
+  // No "bold" border style in our UI; treat any legacy "bold" as "solid".
+  const sRaw = String(style || "solid").trim() || "solid";
+  const s = sRaw === "bold" ? "solid" : sRaw;
   const rgb = hexToRgb(colorHex || "#999999") || { r: 153, g: 153, b: 153 };
   // Store rgb(...) in the DSL, but Graphviz will still get hex via normalizeColor() later.
   return `${Math.round(w)}px ${s} rgb(${rgb.r},${rgb.g},${rgb.b})`;
@@ -3173,7 +3299,7 @@ function getDefaultEdgeBorderText() {
   const width = Number.isFinite(w) && w > 0 ? Math.round(w) : 1;
 
   const s = String(lastVizSettings?.defaultLinkStyle || "").trim().toLowerCase();
-  const style = ["solid", "dotted", "dashed", "bold"].includes(s) ? s : "solid";
+  const style = ["solid", "dotted", "dashed"].includes(s) ? s : "solid";
 
   const c = String(lastVizSettings?.defaultLinkColour || "").trim();
   const colour = c || "rgb(108,117,125)"; // bootstrap-ish secondary
@@ -3213,7 +3339,7 @@ function normalizeDslRemoveRedundantEdgeBorders(dsl, settings) {
   const defWRaw = Number(s.defaultLinkWidth);
   const defW = Number.isFinite(defWRaw) && defWRaw > 0 ? Math.round(defWRaw) : 1;
   const defStyleRaw = String(s.defaultLinkStyle || "").trim().toLowerCase();
-  const defStyle = ["solid", "dotted", "dashed", "bold"].includes(defStyleRaw) ? defStyleRaw : "solid";
+  const defStyle = ["solid", "dotted", "dashed"].includes(defStyleRaw) ? defStyleRaw : "solid";
   // IMPORTANT: match Graphviz's real default edge colour (black) if the user hasn't set one.
   const defColorToken = String(s.defaultLinkColour || "").trim() || "black";
   const defColorCmp = normalizeColourForCompare(defColorToken);
@@ -3234,7 +3360,7 @@ function normalizeDslRemoveRedundantEdgeBorders(dsl, settings) {
     // Drop a leading width token and/or leading style token(s); whatever remains is a colour candidate.
     let i = 0;
     if (/^\d+(px)?$/i.test(parts[i] || "")) i++;
-    if (["solid", "dotted", "dashed", "bold"].includes(String(parts[i] || "").toLowerCase())) i++;
+    if (["solid", "dotted", "dashed"].includes(String(parts[i] || "").toLowerCase())) i++;
     const candidate = parts.slice(i).join(" ").trim();
     if (!candidate) return "";
 
@@ -4333,7 +4459,7 @@ function dslToDot(dslText) {
   if (settings.textColour) edgeDefaults.fontcolor = settings.textColour;
   if (settings.defaultLinkStyle) {
     const s = String(settings.defaultLinkStyle || "").trim().toLowerCase();
-    if (["solid", "dotted", "dashed", "bold"].includes(s)) addStyle(edgeDefaults, s);
+    if (["solid", "dotted", "dashed"].includes(s)) addStyle(edgeDefaults, s);
   }
   if (Number.isFinite(settings.defaultLinkWidth) && settings.defaultLinkWidth > 0) edgeDefaults.penwidth = Math.round(settings.defaultLinkWidth);
   dot.push(`  edge${toDotAttrs(edgeDefaults)};`);
@@ -4369,6 +4495,59 @@ function dslToDot(dslText) {
 
   // Emit clusters (nested)
   const clustered = new Set();
+  // -----------------------------
+  // Node width equalisation within clusters
+  // -----------------------------
+  function makeTextMeasurer() {
+    // Purpose: measure label text width (px) so we can set a consistent DOT min `width` in inches.
+    // NOTE: This is an approximation (browser font metrics vs Graphviz), but good enough for "all same width".
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    return function measureMaxLinePx(dotLabel, fontPx) {
+      if (!ctx) return 0;
+      const fs = Number(fontPx);
+      if (!(Number.isFinite(fs) && fs > 0)) return 0;
+      ctx.font = `${fs}px Arial`;
+      const lines = String(dotLabel ?? "").split("\\n");
+      let max = 0;
+      for (const line of lines) {
+        const w = ctx.measureText(String(line || "")).width || 0;
+        if (w > max) max = w;
+      }
+      return max;
+    };
+  }
+
+  const measureMaxLinePx = makeTextMeasurer();
+  const PX_PER_INCH = 96;
+  const PT_TO_PX = PX_PER_INCH / 72;
+  const NODE_LABEL_PAD_PX = 28; // small padding so Graphviz doesn't decide the max-label node needs to be wider
+
+  function nodeMinWidthInchesFromLabel(nodeId) {
+    // Purpose: approximate the minimum DOT node width (inches) needed to fit the label.
+    const n = nodes.get(nodeId);
+    if (!n) return 0;
+    const attrs = { ...n.attrs };
+    applyDefaults(attrs);
+    const labelDot = wrapLabelToDot(n.label, settings.labelWrap);
+    const fsPtRaw = Number(attrs.fontsize);
+    const fsPt = Number.isFinite(fsPtRaw) && fsPtRaw > 0 ? fsPtRaw : BASE_NODE_FONT_SIZE;
+    const fsPx = fsPt * PT_TO_PX;
+    const textPx = measureMaxLinePx(labelDot, fsPx);
+    const wPx = textPx + NODE_LABEL_PAD_PX;
+    return wPx > 0 ? wPx / PX_PER_INCH : 0;
+  }
+
+  function clusterDirectMaxNodeWidthInches(c) {
+    // Purpose: get the max required width across nodes that are DIRECT children of this cluster (exclude nested clusters).
+    let max = 0;
+    for (const id of c.nodeIds || []) {
+      const w = nodeMinWidthInchesFromLabel(id);
+      if (w > max) max = w;
+    }
+    return max;
+  }
+
   function emitCluster(c, indent) {
     // Emit even if empty (so nested structure remains visible)
     dot.push(`${indent}subgraph ${c.id} {`);
@@ -4433,6 +4612,9 @@ function dslToDot(dslText) {
       applyDefaults(attrs); // ensure defaults apply even if node was created implicitly via edges
       attrs.label = wrapLabelToDot(n.label, settings.labelWrap);
       attrs.id = makeNodeDomId(id);
+      // Purpose: make all DIRECT child nodes of this cluster share the same min width (the max needed by any direct child node).
+      const equalWidthInches = clusterDirectMaxNodeWidthInches(c);
+      if (Number.isFinite(equalWidthInches) && equalWidthInches > 0) attrs.width = equalWidthInches.toFixed(3);
       dot.push(`${indent}  "${id}"${toDotAttrs(attrs)};`);
     }
 
@@ -4444,7 +4626,9 @@ function dslToDot(dslText) {
   }
 
   // Only top-level clusters (depth === 2) start emission; children are emitted recursively.
-  clusters.filter((c) => c.depth === 2).forEach((c) => emitCluster(c, "  "));
+  clusters
+    .filter((c) => c.depth === 2)
+    .forEach((c) => emitCluster(c, "  "));
 
   // Emit nodes not in clusters
   for (const [id, n] of nodes.entries()) {
@@ -4810,6 +4994,67 @@ function deleteEdgeLine(lines, lineNo1) {
   return true;
 }
 
+function deleteSingleEdgeFromLine(lines, lineNo1, fromId, toId) {
+  // Purpose: if a single MapScript line expands into multiple rendered edges (eg "A|B -> C|D"),
+  // deleting one rendered edge should remove ONLY that edge, not the whole line.
+  const idx = Number(lineNo1) - 1;
+  if (!Number.isFinite(idx) || idx < 0 || idx >= lines.length) return false;
+
+  const raw = String(lines[idx] || "");
+  const { code, comment } = stripCommentKeepSuffix(raw);
+  const { before } = parseTrailingBracket(code);
+  const ep = parseEdgeEndpoints(before);
+  if (!ep) return false;
+
+  const norm = (x) => String(x || "").trim();
+  const wantFrom = norm(fromId);
+  const wantTo = norm(toId);
+  if (!wantFrom || !wantTo) return false;
+
+  const matchTok = (tok, id) => {
+    const t = norm(tok);
+    const i = norm(id);
+    if (!t || !i) return false;
+    return t === i || slugId(t) === i || slugId(t) === slugId(i);
+  };
+
+  // Single-edge line: keep current behavior (delete the whole line).
+  const isMulti = ep.sources.length > 1 || ep.targets.length > 1;
+  if (!isMulti) return deleteEdgeLine(lines, lineNo1);
+
+  // Preserve the original bracket/comment (styles/label apply to all remaining derived edges).
+  const parsed = parseEdgeLine(lines, lineNo1);
+  if (!parsed) return false;
+  const inner = buildEdgeBracketInner({
+    label: parsed.label,
+    border: parsed.border,
+    keptKv: parsed.keptKv,
+    keptLoose: parsed.keptLoose,
+  });
+  const hadBracket = hasTrailingBracket(code);
+  const bracket = hadBracket ? ` [${inner}]` : (inner ? ` [${inner}]` : "");
+  const commentSuffix = comment ? ` ${comment.trim()}` : "";
+
+  const remaining = [];
+  for (const s of ep.sources) {
+    for (const t of ep.targets) {
+      const isTarget = matchTok(s, wantFrom) && matchTok(t, wantTo);
+      if (!isTarget) remaining.push({ s, t });
+    }
+  }
+
+  // If the line only represented this one edge, delete it completely.
+  if (remaining.length === 0) {
+    lines.splice(idx, 1);
+    return true;
+  }
+
+  // Replace that single multi-edge line with explicit single-edge lines (minus the removed one).
+  const nextLines = remaining.map(({ s, t }) => `${String(s).trim()} -> ${String(t).trim()}${bracket}${commentSuffix}`.trimEnd());
+  lines.splice(idx, 1, ...nextLines);
+  return true;
+}
+
 function deleteNodeEverywhere(lines, nodeId) {
   // Minimal: remove the explicit node definition, and remove any edge lines that mention this ID.
   // This intentionally only targets explicit IDs (simple tokens), not free-label implicit nodes.
@@ -4848,67 +5093,19 @@ function deleteNodeEverywhere(lines, nodeId) {
 
 function deleteCluster(lines, clusterId) {
   // Delete the opening line and corresponding closing line for a cluster (keeping contents).
-  // clusterId is like "cluster_0", "cluster_1", etc.
-  // We need to find the opening line and track to the matching closing line.
-  
-  // Find the opening line index by mirroring dslToDot() cluster open/close rules.
-  const openers = scanClusterOpenersFromLines(lines);
-  const target = openers.find((o, idx) => `cluster_${idx}` === clusterId) || null;
-  const targetOpenIdx = target ? target.idx : -1;
-  const targetDepth = target ? target.depth : -1;
-  
-  if (targetOpenIdx < 0) return lines; // cluster not found
-  
-  // Find the corresponding closing line: first closing marker with matching or greater depth
-  let targetCloseIdx = -1;
-  const stack = [{ depth: targetDepth, openIdx: targetOpenIdx }];
-  
-  for (let i = targetOpenIdx + 1; i < lines.length; i++) {
-    const raw = lines[i];
-    const { code } = stripCommentKeepSuffix(raw);
-    const line = code.trim();
-    const m = line.match(/^(-{2,})(.*)$/);
-    if (!m) continue;
-    
-    const dashes = m[1];
-    const depth = dashes.length;
-    if (depth % 2 !== 0) continue;
-    
-    const rest = String(m[2] || "").trim();
-    const hasBracket = hasTrailingBracket(rest);
-    const { before: labelPart, inner: styleInnerRaw } = parseTrailingBracket(rest);
-    const label = String(labelPart || "").trim();
-    const styleInner = String(styleInnerRaw || "").trim();
-    const isClose = !label && !hasBracket;
+  const range = findClusterRangeFromLines(lines, clusterId);
+  if (!range) return lines;
+  const { openIdx, closeIdx } = range;
 
-    if (isClose) {
-      // Closing marker - closes everything >= depth
-      while (stack.length && stack[stack.length - 1].depth >= depth) {
-        const popped = stack.pop();
-        if (popped.openIdx === targetOpenIdx && depth === targetDepth) {
-          targetCloseIdx = i;
-          break;
-        }
-      }
-      if (targetCloseIdx >= 0) break;
-      continue;
-    }
-
-    // Opener: mirror dslToDot() alignment (can implicitly close nested stacks)
-    const parentDepth = depth - 2;
-    while (stack.length && stack[stack.length - 1].depth > parentDepth) stack.pop();
-    if (depth > targetDepth) stack.push({ depth, openIdx: i });
-  }
-  
-  // If no closing marker found, just delete the opening line
-  if (targetCloseIdx < 0) {
-    lines.splice(targetOpenIdx, 1);
+  // If no closing marker found, just delete the opening line.
+  if (closeIdx < 0) {
+    lines.splice(openIdx, 1);
     return lines;
   }
-  
-  // Delete both lines (close first to preserve indices)
-  lines.splice(targetCloseIdx, 1);
-  lines.splice(targetOpenIdx, 1);
+
+  // Delete both lines (close first to preserve indices).
+  lines.splice(closeIdx, 1);
+  lines.splice(openIdx, 1);
   return lines;
 }
 
@@ -4933,6 +5130,63 @@ function parseTmEdgeDomIdFromEl(el) {
   return m ? Number(m[1]) : null;
 }
 
+function findClusterRangeFromLines(lines, clusterId) {
+  // Purpose: map Graphviz cluster id (cluster_0, cluster_1, ...) back to the opening + closing lines in MapScript.
+  // Mirrors dslToDot() open/close rules via scanClusterOpenersFromLines().
+  const cid = String(clusterId || "").trim();
+  if (!cid) return null;
+  const openers = scanClusterOpenersFromLines(lines);
+  const opener = openers.find((o, idx) => `cluster_${idx}` === cid) || null;
+  if (!opener) return null;
+
+  const openIdx = opener.idx;
+  const targetDepth = opener.depth;
+  if (!(Number.isFinite(openIdx) && openIdx >= 0)) return null;
+  if (!(Number.isFinite(targetDepth) && targetDepth >= 2)) return null;
+
+  // Find the matching closing line index.
+  let closeIdx = -1;
+  const stack = [{ depth: targetDepth, openIdx }];
+
+  for (let i = openIdx + 1; i < lines.length; i++) {
+    const raw = lines[i];
+    const { code } = stripCommentKeepSuffix(raw);
+    const line = String(code || "").trim();
+    const m = line.match(/^(-{2,})(.*)$/);
+    if (!m) continue;
+
+    const dashes = m[1];
+    const depth = dashes.length;
+    if (depth % 2 !== 0) continue;
+
+    const rest = String(m[2] || "").trim();
+    const hasBracket = hasTrailingBracket(rest);
+    const { before: labelPart } = parseTrailingBracket(rest);
+    const label = String(labelPart || "").trim();
+    const isClose = !label && !hasBracket;
+
+    if (isClose) {
+      // Closing marker - closes everything >= depth.
+      while (stack.length && stack[stack.length - 1].depth >= depth) {
+        const popped = stack.pop();
+        if (popped.openIdx === openIdx && depth === targetDepth) {
+          closeIdx = i;
+          break;
+        }
+      }
+      if (closeIdx >= 0) break;
+      continue;
+    }
+
+    // Opener: mirror dslToDot() alignment (can implicitly close nested stacks).
+    const parentDepth = depth - 2;
+    while (stack.length && stack[stack.length - 1].depth > parentDepth) stack.pop();
+    if (depth > targetDepth) stack.push({ depth, openIdx: i });
+  }
+
+  return { clusterId: cid, openIdx, closeIdx, depth: targetDepth, opener };
+}
+
 function initVizInteractivity(editor, graphviz, opts = {}) {
   const vizEl = document.getElementById("tm-viz");
   if (!vizEl) return;
@@ -4941,6 +5195,21 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
   // Track selected nodes for multi-select
   const selectedNodes = new Set();
+
+  // Hover glow (subtle highlight) for clickable-to-edit diagram elements.
+  let hoverGlowEl = null; // SVG element with .tm-viz-hover-glow applied
+  function clearHoverGlow() {
+    if (!hoverGlowEl) return;
+    hoverGlowEl.classList?.remove?.("tm-viz-hover-glow");
+    hoverGlowEl = null;
+  }
+  function setHoverGlow(el) {
+    if (hoverGlowEl === el) return;
+    clearHoverGlow();
+    if (!el) return;
+    el.classList?.add?.("tm-viz-hover-glow");
+    hoverGlowEl = el;
+  }
 
   // Hover-only delete button (red X) for nodes/links (fast delete with confirm).
   let hoverDeleteBtn = document.getElementById("tm-viz-hover-delete");
@@ -5067,6 +5336,9 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   let hoverDeleteTarget = null; // { type: "node", nodeId } | { type: "edge", lineNo, fromId, toId }
   let hoverSourceTarget = null; // { type: "node", nodeId }
   let pendingLinkSourceId = null; // nodeId while user is choosing a target
+
+  // Shift+drag "pseudo drag-drop" to move node definitions into/out of group boxes (clusters).
+  let tmNodeDrag = null; // { nodeIds: string[], usedMulti: boolean, startX, startY, moved: boolean, targetClusterId: string|null }
 
   // Baseline values captured when the modal opens; used to write ONLY changed attrs (and remove duplicates/redundant overrides).
   let baseline = null;
@@ -5951,6 +6223,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
   // Hover X for quick delete (does not open the modal).
   vizEl.addEventListener("mousemove", (e) => {
+    // While Shift+dragging nodes for grouping, suppress hover affordances.
+    if (tmNodeDrag) return;
     if (!hoverDeleteBtn) return;
     // Don't flicker when moving onto the button itself.
     if (e.target === hoverDeleteBtn || hoverDeleteBtn.contains(e.target)) return;
@@ -5962,6 +6236,12 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     const clusterG = getClosestGraphvizGroup(e.target, "cluster");
     
     if (!nodeG && !edgeG && !clusterG) {
+      // Diagram title hover: only glow if it's actually the editable title.
+      const title = String(lastVizSettings?.title || "").trim();
+      const textEl = e.target?.closest?.("g.graph text") || null;
+      const hovered = String(textEl?.textContent || "").trim();
+      if (openTitleModal && title && textEl && hovered === title) setHoverGlow(textEl);
+      else clearHoverGlow();
       hideHoverDelete();
       hideHoverSource();
       hideHoverCheckbox();
@@ -5969,6 +6249,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     }
 
     if (nodeG) {
+      setHoverGlow(nodeG);
       const nodeId = getGraphvizTitleText(nodeG);
       if (!nodeId) {
         hideHoverDelete();
@@ -5989,6 +6270,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     }
 
     if (clusterG) {
+      setHoverGlow(clusterG);
       const clusterId = getGraphvizTitleText(clusterG);
       if (!clusterId || !clusterId.startsWith("cluster_")) {
         hideHoverDelete();
@@ -6006,6 +6288,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     }
 
     if (edgeG) {
+      setHoverGlow(edgeG);
       const title = getGraphvizTitleText(edgeG); // often "A->B"
       const m = title.match(/^(.+)->(.+)$/);
       const fromId = m ? m[1].trim() : "";
@@ -6061,9 +6344,147 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   });
 
   vizEl.addEventListener("mouseleave", () => {
+    // Cancel any pending drag state on leaving the viz.
+    tmNodeDrag = null;
     hideHoverDelete();
     hideHoverSource();
     hideHoverCheckbox();
+    clearHoverGlow();
+  });
+
+  function moveExplicitNodeDefsIntoCluster(lines, nodeIds, clusterId) {
+    // Purpose: move explicit "A:: ..." lines so they appear inside an existing cluster (before its closing marker).
+    const ids = Array.from(nodeIds || []).map((s) => String(s || "").trim()).filter(Boolean);
+    if (!ids.length) return { ok: false, message: "No nodes to move." };
+
+    const defs = [];
+    const missing = [];
+    for (const id of ids) {
+      const idx = findExplicitNodeDefIdx(lines, id);
+      if (idx < 0) missing.push(id);
+      else defs.push({ id, idx, raw: lines[idx] });
+    }
+    if (!defs.length) return { ok: false, message: "No selected nodes have explicit 'A:: ...' lines to move." };
+
+    // Remove original node definition lines (bottom-up so indices stay valid).
+    defs.sort((a, b) => a.idx - b.idx);
+    const removeIdxs = defs.map((d) => d.idx).sort((a, b) => b - a);
+    for (const i of removeIdxs) lines.splice(i, 1);
+
+    // Re-find cluster range after removals (indices may shift).
+    const range = findClusterRangeFromLines(lines, clusterId);
+    if (!range) return { ok: false, message: "Drop failed: target group box couldn't be mapped back to the editor." };
+    if (range.closeIdx < 0) return { ok: false, message: "Drop failed: target group box has no closing line (use '--' to close it)." };
+
+    const insertAt = range.closeIdx; // insert BEFORE closing marker so nodes become members of that cluster
+    const nodeLines = defs.map((d) => d.raw);
+    lines.splice(insertAt, 0, ...nodeLines);
+
+    const msg = missing.length
+      ? `Moved ${defs.length} node(s) into group. Skipped (no explicit A:: line): ${missing.join(", ")}`
+      : `Moved ${defs.length} node(s) into group.`;
+    return { ok: true, message: msg };
+  }
+
+  function moveExplicitNodeDefsOutToTopLevel(lines, nodeIds) {
+    // Purpose: move explicit "A:: ..." lines out of any clusters (top-level).
+    const ids = Array.from(nodeIds || []).map((s) => String(s || "").trim()).filter(Boolean);
+    if (!ids.length) return { ok: false, message: "No nodes to move." };
+
+    const defs = [];
+    const missing = [];
+    for (const id of ids) {
+      const idx = findExplicitNodeDefIdx(lines, id);
+      if (idx < 0) missing.push(id);
+      else defs.push({ id, idx, raw: lines[idx] });
+    }
+    if (!defs.length) return { ok: false, message: "No selected nodes have explicit 'A:: ...' lines to move." };
+
+    // Remove original lines.
+    defs.sort((a, b) => a.idx - b.idx);
+    const removeIdxs = defs.map((d) => d.idx).sort((a, b) => b - a);
+    for (const i of removeIdxs) lines.splice(i, 1);
+
+    // Insert above the trailing links block (recommended style), but only if we're not inside a cluster there.
+    const insertAt = findTrailingLinksBlockStart(lines);
+    const depthAt = getClusterDepthAtLine(lines, insertAt);
+    if (depthAt > 0) {
+      return { ok: false, message: "Move out failed: you're still inside an open group box here. Add a closing line like '--' before the links section." };
+    }
+
+    const nodeLines = defs.map((d) => d.raw);
+    lines.splice(insertAt, 0, ...nodeLines);
+
+    const msg = missing.length
+      ? `Moved ${defs.length} node(s) out of groups. Skipped (no explicit A:: line): ${missing.join(", ")}`
+      : `Moved ${defs.length} node(s) out of groups.`;
+    return { ok: true, message: msg };
+  }
+
+  function getDropClusterIdFromMouseEvent(e) {
+    // Purpose: determine which cluster (if any) the mouse is currently over during a drag gesture.
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const clusterG = getClosestGraphvizGroup(el, "cluster");
+    const cid = clusterG ? getGraphvizTitleText(clusterG) : "";
+    if (!cid || !cid.startsWith("cluster_")) return { clusterId: null, clusterG: null };
+    return { clusterId: cid, clusterG };
+  }
+
+  // Shift+drag to move nodes into/out of clusters.
+  vizEl.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    if (!e.shiftKey) return;
+    if (pendingLinkSourceId) return; // don't mix gestures with link-pick mode
+
+    const nodeG = getClosestGraphvizGroup(e.target, "node");
+    if (!nodeG) return;
+    const nodeId = getGraphvizTitleText(nodeG);
+    if (!nodeId) return;
+
+    const usedMulti = selectedNodes.size > 0 && selectedNodes.has(nodeId);
+    const nodeIds = usedMulti ? Array.from(selectedNodes) : [nodeId];
+    tmNodeDrag = { nodeIds, usedMulti, startX: e.clientX, startY: e.clientY, moved: false, targetClusterId: null };
+    vizEl.style.cursor = "copy";
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (!tmNodeDrag) return;
+    const dx = e.clientX - tmNodeDrag.startX;
+    const dy = e.clientY - tmNodeDrag.startY;
+    if (!tmNodeDrag.moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) tmNodeDrag.moved = true;
+
+    const { clusterId, clusterG } = getDropClusterIdFromMouseEvent(e);
+    tmNodeDrag.targetClusterId = clusterId;
+    if (clusterG) setHoverGlow(clusterG);
+    else clearHoverGlow();
+  });
+
+  window.addEventListener("mouseup", (e) => {
+    if (!tmNodeDrag) return;
+    const drag = tmNodeDrag;
+    tmNodeDrag = null;
+    vizEl.style.cursor = "grab";
+
+    // Suppress synthetic click after drag.
+    if (drag.moved) vizEl.dataset.tmIgnoreNextClick = "1";
+
+    // If we dragged a multi-selection, clear it on completion (requested).
+    // Do this BEFORE rerender so applyMultiSelectVisuals() doesn't reapply highlights.
+    if (drag.usedMulti) {
+      selectedNodes.clear();
+      updateDeleteSelectedButton();
+      applyMultiSelectVisuals();
+    }
+
+    const lines = editor.getValue().split(/\r?\n/);
+    const res = drag.targetClusterId
+      ? moveExplicitNodeDefsIntoCluster(lines, drag.nodeIds, drag.targetClusterId)
+      : moveExplicitNodeDefsOutToTopLevel(lines, drag.nodeIds);
+    if (!res.ok) return setVizStatus(res.message || "Move failed");
+    applyEditorLines(lines);
+    setVizStatus(res.message || "Moved");
   });
 
   hoverDeleteBtn?.addEventListener("click", (e) => {
@@ -6095,7 +6516,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
     if (hoverDeleteTarget.type === "edge") {
       // Delete immediately (no confirm modal).
-      const did = deleteEdgeLine(lines, hoverDeleteTarget.lineNo);
+      const did = deleteSingleEdgeFromLine(lines, hoverDeleteTarget.lineNo, hoverDeleteTarget.fromId, hoverDeleteTarget.toId);
       if (!did) return setVizStatus("Delete failed: edge line not found");
       applyEditorLines(lines);
       clearVizSelection();
@@ -6486,7 +6907,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     }
 
     if (selection.type === "edge") {
-      const ok = deleteEdgeLine(lines, selection.lineNo);
+      const ok = deleteSingleEdgeFromLine(lines, selection.lineNo, selection.fromId, selection.toId);
       if (!ok) return setVizStatus("Delete failed: edge line not found");
       applyEditorLines(lines);
     }
@@ -6852,6 +7273,9 @@ function initVizToolbar() {
     viz.addEventListener("mousedown", (e) => {
       // Left-button drag pans the scroll container.
       if (e.button !== 0) return;
+      // If the user is Shift+dragging a node (used for grouping), don't start panning.
+      // (Node drag handler lives in initVizInteractivity and needs this gesture.)
+      if (e.shiftKey && e.target?.closest?.("g.node")) return;
       dragging = true;
       moved = false;
       // Reset any prior "ignore next click" guard once a new gesture starts.
@@ -7073,10 +7497,9 @@ function startIntroTour({ force = false } = {}) {
           Great for Theory of Change diagrams.
         </div>
         <ul class="mt-3 mb-0 ps-3">
-          <li>🆓 Free</li>
-          <li>📝 Use a simple text “language” to quickly create and style complex diagrams</li>
-          <li>🤖 And/or get help from AI</li>
-          <li>⚡ Updates in real time as you type</li>
+          <li>🆓 Free, no registration</li>
+          <li>📝 Auto layout even of complex diagrams</li>
+          <li>🤖 Optional AI assistance</li>
           <li>🔗 Share via a URL</li>
         </ul>
       `.trim(),

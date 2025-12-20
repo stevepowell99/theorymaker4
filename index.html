@@ -382,7 +382,6 @@
                         <option value="solid">solid</option>
                         <option value="dotted">dotted</option>
                         <option value="dashed">dashed</option>
-                        <option value="bold">bold</option>
                       </select>
                     </div>
                     <div class="col-4">
@@ -436,6 +435,9 @@
                     autocomplete="off"
                   />
 
+                  <div class="small text-muted">
+                    Tip: Shift+drag to move these nodes into/out of grouping boxes.
+                  </div>
 
                 </div>
               </div>
@@ -776,19 +778,29 @@ A -> B [increases | 1px]</code></pre>
                         </div>
                         <div class="col-12 col-md-6">
                           <label class="form-label mb-1" for="tm-style-node-shape">Default node shape</label>
-                          <select id="tm-style-node-shape" class="form-select form-select-sm">
+                          <select id="tm-style-node-shape" class="form-select form-select-sm visually-hidden">
                             <option value="">square</option>
                             <option value="rounded">rounded</option>
                           </select>
+                          <div id="tm-style-node-shape-btns" class="btn-group btn-group-sm" role="group" aria-label="Default node shape">
+                            <button type="button" class="btn btn-outline-secondary" data-value="">square</button>
+                            <button type="button" class="btn btn-outline-secondary" data-value="rounded">rounded</button>
+                          </div>
                         </div>
                         <div class="col-12 col-md-6">
                           <label class="form-label mb-1" for="tm-style-node-shadow">Default node shadow</label>
-                          <select id="tm-style-node-shadow" class="form-select form-select-sm">
+                          <select id="tm-style-node-shadow" class="form-select form-select-sm visually-hidden">
                             <option value="none">none</option>
                             <option value="subtle">subtle</option>
                             <option value="medium">medium</option>
                             <option value="strong">strong</option>
                           </select>
+                          <div id="tm-style-node-shadow-btns" class="btn-group btn-group-sm" role="group" aria-label="Default node shadow">
+                            <button type="button" class="btn btn-outline-secondary" data-value="none">none</button>
+                            <button type="button" class="btn btn-outline-secondary" data-value="subtle">subtle</button>
+                            <button type="button" class="btn btn-outline-secondary" data-value="medium">medium</button>
+                            <button type="button" class="btn btn-outline-secondary" data-value="strong">strong</button>
+                          </div>
                         </div>
                         <div class="col-12">
                           <div class="d-flex align-items-center justify-content-between">
@@ -800,12 +812,16 @@ A -> B [increases | 1px]</code></pre>
                               <input id="tm-style-node-border-width" class="form-range" type="range" min="0" max="6" step="1" value="1" />
                             </div>
                             <div class="col-12 col-md-4">
-                              <select id="tm-style-node-border-style" class="form-select form-select-sm">
+                              <select id="tm-style-node-border-style" class="form-select form-select-sm visually-hidden">
                                 <option value="solid">solid</option>
                                 <option value="dotted">dotted</option>
                                 <option value="dashed">dashed</option>
-                                <option value="bold">bold</option>
                               </select>
+                              <div id="tm-style-node-border-style-btns" class="btn-group btn-group-sm" role="group" aria-label="Default node border style">
+                                <button type="button" class="btn btn-outline-secondary" data-value="solid">solid</button>
+                                <button type="button" class="btn btn-outline-secondary" data-value="dotted">dotted</button>
+                                <button type="button" class="btn btn-outline-secondary" data-value="dashed">dashed</button>
+                              </div>
                             </div>
                             <div class="col-12 col-md-4">
                               <input id="tm-style-node-border-color" class="form-control form-control-sm form-control-color" type="color" value="#1e90ff" />
@@ -836,13 +852,18 @@ A -> B [increases | 1px]</code></pre>
                         </div>
                         <div class="col-12 col-md-6">
                           <label class="form-label mb-1" for="tm-style-link-style">Default link style</label>
-                          <select id="tm-style-link-style" class="form-select form-select-sm">
+                          <select id="tm-style-link-style" class="form-select form-select-sm visually-hidden">
                             <option value="">(auto)</option>
                             <option value="solid">solid</option>
                             <option value="dotted">dotted</option>
                             <option value="dashed">dashed</option>
-                            <option value="bold">bold</option>
                           </select>
+                          <div id="tm-style-link-style-btns" class="btn-group btn-group-sm" role="group" aria-label="Default link style">
+                            <button type="button" class="btn btn-outline-secondary" data-value="">auto</button>
+                            <button type="button" class="btn btn-outline-secondary" data-value="solid">solid</button>
+                            <button type="button" class="btn btn-outline-secondary" data-value="dotted">dotted</button>
+                            <button type="button" class="btn btn-outline-secondary" data-value="dashed">dashed</button>
+                          </div>
                         </div>
                         <div class="col-12 col-md-6">
                           <div class="d-flex align-items-center justify-content-between">
@@ -1009,7 +1030,6 @@ A -> B [increases | 1px]</code></pre>
                     <option value="solid">solid</option>
                     <option value="dotted">dotted</option>
                     <option value="dashed">dashed</option>
-                    <option value="bold">bold</option>
                   </select>
                 </div>
                 <div class="col-4">
@@ -1073,7 +1093,6 @@ A -> B [increases | 1px]</code></pre>
                       <option value="solid">solid</option>
                       <option value="dotted">dotted</option>
                       <option value="dashed">dashed</option>
-                      <option value="bold">bold</option>
                     </select>
                   </div>
                   <div class="col-4">
@@ -1110,7 +1129,6 @@ A -> B [increases | 1px]</code></pre>
                       <option value="solid">solid</option>
                       <option value="dotted">dotted</option>
                       <option value="dashed">dashed</option>
-                      <option value="bold">bold</option>
                     </select>
                   </div>
                   <div class="col-4">
@@ -1159,7 +1177,6 @@ A -> B [increases | 1px]</code></pre>
                     <option value="solid">solid</option>
                     <option value="dotted">dotted</option>
                     <option value="dashed">dashed</option>
-                    <option value="bold">bold</option>
                   </select>
                 </div>
                 <div class="col-4">
@@ -1216,7 +1233,6 @@ A -> B [increases | 1px]</code></pre>
                   <option value="solid">solid</option>
                   <option value="dotted">dotted</option>
                   <option value="dashed">dashed</option>
-                  <option value="bold">bold</option>
                 </select>
               </div>
               <div class="col-4">
@@ -1275,7 +1291,6 @@ A -> B [increases | 1px]</code></pre>
                   <option value="solid">solid</option>
                   <option value="dotted">dotted</option>
                   <option value="dashed">dashed</option>
-                  <option value="bold">bold</option>
                 </select>
               </div>
               <div class="col-4">
@@ -1358,7 +1373,6 @@ A -> B [increases | 1px]</code></pre>
                   <option value="solid">solid</option>
                   <option value="dotted">dotted</option>
                   <option value="dashed">dashed</option>
-                  <option value="bold">bold</option>
                 </select>
               </div>
               <div class="col-4">
