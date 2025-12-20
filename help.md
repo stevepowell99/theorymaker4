@@ -2,37 +2,55 @@
 
 ## Intro
 
-Theorymaker lets you write a simple text “map language” called **MapScript** and instantly see it as a diagram.
+Theorymaker is for creating Theories of Change and similar diagrams. 
 
-You can work in three ways:
+🔥💥⛔**Use another tool** if:
+- If you want a different kind of diagram, which does not simply involve multiple nodes, links and grouping boxes
+- If you want custom positions for your diagram components. Theorymaker is opinionated about positioning. It is not drag-and-drop.
+- If you want fully-featured ToC software with indicators, monitoring ...
 
-- **Manual**: write MapScript directly in the Editor.
-- **AI**: ask the chat to update the diagram for you.
-- **Combination**: use AI for a first draft, then tweak/refine manually (or vice versa).
+😀😇🎖️**Theormaker is great because**:
+- it is good at laying out even complicated diagrams easily, finding good positions for nodes and links. 
+- it is based on a simple text “map language” called **MapScript**. 
+- you can create and improve your diagram by:
+  - just asking the AI 
+  - clicking on different parts of the diagram to style them and add nodes and links and groups
+  - editing the underlying text in the editor
+  - or any combination of these.
 
-Features (practical stuff you’ll use):
+This help is split into tabs:
 
-- **Share/restore via URL**: the URL updates as you type; copy/paste it to restore the exact same map later.
-- **Undo / Redo**: use the top-right arrow buttons (these mirror browser Back/Forward).
-- **Style the whole diagram**: click the palette button (**Diagram style**) to change defaults like colours, borders, direction, spacing, etc.
-- **Save maps in this browser**: click **Save** to store the current map in LocalStorage (it will appear in Templates on this device/browser).
-- **Load examples or saved maps**: use **Templates** to open an example, or load a saved map.
-- **Edit by clicking the diagram**: click a node/link/group in the diagram to edit it (or delete it).
-- **Style a single line quickly**: in the Editor, use the small **Style** button that appears near the cursor to add/update a `[...]` style list on the current node/link/group line.
+- **intro**: the basics (start here)
+- **usage**: how the app works (URL, templates, editing the diagram)
+- **ai**: how chat works + privacy
+- **syntax**: MapScript reference (copy/paste friendly)
+- **quickref**: a small example you can copy
+- **admin**: local-dev-only tools (only visible on `localhost`)
 
-If you’re new: think of it like this:
+### Need to know (start here)
 
-- **Nodes** are the boxes in the diagram.
-- **Links** are arrows between nodes.
-- **Grouping boxes** are visual containers that group related nodes.
+- **Your map is defined by the text in the Editor**. Everything else is derived from it. 
+- **Share/restore via URL**: the URL updates as you type. Copy/paste the URL to restore the exact same map later.
+- **Undo / Redo**: use the top-right buttons (these mirror browser Back/Forward).
+- **Templates**: load an example, or load maps you saved in this browser.
+- **Save**: you can save your maps into this browser only (LocalStorage).
+
+### What are “nodes”, “links”, and “groups”?
+
+- **Nodes** are the boxes.
+- **Links** are the arrows.
+- **Groups** are grouping boxes (containers) around related nodes.
 
 ## Usage
 
-### The 3 areas
+### The main areas
 
-- **Editor (left)**: where you type MapScript.
-- **Viz (right)**: the rendered diagram.
-- **Templates**: example maps + maps you saved in this browser.
+- **Left**: Chat (optional) + Editor (MapScript)
+- **Diagram** (tab): the rendered map + controls
+- **Templates** (tab): examples + maps you saved in this browser
+- **Help** (tab): this page
+
+Tip: there’s also a **Tour** button (magic wand) in the navbar.
 
 ### Editor keyboard shortcuts (Ace)
 
@@ -41,29 +59,32 @@ Most useful (Windows):
 - **Find**: `Ctrl+F`
 - **Replace**: `Ctrl+H`
 - **Go to line**: `Ctrl+L`
+- **Add next instance of current selection**: `Alt+Ctrl+Right`
 - **Duplicate line/selection**: `Ctrl+Shift+D`
 - **Multi-cursor (add above/below)**: `Ctrl+Alt+Up` / `Ctrl+Alt+Down`
 - **Multi-cursor (add at click)**: `Alt+Click`
 - **Toggle comment**: `Ctrl+/`
 - **Indent / outdent**: `Tab` / `Shift+Tab`
 
-### Map controls (Viz tab)
+### Diagram controls (Diagram tab)
 
 Across the top of the diagram you have controls:
 
-- **Zoom out / Zoom in**: zoom the diagram.
-- **Reset (fit to width)**: fits the diagram to the available panel width again.
-- **Copy raw URL**: copies the current “restore URL” (the MapScript is encoded into it).
-- **Copy PNG**: copies a high-quality PNG image.
-- **Copy link**: copies a formatted HTML `<a href="...">...</a>` link.
-- **Copy HTML**: copies an HTML “package” containing a high-quality PNG + a link (useful for reports).
+- **Zoom out / Reset / Zoom in**: zoom the diagram.
+- **Save** (floppy): save the current map into this browser (LocalStorage).
+- **Share / export** (box-with-arrow menu):
+  - **Raw URL**: copies the current restore URL (it already contains the MapScript).
+  - **Formatted link**: copies an HTML `<a href="...">...</a>` link.
+  - **PNG image**: downloads a high-quality PNG.
+  - **HTML package**: downloads a small HTML file containing the PNG + a link.
+- **Diagram style** (palette): diagram-wide defaults (direction, spacing, colours, borders, etc).
 
 Tips:
 
-- If you resize the editor splitter, the diagram will refit while you’re in the default “fit to width” mode.
-- Once you zoom manually, the app keeps your zoom level until you hit **Reset**.
+- You can **scroll** to move around large diagrams.
+- You can resize the left and right panels by dragging the broder between them.
 
-### Sharing maps (URL)
+### Sharing / restoring (URL)
 
 - The URL updates as you type.
 - Copy/paste the URL to share the exact same map with someone else (or to restore later).
@@ -71,12 +92,23 @@ Tips:
 ### Saving maps (LocalStorage)
 
 - Click **Save** to store the current map **in this browser only**.
-- Saved maps appear at the top of **Templates**.
+- Saved maps appear in **Templates → Saved in this browser**.
+- Saved maps can be deleted from Templates (browser-only).
 
 ### Editing the diagram with clicks
 
-- Click a **node** to change its label and styling or delete it.
-- Click a **link** to change its endpoints/label/border or delete it.
+- Click a **node** to change its label/styling or delete it.
+- Click a **link** to change its endpoints/label/styling or delete it.
+- Click a **group box** to edit its title/styling.
+
+### Styling quickly from the Editor
+
+In the Editor, when your cursor is on a styleable line, a small **Style** button appears near the cursor:
+
+- Node line: `ID:: Label [...]`
+- Link line: `A -> B [...]`
+- Group line: `--Group name [...]`
+- Setting line: `Key: Value` (opens a focused “Edit setting” drawer)
 
 ## AI
 
@@ -97,21 +129,22 @@ Good ways to use it:
 Important notes:
 
 - **Optional**: you can ignore chat entirely and just edit manually.
-- **Privacy**: when you use chat, your current map text is sent to an external AI service to generate a suggested update.
-- **API key**: you may be prompted to paste an API key the first time you use chat (it’s stored only in this browser).
+- **Privacy**: when you use chat, your current map text is sent to an external AI service (Dify) to generate a suggested update.
+- **API keys**:
+  - **Production (hosted)**: the API key is stored server-side (Netlify environment variable) and you will not be prompted.
+  - **Local dev (localhost only)**: you’ll be prompted for a Dify App API key; it is stored in this browser only (`localStorage["tm_dify_api_key"]`).
 
 ## Admin
 
 Admin features are enabled **only when running locally** on `http://localhost/...` (Live Server).
 
 - **Rebuild thumbnails**: Templates → **Rebuild thumbnails** (admin-only).
-- **Save as standard example**: Editor → **Save** → **Copy standard example snippet**, then paste the snippet into `GALLERY_EXAMPLES` in `examples.js`.
+- **Save as standard example**: Diagram → **Save** → **Copy standard example snippet**, then paste the snippet into `GALLERY_EXAMPLES` in `examples.js`.
 
 ## Syntax
 
-This section is meant to be copy/paste friendly.
 
-### 1) The smallest possible map
+### 0) The smallest possible map
 
 Paste this into the editor:
 
@@ -120,6 +153,16 @@ A:: Cause
 B:: Effect
 A -> B
 ```
+### 1) Recommended structure
+
+MapScript is flexible: you *can* mix node aliases, boxes, and links anywhere.
+
+But it’s good style (and easiest to understand) to write in this order:
+
+- **Settings** (optional) at the top: `Key: Value`
+- **Aliases + boxes** next: `ID:: Label` and `--...` box markers
+- **Links** last: `A -> B`
+
 
 ### 2) Comments (important)
 
@@ -134,10 +177,11 @@ Settings look like `Key: Value` and usually go near the top.
 
 Common settings:
 
-- **Title**: text title shown above the diagram.
+- **Title**: text title shown above the diagram. You can also style the title inline:
+  - `Title: My title [text colour=dimgray | text size=22]` (title-only; does not change edge label colours)
 - **Title position**: where the title is placed: `bottom-left | bottom-centre | bottom-right | top-left | top-centre | top-right`.
 - **Background**: background colour (named colour or `rgb(r,g,b)`).
-- **Text colour**: default text colour for the **title + edge labels**.
+- **Text colour**: default text colour for the **edge labels** (and the title if the Title line has no title-only styling).
 - **Default node text colour**: default text colour for **node labels**.
 - **Default group text colour**: default text colour for **group titles**.
 - **Default node colour**: default node fill colour.
@@ -150,6 +194,20 @@ Common settings:
 - **Direction**: `top-bottom | bottom-top | left-right | right-left`.
 - **Label wrap**: wraps node labels after N characters (best-effort).
 - **Spacing along / Spacing across**: spacing controls (small numbers like `2`–`8` are typical).
+
+Manual line breaks (override wrap):
+
+- You can force line breaks inside **any label** (nodes, links, group titles, and the diagram title) by writing `///` inside the label text.
+- When `///` is used, the normal **Label wrap** behavior is **switched off for that item**.
+
+Examples:
+
+```
+A:: A long label///with a manual break
+A -> B [increases///then decreases]
+--A group title///with two lines
+Title: My title///with a subtitle
+```
 
 Colour rules (keep it simple):
 
@@ -197,6 +255,11 @@ Links look like this:
 A -> B
 ```
 
+Notes:
+
+- If you link to an ID that you never defined with `ID:: ...`, it still appears as a node (implicit node). Its label will just be the ID.
+- **Implicit nodes are never put inside grouping boxes**. To put a node in a box (or style it, or reuse it reliably), define it explicitly with `ID:: Label`.
+
 You can create multiple links in one line using `|`:
 
 ```
@@ -240,8 +303,16 @@ Grouping boxes are just lines starting with dashes:
 
 - `--Label` opens a group (level 1)
 - `----Label` opens a nested group (level 2)
+- `--[]` opens an **untitled** group (level 1)
+- `----[]` opens an **untitled** nested group (level 2)
 - `----` closes the most recent level-2 group
 - `--` closes the most recent level-1 group (and anything nested)
+
+Rules / gotchas:
+
+- **Untitled opener must be explicit**: use `--[]` (or `--[border=...]`, etc). Plain `--` is always a closer.
+- Boxes only contain nodes that are explicitly defined with `ID:: ...` while the box is open.
+- Good style is to put boxes + aliases first, then links last. (You can mix them, but it’s harder to read.)
 
 Example:
 
@@ -258,6 +329,7 @@ D:: Error rate
 
 A | B -> C | D
 ```
+Important rule (by design): **groups only contain nodes that appear as explicit alias lines (`ID:: ...`) while the box is open**. Links don’t “pull” nodes into groups.
 
 ### 6b) Styling groups (optional)
 
@@ -265,6 +337,12 @@ You can add a style list to a group title line:
 
 ```
 --Drivers [colour=aliceblue | border=2px dotted dimgray | text colour=dimgray | text size=1.2]
+```
+
+Untitled groups can also be styled:
+
+```
+--[colour=aliceblue | border=2px dotted dimgray]
 ```
 
 Supported group attributes:
@@ -304,3 +382,21 @@ Examples:
 1px solid blue
 2px dotted gray
 ```
+
+## FAQ
+
+### How do I force a line break in a label?
+
+Use `///` inside the label text. It creates a manual newline and disables auto-wrapping for that label:
+
+```
+A:: My long label///breaking here
+```
+
+### Why doesn’t `#ff0000` work for colours?
+
+Because `#` starts a comment in MapScript. Use named colours (e.g. `red`) or `rgb(r,g,b)` instead.
+
+### Why aren’t my linked nodes appearing inside groups?
+
+Groups only contain nodes that are explicitly defined with `ID:: ...` while the group is open; links don’t “pull” nodes into groups.

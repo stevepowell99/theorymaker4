@@ -6,13 +6,12 @@ export const GALLERY_EXAMPLES = [
   {
     id: "ex-01",
     title: "Starter (groups + multi-links)",
-    desc: "A realistic starter map showing groups and multi-source/multi-target links.",
     dsl: `# Styles
 Background: aliceblue
 Default node colour: rgb(255, 224, 224)
 Default node shape: rounded
 Default node shadow: subtle
-Default node border: 1px dotted seagreen
+Default node border: 1px dashed seagreen
 Direction: right-left
 Label wrap: 20
 Spacing along: 2
@@ -20,6 +19,7 @@ Spacing across: 2
 
 # Contents
 Title: Starter: change impacts
+Description: Groups + multi-source/multi-target links, plus per-node styling.
 
 ## Nodes (and groups)
 A:: New policy rollout[colour=red | border=1px solid blue]
@@ -37,13 +37,13 @@ E:: Delivery speed
 
 ## Links
 A -> B | C
-P | Q -> D | E
-P -> E [improves | 1px solid]`,
+Q -> D | E
+P -> D 
+P -> E [improves]`,
   },
   {
     id: "ex-02",
     title: "Top-bottom causal chain",
-    desc: "Simple chain with clearer vertical flow.",
     dsl: `# Styles
 Background: white
 Default node colour: rgb(231, 245, 255)
@@ -57,23 +57,23 @@ Spacing across: 4
 
 # Contents
 Title: Simple chain
+Description: Vertical top→bottom layout; labelled edges with label styling.
 
 A:: Root cause
 B:: Intermediate mechanism
 C:: Outcome
 
-A -> B [label=drives | border=1px solid gray | label style=italic | label size=10]
-B -> C [leads to | 1px solid gray]`,
+A -> B [label=drives | border=gray | label style=italic | label size=10]
+B -> C [leads to]`,
   },
   {
     id: "ex-03",
     title: "Left-right with implicit nodes",
-    desc: "Edges can create nodes via free labels.",
     dsl: `# Styles
 Background: floralwhite
 Default node colour: wheat
 Default node shape: rounded
-Default node border: 1px dotted peru
+Default node border: 1px dashed peru
 Default node shadow: none
 Direction: left-right
 Label wrap: 22
@@ -82,32 +82,26 @@ Spacing across: 3
 
 # Contents
 Title: Implicit nodes
+Description: Implicit nodes created from quoted labels; mixed positive/negative links.
 
 A:: Intervention A
 B:: Measured outcome
 
 A -> "Better compliance"
-"Better compliance" -> B [improves | 1px dotted peru]
-A -> "Side effect risk" [increases | 1px solid firebrick]
-"Side effect risk" -> B [harms | 1px solid firebrick]`,
+"Better compliance" -> B [improves | dashed peru]
+A -> "Side effect risk" [increases | firebrick]
+"Side effect risk" -> B [harms | firebrick]`,
   },
   {
     id: "ex-04",
     title: "Two drivers, one outcome",
-    desc: "Cross-product links using | on sources and targets.",
-    dsl: `# Styles
-Background: whitesmoke
+      dsl: `Background: whitesmoke
 Default node colour: gainsboro
 Default node shape: rounded
-Default node border: 1px solid gray
-Default node shadow: subtle
-Direction: left-right
-Label wrap: 16
-Spacing along: 4
-Spacing across: 3
 
-# Contents
+
 Title: Drivers → outcomes
+Description: Shows how to create multiple links: Cross-product using | on sources and targets, with simple clusters.
 
 --Drivers
 A:: Training quality
@@ -123,12 +117,11 @@ A | B -> C | D`,
   {
     id: "ex-05",
     title: "Nested groups (2 levels)",
-    desc: "Groups within groups to show structure.",
     dsl: `# Styles
 Background: white
 Default node colour: rgb(222, 245, 222)
 Default node shape: rounded
-Default node border: 1px dotted seagreen
+Default node border: 1px dashed seagreen
 Default node shadow: subtle
 Direction: top-bottom
 Label wrap: 20
@@ -137,6 +130,7 @@ Spacing across: 3
 
 # Contents
 Title: Nested groups
+Description: Two-level nesting with explicit group closing markers.
 
 --Organisation
 A:: Policy
@@ -147,12 +141,11 @@ B:: Habits
 C:: Result
 
 A -> B
-B -> C [supports | 1px dotted seagreen]`,
+B -> C [supports | dashed seagreen]`,
   },
   {
     id: "ex-06",
     title: "Feedback loop (conceptual)",
-    desc: "A small reinforcing loop.",
     dsl: `# Styles
 Background: rgb(11, 16, 32)
 Default node colour: rgb(31, 242, 168)
@@ -166,41 +159,41 @@ Spacing across: 3
 
 # Contents
 Title: Reinforcing loop
+Description: A small cycle (feedback loop) with a dark theme.
 
 A:: Motivation
 B:: Practice time
 C:: Skill
 
-A -> B [increases | 1px solid rgb(158, 197, 254)]
-B -> C [builds | 1px solid rgb(158, 197, 254)]
-C -> A [reinforces | 1px solid rgb(158, 197, 254)]`,
+A -> B [increases | rgb(158, 197, 254)]
+B -> C [builds | rgb(158, 197, 254)]
+C -> A [reinforces | rgb(158, 197, 254)]`,
 },
 {
     id: "ex-07",
     title: "Trade-offs (two outcomes)",
-    desc: "One cause pushes outcomes in opposite directions.",
     dsl: `# Styles
 Default node shape: rounded
 
 # Contents
 Title: Trade-offs
+Description: One driver pushes outcomes in opposite directions (trade-off).
 
 A:: Strict policy
 B:: Compliance
 C:: Flexibility
 
-A -> B [increases | 1px solid seagreen]
-A -> C [decreases | 1px solid firebrick]`,
+A -> B [increases | seagreen]
+A -> C [decreases | firebrick]`,
   },
   {
     id: "ex-08",
     title: "Many-to-one (fan-in)",
-    desc: "Multiple causes converge on a single outcome.",
     dsl: `# Styles
 Background: white
 Default node colour: mistyrose
 Default node shape: rounded
-Default node border: 1px dotted deeppink
+Default node border: 1px dashed deeppink
 Default node shadow: subtle
 Direction: right-left
 Label wrap: 17
@@ -209,6 +202,7 @@ Spacing across: 3
 
 # Contents
 Title: Fan-in
+Description: Fan-in: multiple causes converge on a single outcome.
 
 A:: Staffing
 B:: Process clarity
@@ -220,7 +214,6 @@ A | B | C -> D`,
   {
     id: "ex-09",
     title: "Many-to-many (matrix)",
-    desc: "Cross-product with edge label.",
     dsl: `# Styles
 Background: white
 Default node colour: honeydew
@@ -234,6 +227,7 @@ Spacing across: 3
 
 # Contents
 Title: Cross-product
+Description: Many-to-many cross-product with a shared edge label.
 
 --Inputs
 A:: Sleep
@@ -245,12 +239,11 @@ D:: Mood
 E:: Focus
 --
 
-A | B | C -> D | E [supports | 1px solid seagreen]`,
+A | B | C -> D | E [supports | seagreen]`,
   },
   {
     id: "ex-10",
     title: "Minimal monochrome",
-    desc: "A clean black/white style.",
     dsl: `# Styles
 Background: white
 Default node colour: white
@@ -264,6 +257,7 @@ Spacing across: 3
 
 # Contents
 Title: Minimal
+Description: Minimal monochrome styling (black/white).
 
 A:: Hypothesis
 B:: Evidence
@@ -275,7 +269,6 @@ B -> C`,
   {
     id: "ex-11",
     title: "Warm palette",
-    desc: "A warmer background and subtle dotted edges.",
     dsl: `# Styles
 Background: bisque
 Default node colour: peachpuff
@@ -289,18 +282,18 @@ Spacing across: 3
 
 # Contents
 Title: Warm palette
+Description: Warm palette with dashed edges.
 
 A:: Trigger
 B:: Response
 C:: Outcome
 
-A -> B [causes | 1px dotted chocolate]
-B -> C [drives | 1px dotted chocolate]`,
+A -> B [causes | dashed chocolate]
+B -> C [drives | dashed chocolate]`,
   },
   {
     id: "ex-12",
     title: "Cool palette + nested group",
-    desc: "Cooler colours plus one nested group.",
     dsl: `# Styles
 Background: rgb(231, 245, 255)
 Default node colour: rgb(208, 235, 255)
@@ -314,6 +307,7 @@ Spacing across: 3
 
 # Contents
 Title: Cool palette
+Description: Cool palette plus a nested group.
 
 --System
 A:: Input
@@ -329,12 +323,11 @@ B -> C`,
   {
     id: "ex-13",
     title: "Two-layer map (overview + detail)",
-    desc: "Use clusters to separate overview and detail.",
     dsl: `# Styles
 Background: white
 Default node colour: whitesmoke
 Default node shape: rounded
-Default node border: 1px dotted dimgray
+Default node border: 1px dashed dimgray
 Default node shadow: none
 Direction: left-right
 Label wrap: 18
@@ -343,6 +336,7 @@ Spacing across: 4
 
 # Contents
 Title: Overview vs detail
+Description: Separate overview vs detail using clusters; multiple paths between them.
 
 --Overview
 A:: Strategy
@@ -361,7 +355,6 @@ D -> B`,
   {
     id: "ex-14",
     title: "Risk controls",
-    desc: "A map with a control mitigating a risk.",
     dsl: `# Styles
 Background: white
 Default node colour: rgb(255, 245, 245)
@@ -375,21 +368,21 @@ Spacing across: 3
 
 # Contents
 Title: Risk control
+Description: A control mitigates a risk; mixed edge styles and colours.
 
 A:: Change volume
 B:: Incident risk
 C:: Review process
 D:: Blast radius
 
-A -> B [increases | 1px solid tomato]
-C -> B [reduces | 1px solid seagreen]
-C -> D [reduces | 1px solid seagreen]
-D -> B [increases | 1px dotted tomato]`,
+A -> B [increases | tomato]
+C -> B [reduces | seagreen]
+C -> D [reduces | seagreen]
+D -> B [increases | dashed tomato]`,
   },
   {
     id: "ex-15",
     title: "Resource constraint",
-    desc: "A resource bottleneck affecting throughput.",
     dsl: `# Styles
 Background: white
 Default node colour: lavender
@@ -403,21 +396,21 @@ Spacing across: 3
 
 # Contents
 Title: Constraint
+Description: Bottleneck/constraint dynamics: queues, lead time, throughput.
 
 A:: Work in progress
 B:: Queue size
 C:: Throughput
 D:: Lead time
 
-A -> B [adds | 1px solid slateblue]
-B -> D [increases | 1px solid slateblue]
-C -> B [reduces | 1px dotted slateblue]
-D -> C [reduces | 1px dotted slateblue]`,
+A -> B [adds | slateblue]
+B -> D [increases | slateblue]
+C -> B [reduces | dashed slateblue]
+D -> C [reduces | dashed slateblue]`,
   },
   {
     id: "ex-16",
     title: "Tiny map",
-    desc: "The smallest possible example.",
     dsl: `# Styles
 Background: white
 Default node colour: honeydew
@@ -431,6 +424,7 @@ Spacing across: 3
 
 # Contents
 Title: Tiny
+Description: Smallest possible map.
 
 A:: Cause
 B:: Effect
@@ -439,7 +433,6 @@ A -> B`,
   {
     id: "ex-17",
     title: "Maternal health (community health workers)",
-    desc: "Classic pathway: outreach → knowledge/behaviour → service use → health outcomes, with constraints.",
     dsl: `# Styles
 Background: white
 Default node colour: rgb(231, 245, 255)
@@ -453,6 +446,7 @@ Spacing across: 3
 
 # Contents
 Title: CHWs → maternal & newborn health
+Description: Realistic ToC with clusters and explicit constraints (health system + transport).
 
 --Intervention
 A:: Train & equip community health workers
@@ -473,18 +467,17 @@ I:: Skilled birth attendance
 J:: Maternal & neonatal complications
 --
 
-A -> B [enables | 1px solid dodgerblue]
-B -> C | D [improves | 1px solid dodgerblue]
-C | D -> E [increases | 1px solid dodgerblue]
-E -> H | I [increases | 1px solid dodgerblue]
-H | I -> J [reduces | 1px solid seagreen]
-F -> H | I [limits | 1px dotted tomato]
-G -> E [limits | 1px dotted tomato]`,
+A -> B [enables | dodgerblue]
+B -> C | D [improves | dodgerblue]
+C | D -> E [increases | dodgerblue]
+E -> H | I [increases | dodgerblue]
+H | I -> J [reduces | seagreen]
+F -> H | I [limits | dashed tomato]
+G -> E [limits | dashed tomato]`,
   },
   {
     id: "ex-18",
     title: "Cash transfers (poverty → schooling/health)",
-    desc: "Income support shifts household constraints; shows trade-offs and implementation quality.",
     dsl: `# Styles
 Background: white
 Default node colour: rgb(245, 243, 255)
@@ -498,6 +491,7 @@ Spacing across: 3
 
 # Contents
 Title: Cash transfers → household wellbeing
+Description: Mediators + constraints, with a time-burden trade-off and payment reliability risk.
 
 --Programme
 A:: Targeting & enrolment
@@ -522,21 +516,20 @@ M:: Harmful coping (debt, child labour)
 --
 
 A -> B
-B -> D [increases | 1px solid rebeccapurple]
-C -> J [may increase | 1px dotted tomato]
-D -> F | G [enables | 1px solid rebeccapurple]
-E -> K [supports | 1px dotted rebeccapurple]
-F -> K [increases | 1px solid seagreen]
-G -> L [improves | 1px solid seagreen]
-D -> M [reduces | 1px solid seagreen]
-H -> D [limits | 1px dotted tomato]
-I -> G [limits | 1px dotted tomato]
-J -> K [reduces | 1px dotted tomato]`,
+B -> D [increases | rebeccapurple]
+C -> J [may increase | dashed tomato]
+D -> F | G [enables | rebeccapurple]
+E -> K [supports | dashed rebeccapurple]
+F -> K [increases | seagreen]
+G -> L [improves | seagreen]
+D -> M [reduces | seagreen]
+H -> D [limits | dashed tomato]
+I -> G [limits | dashed tomato]
+J -> K [reduces | dashed tomato]`,
   },
   {
     id: "ex-19",
     title: "Teacher coaching (learning outcomes)",
-    desc: "Education ToC: professional development → practice change → learning, moderated by context.",
     dsl: `# Styles
 Background: white
 Default node colour: rgb(236, 253, 245)
@@ -550,6 +543,7 @@ Spacing across: 3
 
 # Contents
 Title: Coaching → teaching quality → learning
+Description: Education ToC with mediators and context constraints.
 
 --Inputs
 A:: Coach training + materials
@@ -573,19 +567,18 @@ J:: School leadership support
 K:: Learning (test scores)
 --
 
-A -> B [enables | 1px solid seagreen]
-B -> C | D [improves | 1px solid seagreen]
-C | D -> E [improves | 1px solid seagreen]
-E -> F | G [increases | 1px solid seagreen]
-F | G -> K [improves | 1px solid seagreen]
-H -> E [constrains | 1px dotted tomato]
-I -> E [reduces | 1px dotted tomato]
-J -> I [reduces | 1px dotted seagreen]`,
+A -> B [enables | seagreen]
+B -> C | D [improves | seagreen]
+C | D -> E [improves | seagreen]
+E -> F | G [increases | seagreen]
+F | G -> K [improves | seagreen]
+H -> E [constrains | dashed tomato]
+I -> E [reduces | dashed tomato]
+J -> I [reduces | dashed seagreen]`,
   },
   {
     id: "ex-20",
     title: "WASH (sanitation + behaviour change)",
-    desc: "Infrastructure plus social norms; includes uptake and maintenance as critical links.",
     dsl: `# Styles
 Background: white
 Default node colour: rgb(255, 245, 235)
@@ -599,6 +592,7 @@ Spacing across: 3
 
 # Contents
 Title: Sanitation → exposure → child health
+Description: Infrastructure + behaviour change, with uptake/maintenance as critical mediators.
 
 --Intervention
 A:: Subsidies / financing for latrines
@@ -623,21 +617,20 @@ K:: Water availability
 L:: Social norms / enforcement
 --
 
-A -> D [increases | 1px solid peru]
-B -> E [increases | 1px solid peru]
-C -> F [supports | 1px solid peru]
-D -> E [enables | 1px dotted peru]
-E | F -> G [reduces | 1px solid seagreen]
-G -> H [reduces | 1px solid seagreen]
-H -> I [reduces | 1px solid seagreen]
-I -> J [improves | 1px dotted seagreen]
-K -> E [limits | 1px dotted tomato]
-L -> E [influences | 1px dotted peru]`,
+A -> D [increases | peru]
+B -> E [increases | peru]
+C -> F [supports | peru]
+D -> E [enables | dashed peru]
+E | F -> G [reduces | seagreen]
+G -> H [reduces | seagreen]
+H -> I [reduces | seagreen]
+I -> J [improves | dashed seagreen]
+K -> E [limits | dashed tomato]
+L -> E [influences | dashed peru]`,
   },
   {
     id: "ex-21",
     title: "Social accountability (service delivery)",
-    desc: "Governance ToC: information + collective action → responsiveness → better services.",
     dsl: `# Styles
 Background: white
 Default node colour: rgb(245, 245, 245)
@@ -651,6 +644,7 @@ Spacing across: 3
 
 # Contents
 Title: Citizen feedback → service quality
+Description: Governance pathway with risks/constraints; top→bottom layout.
 
 --Programme
 A:: Publish service standards & budgets
@@ -673,15 +667,15 @@ K:: Provider responsiveness
 L:: Service quality & access
 --
 
-A -> D [increases | 1px solid dimgray]
-B -> E [builds | 1px solid dimgray]
-C -> F [enables | 1px solid dimgray]
-D | E | F -> G [strengthens | 1px solid dimgray]
-G -> K [increases | 1px solid seagreen]
-K -> L [improves | 1px solid seagreen]
-H -> E [reduces | 1px dotted tomato]
-I -> C [reduces use | 1px dotted tomato]
-J -> K [limits | 1px dotted tomato]`,
+A -> D [increases | dimgray]
+B -> E [builds | dimgray]
+C -> F [enables | dimgray]
+D | E | F -> G [strengthens | dimgray]
+G -> K [increases | seagreen]
+K -> L [improves | seagreen]
+H -> E [reduces | dashed tomato]
+I -> C [reduces use | dashed tomato]
+J -> K [limits | dashed tomato]`,
   },
 ];
 

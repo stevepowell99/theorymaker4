@@ -306,6 +306,15 @@ body {
   position: relative; /* anchor for hover delete button */
 }
 
+/* Viz legend: MapScript "Description: ..." shown under the diagram */
+.tm-viz-legend {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  background: #fff;
+  border-top: 1px solid #e9ecef;
+  white-space: pre-wrap; /* allow multi-line descriptions */
+}
+
 /* Viz interactivity */
 .tm-viz svg .node,
 .tm-viz svg .edge {
@@ -549,6 +558,30 @@ body {
   height: 140px;
   border-bottom: 1px solid #e9ecef;
   background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 50%, #f1f3f5 100%);
+}
+
+.tm-templates-thumb-wrap {
+  position: relative; /* anchor overlay */
+}
+
+/* On-hover overlay description (from MapScript "Description: ...") */
+.tm-templates-thumb-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 10px 12px;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.00) 0%, rgba(0, 0, 0, 0.70) 100%);
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none; /* don't block clicking the card */
+  white-space: pre-wrap;
+}
+
+.tm-templates-card:hover .tm-templates-thumb-overlay,
+.tm-templates-card:focus-visible .tm-templates-thumb-overlay {
+  opacity: 1;
 }
 
 /* Ace editor popover (style current line) */

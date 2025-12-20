@@ -1,87 +1,71 @@
-# Theorymaker spec
+# Theorymaker
 
-This is a pure html/js repo. It will be committed to github and from there hosted on netlify. 
-Very minimalist styling: simple navbar with theorymaker as brand on left. 
-main panel has a draggable vertical border between narrower editor on the left and main on the right.
-main panel has three tabs which are just text along the top:
-viz | gallery | help
+Theorymaker is a **single-page** HTML/JS app that turns a simple text DSL (**MapScript**) into a diagram.
 
-editor contains a ace editor which will contain our code
-viz contains a graphviz dot viz, I think powered by webAssembly? displaying the result of the code on the left.
+- **Editor**: Ace editor (plus optional AI chat)
+- **Diagram**: Graphviz **WASM** renders MapScript → DOT → SVG
+- **Templates**: built-in examples + maps saved in this browser (LocalStorage)
+- **Share/restore**: the URL hash continuously stores the current MapScript (`#m=...`)
 
-code is not DOT, it is our own DSL which is internally first validated (and lightly autocorrected) then converted into DOT, which is then visualised.
+This repo is designed to be **no-build** and easy to host as static files (Netlify).
 
-## Our DSL
-### example.
+## Repo structure
 
-Colours: use named colours (e.g. `red`, `aliceblue`) or `rgb(r,g,b)`. Note: `#` starts comments in MapScript, so `#hex` colours are not supported.
+- `index.html`: app shell + UI
+- `app.js`: main logic (MapScript parsing, rendering, UI, URL sync, templates, admin mode, etc.)
+- `styles.css`: styling (Bootstrap + small custom CSS)
+- `examples.js`: built-in Templates → Examples (`GALLERY_EXAMPLES`)
+- `help.md`: help content (rendered into the Help tab and the standalone `/help` pages)
+- `help/`: standalone help pages (they load `help.md`)
+- `netlify/functions/chat.js`: Netlify Function proxy for AI chat (keeps API key server-side)
 
-# Styles
-Background: aliceblue
-Default node colour: red
-Default node shape: rounded
-Default node shadow: strong
-Default node border: 1px dotted green
-Direction: right-left
-Label wrap: 20 characters
-Spacing along: 2
-Spacing across: 2
+## MapScript (very short)
 
-# Contents
-Title: My new graphete
+MapScript is “mostly free text” with a few key line types:
 
-## Nodes (and grouping boxes)
-A:: Actual text for A[colour=red | border=1px solid blue]  # be flexible how we parse background and border parameters
---A grouping box containing B and C
-B:: Text for B
-----An inner grouping box containing C
-C:: Text for C
---                               # end of box to avoid confusion
-F:: some text not in any box
+- **Settings lines**: `Key: Value` (e.g. `Background: aliceblue`)
+- **Title / Description**:
+  - `Title: ...` sets the diagram title (supports optional title-only styling in brackets, e.g. `Title: My title [text colour=dimgray | text size=22]`).
+  - `Description: ...` is shown under the diagram and used as the short description overlay in Templates thumbnails.
+- **Nodes**: `ID:: Label`
+- **Links**: `A -> B` (supports `|` for multi-links, and optional `[...]` styling)
+- **Groups**: lines starting with `--` / `----` to open/close grouping boxes
+- **Comments**: `#` starts a comment
 
-## Links
-A -> B | C            # note this creates arrows to B and to C 
-D -> Needs no alias   # boxes and their labels can be created like this too
-P | Q -> D | E        # create multiple links like this
-P -> E [some edgelabel | 1px solid]   # note edge specification
+Important: because `#` starts comments, **hex colours** like `#ff0000` are not supported in MapScript. Use named colours or `rgb(r,g,b)`.
 
+Supported settings (the ones the app recognises) include:
 
+- `Background`, `Text colour`
+- `Default node colour`, `Default node border`, `Default node shape`, `Default node shadow`, `Default node text colour`
+- `Default group text colour`
+- `Default link colour`, `Default link style`, `Default link width`
+- `Direction`, `Label wrap`, `Spacing along`, `Spacing across`
+- `Title size`, `Title position`
 
-## Editor
-add button to save to localstorage under a user-defined sanitised name. add a warning that map is only saved in the browser; recommended to also save the actual URL somewhere safe. on save, also store a screenshot and serve all localstorage maps at the beginning of the gallery
+## URL sharing / undo / redo
 
+- The app continuously stores the current MapScript in the URL hash as `#m=<base64url(utf8)>`.
+- Undo/redo uses browser History entries (Back/Forward) and the buttons in the navbar.
 
-## URL
-URL should constantly reflect the contents of the editor and restore the URL to editor on load
+## Saving maps (Templates → Saved in this browser)
 
+- Click the **Save** (floppy) button to save the current map into **LocalStorage** under a name.
+- Saved maps appear in **Templates → Saved in this browser** (with a thumbnail if possible).
+- Saved maps can be deleted from Templates (browser-only).
 
-## Viz
-enable panning with mouuse
-across the top of the graphviz output, put:
-- usual zoom / reset controls
-- button to capture raw URL (for restore)
-- button to capture high-quality png of the viz
-- button to capture a formatted link i.e. <a href=foobar>Link</a>
-- button to capture a html package containing high-quality png of the viz plus a formatted link, for pasting into reports.
+## Admin mode (local dev only)
 
-### Viz interactivity
-Click nodes and links to pop up a modal:
-- delete
-- change label
-- change styling (node attrs / link border)
+When running on `http://localhost/...` or `http://127.0.0.1/...` you are treated as **admin**:
 
-## Help
-is fed by help.md, but with the existing quick reference on top. 
+- **Save** shows a modal with:
+  - **Save to this browser** (LocalStorage)
+  - **Copy standard example snippet** (paste into `GALLERY_EXAMPLES` in `examples.js`)
+- Templates shows an admin-only **Rebuild thumbnails** button.
+- Help shows an admin-only **admin** subtab.
+- Chat uses **direct Dify API** and will prompt for a Dify App API key (stored in this browser only as `localStorage["tm_dify_api_key"]`).
 
-## Admin (local dev)
-When running locally on `http://localhost/...` (Live Server), you are treated as **admin**:
-- Editor **Save** lets you choose “save as normal user” (LocalStorage) or “copy standard example snippet” (paste into `GALLERY_EXAMPLES` in `examples.js`).
-- Gallery has an admin-only **Rebuild thumbnails** button.
-
-## Gallery
-
-Provide a nice gallery with say 16 example maps with different styles and contents -- some simple, some more complicated. On click we get a warning: either cancel, or replace entire contents of editor, or just update editor with styles, not contents. 
-
+In production (Netlify), chat calls `/.netlify/functions/chat` and the API key is stored in Netlify environment variables (`DIFY_API_KEY`).
 
 ## License
 

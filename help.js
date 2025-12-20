@@ -44,8 +44,8 @@ export async function initHelpFromMarkdown({
 
   const IS_ADMIN = isLocalLiveServer();
 
-  const tabs = ["intro", "usage", "ai", "syntax", "quickref", "admin"];
-  const sections = { intro: "", usage: "", ai: "", syntax: "", admin: "" };
+  const tabs = ["intro", "usage", "ai", "syntax", "faq", "quickref", "admin"];
+  const sections = { intro: "", usage: "", ai: "", syntax: "", faq: "", admin: "" };
   const quickrefEl = document.getElementById("tm-help-quickref");
   const adminTabEl = document.getElementById("tm-help-admin-tab");
   const adminSepEl = document.getElementById("tm-help-admin-sep");
@@ -149,7 +149,7 @@ export async function initHelpFromMarkdown({
     const lines = String(txt || "").split(/\r?\n/);
     let current = null;
     for (const line of lines) {
-      const m = line.match(/^##\s+(intro|usage|ai|syntax|admin)\s*$/i);
+      const m = line.match(/^##\s+(intro|usage|ai|syntax|faq|admin)\s*$/i);
       if (m) {
         current = m[1].toLowerCase();
         continue;

@@ -242,6 +242,7 @@ function initAceLineStylePopover({ editor, graphviz }) {
   const none = document.getElementById("tm-ace-style-none");
   const nodeBox = document.getElementById("tm-ace-style-node");
   const clusterBox = document.getElementById("tm-ace-style-cluster");
+  const titleBox = document.getElementById("tm-ace-style-title");
   const edgeBox = document.getElementById("tm-ace-style-edge");
   const apply = document.getElementById("tm-ace-style-apply");
   const close = document.getElementById("tm-ace-style-close"); // optional (we now only have one button)
@@ -276,6 +277,12 @@ function initAceLineStylePopover({ editor, graphviz }) {
   const clusterTextColour = document.getElementById("tm-ace-style-cluster-text-colour");
   const clusterTextSizeEnabled = document.getElementById("tm-ace-style-cluster-text-size-enabled");
   const clusterTextSize = document.getElementById("tm-ace-style-cluster-text-size");
+
+  // Title fields (stored inline on the "Title:" line as "[text colour=... | text size=...]")
+  const titleTextColourEnabled = document.getElementById("tm-ace-style-title-text-colour-enabled");
+  const titleTextColour = document.getElementById("tm-ace-style-title-text-colour");
+  const titleTextSizeEnabled = document.getElementById("tm-ace-style-title-text-size-enabled");
+  const titleTextSize = document.getElementById("tm-ace-style-title-text-size");
 
   // Edge fields
   const edgeLabel = document.getElementById("tm-ace-style-edge-label");
@@ -430,16 +437,17 @@ function initAceLineStylePopover({ editor, graphviz }) {
     })();
     if (settingMatch) return { type: "setting", row, lineNo, ...settingMatch };
 
+    if (/^\s*title\s*:/i.test(trimmed)) return { type: "title", row, lineNo };
+
     const nodeMatch = trimmed.match(/^(\S+)\s*::\s*(.+)$/);
     if (nodeMatch) return { type: "node", row, lineNo, nodeId: nodeMatch[1].trim() };
 
-    const clusterMatch = trimmed.match(/^(-{2,})(.*)$/);
-    if (clusterMatch) {
-      const dashes = clusterMatch[1];
-      const rest = String(clusterMatch[2] || "").trim();
-      const depth = dashes.length;
-      if (depth % 2 === 0 && rest) return { type: "cluster", row, lineNo };
-    }
+    // Cluster line: rely on the shared parser so the cursor Style button works for:
+    // - "--Label"
+    // - "--[]"
+    // - "--[border=...]" etc
+    // and does NOT trigger on closers like "--" / "----".
+    if (parseClusterDefLineAt([raw], 0)) return { type: "cluster", row, lineNo };
 
     const edgeMatch = trimmed.match(/^(.+?)\s*->\s*(.+)$/);
     if (edgeMatch) return { type: "edge", row, lineNo };
@@ -482,6 +490,13 @@ function initAceLineStylePopover({ editor, graphviz }) {
     if (edgeBorderEnabled) edgeBorderEnabled.disabled = !enabled;
   }
 
+  function setTitleControlsEnabled(enabled) {
+    if (titleTextColourEnabled) titleTextColourEnabled.disabled = !enabled;
+    if (titleTextColour) titleTextColour.disabled = !enabled || !titleTextColourEnabled?.checked;
+    if (titleTextSizeEnabled) titleTextSizeEnabled.disabled = !enabled;
+    if (titleTextSize) titleTextSize.disabled = !enabled || !titleTextSizeEnabled?.checked;
+  }
+
   function refreshFormFromCursorLine() {
     suppressLiveApply = true;
     try {
@@ -492,11 +507,13 @@ function initAceLineStylePopover({ editor, graphviz }) {
       none?.classList.toggle("d-none", !showNone);
       nodeBox?.classList.toggle("d-none", info.type !== "node");
       clusterBox?.classList.toggle("d-none", info.type !== "cluster");
+      titleBox?.classList.toggle("d-none", info.type !== "title");
       edgeBox?.classList.toggle("d-none", info.type !== "edge");
 
       if (showNone) {
         setNodeControlsEnabled(false);
         setClusterControlsEnabled(false);
+        setTitleControlsEnabled(false);
         setEdgeControlsEnabled(false);
         return;
       }
@@ -527,6 +544,7 @@ function initAceLineStylePopover({ editor, graphviz }) {
 
         setNodeControlsEnabled(true);
         setClusterControlsEnabled(false);
+        setTitleControlsEnabled(false);
         setEdgeControlsEnabled(false);
         return;
       }
@@ -556,6 +574,35 @@ function initAceLineStylePopover({ editor, graphviz }) {
 
         setNodeControlsEnabled(false);
         setClusterControlsEnabled(true);
+        setTitleControlsEnabled(false);
+        setEdgeControlsEnabled(false);
+        return;
+      }
+
+      if (info.type === "title") {
+        if (meta) meta.textContent = `Line ${info.lineNo}: title`;
+        const parsedLine = parseTitleDefLineAt(lines, info.row);
+        const inner = String(parsedLine?.styleInner || "").trim();
+        const { kv } = inner ? parseBracketAttrs(`[${inner}]`) : { kv: {}, loose: [] };
+        const tc = kv["text colour"] || kv["text color"] || kv.textcolour || kv.textcolor || "";
+        const ts = parseLeadingNumber(kv["text size"] || kv.textsize || kv["text scale"] || kv.textscale);
+
+        if (titleTextColourEnabled) titleTextColourEnabled.checked = Boolean(String(tc || "").trim());
+        if (titleTextColour) {
+          const tcRgb = resolveCssColorToRgb(tc || "#111827") || { r: 17, g: 24, b: 39 };
+          titleTextColour.value = rgbToHex(tcRgb);
+        }
+
+        if (titleTextSizeEnabled) titleTextSizeEnabled.checked = Number.isFinite(ts);
+        if (titleTextSize) {
+          const base = dslToDot(editor.getValue()).settings?.titleSize || 18;
+          const v = Number.isFinite(ts) ? ts : base;
+          titleTextSize.value = String(Math.max(10, Math.min(36, Math.round(Number(v || 18)))));
+        }
+
+        setNodeControlsEnabled(false);
+        setClusterControlsEnabled(false);
+        setTitleControlsEnabled(true);
         setEdgeControlsEnabled(false);
         return;
       }
@@ -576,6 +623,7 @@ function initAceLineStylePopover({ editor, graphviz }) {
 
         setNodeControlsEnabled(false);
         setClusterControlsEnabled(false);
+        setTitleControlsEnabled(false);
         setEdgeControlsEnabled(true);
       }
     } finally {
@@ -653,6 +701,25 @@ function initAceLineStylePopover({ editor, graphviz }) {
         isCustom: hasCustom,
         title: hasCustom ? `Line ${info.lineNo}: group box (${parts.join(" | ")})` : `Line ${info.lineNo}: group box (default)`,
         preview: { fillHex: ui.fillHex || "", borderUi: ui.borderUi || { width: 1, style: "solid", colorHex: "#cccccc" }, rounded: false },
+      });
+      return;
+    }
+
+    if (info.type === "title") {
+      const parsedLine = parseTitleDefLineAt(lines, info.row);
+      const styleInner = String(parsedLine?.styleInner || "").trim();
+      const { kv } = styleInner ? parseBracketAttrs(`[${styleInner}]`) : { kv: {}, loose: [] };
+      const parts = [];
+      const tc = kv["text colour"] || kv["text color"] || kv.textcolour || kv.textcolor;
+      const ts = kv["text size"] || kv.textsize || kv["text scale"] || kv.textscale;
+      if (tc) parts.push(`text colour=${String(tc).trim()}`);
+      if (ts) parts.push(`text size=${String(ts).trim()}`);
+
+      setStyleButtonState({
+        enabled: true,
+        isCustom: Boolean(styleInner),
+        title: styleInner ? `Line ${info.lineNo}: title (${parts.join(" | ")})` : `Line ${info.lineNo}: title (default)`,
+        preview: null,
       });
       return;
     }
@@ -1077,6 +1144,26 @@ function initAceLineStylePopover({ editor, graphviz }) {
       });
     }
 
+    if (info.type === "title") {
+      const parsedLine = parseTitleDefLineAt(lines, info.row);
+      if (!parsedLine) return;
+      changedIdx = parsedLine.idx;
+
+      const textColourHex = titleTextColourEnabled?.checked ? (titleTextColour?.value || "") : null;
+      const textSizePt = titleTextSizeEnabled?.checked ? Number(titleTextSize?.value) : null;
+
+      const nextInner = upsertTitleStyleInner(parsedLine.styleInner || "", {
+        textColourHex: textColourHex || null,
+        textSizePt: Number.isFinite(textSizePt) && textSizePt > 0 ? textSizePt : null,
+      });
+
+      setTitleDefLineAt(lines, parsedLine.idx, {
+        title: parsedLine.title,
+        styleInner: nextInner,
+        comment: parsedLine.comment,
+      });
+    }
+
     if (info.type === "edge") {
       changedIdx = info.lineNo - 1;
       const borderText = edgeBorderEnabled?.checked
@@ -1117,6 +1204,8 @@ function initAceLineStylePopover({ editor, graphviz }) {
   clusterBorderEnabled?.addEventListener("change", () => setClusterControlsEnabled(true));
   clusterTextColourEnabled?.addEventListener("change", () => setClusterControlsEnabled(true));
   clusterTextSizeEnabled?.addEventListener("change", () => setClusterControlsEnabled(true));
+  titleTextColourEnabled?.addEventListener("change", () => setTitleControlsEnabled(true));
+  titleTextSizeEnabled?.addEventListener("change", () => setTitleControlsEnabled(true));
   edgeBorderEnabled?.addEventListener("change", () => setEdgeControlsEnabled(true));
 
   function openStyleUiForCursorLine() {
@@ -1130,6 +1219,7 @@ function initAceLineStylePopover({ editor, graphviz }) {
     // Focus the first meaningful input.
     if (info.type === "node") (nodeFillEnabled || nodeFill)?.focus?.();
     else if (info.type === "cluster") (clusterFillEnabled || clusterFill)?.focus?.();
+    else if (info.type === "title") (titleTextColourEnabled || titleTextColour)?.focus?.();
     else if (info.type === "edge") (edgeLabel || edgeBorderEnabled)?.focus?.();
   }
 
@@ -1167,6 +1257,10 @@ function initAceLineStylePopover({ editor, graphviz }) {
     clusterTextColour,
     clusterTextSizeEnabled,
     clusterTextSize,
+    titleTextColourEnabled,
+    titleTextColour,
+    titleTextSizeEnabled,
+    titleTextSize,
     edgeLabel,
     edgeBorderEnabled,
     edgeBw,
@@ -1397,6 +1491,9 @@ function initStyleModal({ editor, graphviz }) {
   const rankGapVal = document.getElementById("tm-style-rank-gap-val");
   const nodeGap = document.getElementById("tm-style-node-gap");
   const nodeGapVal = document.getElementById("tm-style-node-gap-val");
+  // Labels (we dynamically rename "along/across" to "horizontal/vertical" based on direction)
+  const rankGapLabel = modalEl.querySelector('label[for="tm-style-rank-gap"]');
+  const nodeGapLabel = modalEl.querySelector('label[for="tm-style-node-gap"]');
 
   const bs = globalThis.bootstrap;
   const bsCollapse = bs?.Collapse || null;
@@ -1453,6 +1550,17 @@ function initStyleModal({ editor, graphviz }) {
   setRangeUi(nodeGap, nodeGapVal);
   setRangeUi(titleSize, titleSizeVal);
 
+  function syncSpacingAxisLabels(direction) {
+    // Purpose: show user-facing spacing in screen axes (horizontal/vertical), not "along/across".
+    // Graphviz:
+    // - ranksep ("spacing along") is vertical for TB/BT, horizontal for LR/RL
+    // - nodesep ("spacing across") is horizontal for TB/BT, vertical for LR/RL
+    const d = normalizeDirection(direction) || String(direction || "").trim().toUpperCase();
+    const isLR = d === "LR" || d === "RL";
+    if (rankGapLabel) rankGapLabel.textContent = isLR ? "Horizontal spacing" : "Vertical spacing";
+    if (nodeGapLabel) nodeGapLabel.textContent = isLR ? "Vertical spacing" : "Horizontal spacing";
+  }
+
   function setDirectionButtonsUi(value) {
     if (!dirBtns.length) return;
     const v = String(value || "LR");
@@ -1483,8 +1591,12 @@ function initStyleModal({ editor, graphviz }) {
         dir.dispatchEvent(new Event("change", { bubbles: true }));
       });
     }
-    dir.addEventListener("change", () => setDirectionButtonsUi(dir.value));
+    dir.addEventListener("change", () => {
+      setDirectionButtonsUi(dir.value);
+      syncSpacingAxisLabels(dir.value);
+    });
     setDirectionButtonsUi(dir.value || "LR");
+    syncSpacingAxisLabels(dir.value || "LR");
   }
 
   // Clicking a title-position button writes to the hidden select (source of truth)
@@ -1526,6 +1638,7 @@ function initStyleModal({ editor, graphviz }) {
 
       if (dir) dir.value = String(s.direction || "LR");
       setDirectionButtonsUi(dir?.value || "LR");
+      syncSpacingAxisLabels(dir?.value || "LR");
 
       const boxRgb = resolveCssColorToRgb(s.defaultBoxColour || "#e7f5ff") || { r: 231, g: 245, b: 255 };
       if (boxFill) boxFill.value = rgbToHex(boxRgb);
@@ -1951,10 +2064,24 @@ function initTitleModal({ editor, graphviz }) {
     try {
       const s = sIn || {};
       if (titleText) titleText.value = String(s.title || "").trim();
-      const tcRgb = resolveCssColorToRgb(s.textColour || "#111827") || { r: 17, g: 24, b: 39 };
+      // Title colour is title-specific (stored on the Title: line), and should not change global Text colour.
+      let titleTc = null;
+      const inner = String(s.titleStyleInner || "").trim();
+      if (inner) {
+        const { kv } = parseBracketAttrs(`[${inner}]`);
+        titleTc = kv["text colour"] || kv["text color"] || kv.textcolour || kv.textcolor || null;
+      }
+      const tcRgb = resolveCssColorToRgb(titleTc || s.textColour || "#111827") || { r: 17, g: 24, b: 39 };
       if (textColor) textColor.value = rgbToHex(tcRgb);
 
-      if (titleSize) titleSize.value = String(Math.max(10, Math.min(36, Math.round(Number(s.titleSize || 18)))));
+      // Title size can be overridden on the Title: line as "[text size=...]"
+      let ts = Number(s.titleSize || 18);
+      if (inner) {
+        const { kv } = parseBracketAttrs(`[${inner}]`);
+        const n = parseLeadingNumber(kv["text size"] || kv.textsize || kv["text scale"] || kv.textscale);
+        if (Number.isFinite(n) && n > 0) ts = n;
+      }
+      if (titleSize) titleSize.value = String(Math.max(10, Math.min(36, Math.round(Number(ts || 18)))));
       syncRangeValueLabel(titleSize, titleSizeVal);
 
       if (titlePosition) titlePosition.value = normalizeTitlePosition(s.titlePosition) || "bottom-left";
@@ -1964,9 +2091,10 @@ function initTitleModal({ editor, graphviz }) {
     }
   }
 
-  function upsertTitleLineInEditor(nextTitleRaw) {
+  function upsertTitleLineInEditor({ titleRaw, styleInnerRaw }) {
     // Purpose: update/insert/remove the single "Title: ..." line in the editor (and remove duplicates).
-    const nextTitle = String(nextTitleRaw ?? "").trim();
+    const nextTitle = String(titleRaw ?? "").trim();
+    const nextInner = String(styleInnerRaw ?? "").trim();
     const lines = editor.getValue().split(/\r?\n/);
 
     const titleIdxs = [];
@@ -1986,7 +2114,7 @@ function initTitleModal({ editor, graphviz }) {
         if (t === "" || t.startsWith("#")) insertAt++;
         else break;
       }
-      lines.splice(insertAt, 0, `Title: ${nextTitle}`);
+      lines.splice(insertAt, 0, `Title: ${nextTitle}${nextInner ? ` [${nextInner}]` : ""}`.trimEnd());
       editor.setValue(lines.join("\n"), -1);
       return true;
     }
@@ -2001,8 +2129,53 @@ function initTitleModal({ editor, graphviz }) {
     // Replace first, remove duplicates.
     const firstIdx = titleIdxs[0];
     const { comment } = stripCommentKeepSuffix(lines[firstIdx]);
-    lines[firstIdx] = `Title: ${nextTitle}${comment ? ` ${comment.trimStart()}` : ""}`.trimEnd();
+    lines[firstIdx] = `Title: ${nextTitle}${nextInner ? ` [${nextInner}]` : ""}${comment ? ` ${comment.trimStart()}` : ""}`.trimEnd();
     for (let k = titleIdxs.length - 1; k >= 1; k--) lines.splice(titleIdxs[k], 1);
+    editor.setValue(lines.join("\n"), -1);
+    return true;
+  }
+
+  function upsertTitlePositionLineInEditor(nextPosRaw) {
+    // Purpose: update/insert/remove the single "Title position: ..." line in the editor (and remove duplicates).
+    // Keep default implicit: if nextPos is empty or "bottom-left", remove the setting line.
+    const nextPos = normalizeTitlePosition(nextPosRaw) || "bottom-left";
+    const want = nextPos === "bottom-left" ? "" : nextPos;
+    const lines = editor.getValue().split(/\r?\n/);
+
+    const idxs = [];
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = String(lines[i] || "").trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const { code } = stripCommentKeepSuffix(lines[i]);
+      if (/^\s*title\s+position\s*:\s*(.+)\s*$/i.test(code)) idxs.push(i);
+    }
+
+    if (!idxs.length) {
+      if (!want) return false;
+      // Insert after any leading blank/comment lines to keep top-of-file tidy.
+      let insertAt = 0;
+      while (insertAt < lines.length) {
+        const t = String(lines[insertAt] || "").trim();
+        if (t === "" || t.startsWith("#")) insertAt++;
+        else break;
+      }
+      lines.splice(insertAt, 0, `Title position: ${want}`);
+      editor.setValue(lines.join("\n"), -1);
+      return true;
+    }
+
+    // If default: delete all Title position lines.
+    if (!want) {
+      for (let k = idxs.length - 1; k >= 0; k--) lines.splice(idxs[k], 1);
+      editor.setValue(lines.join("\n"), -1);
+      return true;
+    }
+
+    // Replace first, remove duplicates.
+    const firstIdx = idxs[0];
+    const { comment } = stripCommentKeepSuffix(lines[firstIdx]);
+    lines[firstIdx] = `Title position: ${want}${comment ? ` ${comment.trimStart()}` : ""}`.trimEnd();
+    for (let k = idxs.length - 1; k >= 1; k--) lines.splice(idxs[k], 1);
     editor.setValue(lines.join("\n"), -1);
     return true;
   }
@@ -2010,21 +2183,29 @@ function initTitleModal({ editor, graphviz }) {
   function applyLive() {
     if (suppressLiveApply) return;
     const parsed = dslToDot(editor.getValue()).settings;
-    const cur = coerceUiStyleSettings(pickStyleSettings(parsed));
 
     // Title text is NOT a "style setting" in this app; it stays as a user-facing "Title: ..." line.
-    if (titleText) upsertTitleLineInEditor(titleText.value);
+    const nextTitle = titleText ? String(titleText.value || "") : "";
+    const existingInner = String(parsed?.titleStyleInner || "").trim();
 
-    const patch = {};
-    if (textColor) patch.textColour = normalizeColor(textColor.value);
-    if (titleSize) patch.titleSize = Number(titleSize.value);
-    if (titlePosition) {
-      const p = normalizeTitlePosition(titlePosition.value);
-      patch.titlePosition = p === "bottom-left" ? null : p;
-    }
+    const globalTc = parsed?.textColour ? String(parsed.textColour) : "#111827";
+    const wantTc = textColor ? normalizeColor(textColor.value) : null;
+    const keepTc = wantTc && normalizeColor(globalTc) !== wantTc ? textColor.value : null;
 
-    const next = { ...cur, ...patch };
-    upsertEditorStyleBlockFromUiStyleSettings(editor, next);
+    const baseTitleSize = Number.isFinite(Number(parsed?.titleSize)) && Number(parsed.titleSize) > 0 ? Number(parsed.titleSize) : 18;
+    const curSz = titleSize ? Number(titleSize.value) : null;
+    const keepSz = Number.isFinite(curSz) && curSz > 0 && Math.round(curSz) !== Math.round(baseTitleSize) ? curSz : null;
+
+    const nextInner = upsertTitleStyleInner(existingInner, {
+      textColourHex: keepTc ? String(keepTc) : null,
+      textSizePt: keepSz,
+    });
+
+    upsertTitleLineInEditor({ titleRaw: nextTitle, styleInnerRaw: nextInner });
+
+    // IMPORTANT: editing title should NOT rewrite global style defaults (e.g. Default group text colour).
+    // Only update the specific Title position line if the user changes it.
+    if (titlePosition) upsertTitlePositionLineInEditor(titlePosition.value);
     afterEditorMutation({ editor, graphviz });
   }
 
@@ -2327,12 +2508,29 @@ function initTemplates(editor, graphviz) {
   const savedEmpty = document.getElementById("tm-templates-saved-empty");
   if (!examplesWrap) return null;
 
+  function extractMapScriptDescription(dslText) {
+    // Purpose: read "Description: ..." from MapScript (for gallery overlays and cards).
+    const lines = String(dslText || "").split(/\r?\n/);
+    for (const raw of lines) {
+      const line = stripComment(raw);
+      if (!line) continue;
+      const m = line.match(/^description\s*:\s*(.+)$/i);
+      if (m) return String(m[1] || "").trim();
+    }
+    return "";
+  }
+
   function cardHtml(item, { isSaved }) {
     const badge = isSaved ? `<span class="badge text-bg-secondary ms-2">saved</span>` : "";
     const thumbUrl = isSaved ? item.screenshotDataUrl : EXAMPLE_THUMB_CACHE.get(item.id);
     const thumb = thumbUrl
       ? `<img class="tm-templates-thumb" src="${thumbUrl}" alt="" />`
       : `<div class="tm-templates-thumb-placeholder" aria-hidden="true"></div>`;
+
+    const msDesc = extractMapScriptDescription(item.dsl);
+    const overlay = msDesc
+      ? `<div class="tm-templates-thumb-overlay" aria-hidden="true">${msDesc}</div>`
+      : "";
 
     const deleteActions = isSaved
       ? `
@@ -2355,13 +2553,15 @@ function initTemplates(editor, graphviz) {
       <div class="col-12 col-md-6 col-xl-4">
         <div class="card tm-templates-card h-100" role="button" tabindex="0" data-template-id="${item.id}" data-template-saved="${isSaved ? "1" : "0"}">
           ${deleteActions}
-          ${thumb}
+          <div class="tm-templates-thumb-wrap">
+            ${thumb}
+            ${overlay}
+          </div>
           <div class="card-body">
             <div class="d-flex align-items-center">
               <div class="fw-semibold">${item.title}</div>
               ${badge}
             </div>
-            <div class="small text-muted mt-1">${item.desc || ""}</div>
           </div>
         </div>
       </div>
@@ -2994,6 +3194,413 @@ function getDefaultNodeUi() {
   return { fillHex, borderUi, rounded, hasFillDefault: Boolean(lastVizSettings?.defaultBoxColour), hasBorderDefault: Boolean(borderText) };
 }
 
+function normalizeDslRemoveRedundantEdgeBorders(dsl, settings) {
+  // Purpose: keep the editor text tidy by removing per-link border specs that don't change
+  // anything relative to the current global defaults (default link width/style/colour).
+  //
+  // Scope (intentionally minimal): edge border tokens only.
+  const text = String(dsl || "");
+  const lines = text.split(/\r?\n/);
+
+  const normalizeColourForCompare = (token) => {
+    const raw = String(token || "").trim();
+    if (!raw) return "";
+    const rgb = resolveCssColorToRgb(raw);
+    return rgb ? rgbToHex(rgb) : normalizeColor(raw);
+  };
+
+  const s = settings && typeof settings === "object" ? settings : {};
+  const defWRaw = Number(s.defaultLinkWidth);
+  const defW = Number.isFinite(defWRaw) && defWRaw > 0 ? Math.round(defWRaw) : 1;
+  const defStyleRaw = String(s.defaultLinkStyle || "").trim().toLowerCase();
+  const defStyle = ["solid", "dotted", "dashed", "bold"].includes(defStyleRaw) ? defStyleRaw : "solid";
+  // IMPORTANT: match Graphviz's real default edge colour (black) if the user hasn't set one.
+  const defColorToken = String(s.defaultLinkColour || "").trim() || "black";
+  const defColorCmp = normalizeColourForCompare(defColorToken);
+
+  const isEdgeLine = (rawLine) => {
+    const { code } = stripCommentKeepSuffix(String(rawLine || ""));
+    const t = String(code || "").trim();
+    if (!t) return false;
+    if (t.startsWith("#")) return false;
+    if (t.includes("::")) return false; // node def
+    return t.includes("->");
+  };
+
+  const pickColourTokenFromBorderRaw = (borderRaw) => {
+    const parts = String(borderRaw || "").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return "";
+
+    // Drop a leading width token and/or leading style token(s); whatever remains is a colour candidate.
+    let i = 0;
+    if (/^\d+(px)?$/i.test(parts[i] || "")) i++;
+    if (["solid", "dotted", "dashed", "bold"].includes(String(parts[i] || "").toLowerCase())) i++;
+    const candidate = parts.slice(i).join(" ").trim();
+    if (!candidate) return "";
+
+    // Only keep it if the browser can resolve it as a real colour (avoid words like "decreases").
+    return resolveCssColorToRgb(candidate) ? candidate : "";
+  };
+
+  let changed = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (!isEdgeLine(lines[i])) continue;
+
+    const parsed = parseEdgeLine(lines, i + 1);
+    if (!parsed) continue;
+
+    const borderRaw = String(parsed.border || "").trim();
+    if (!borderRaw) continue;
+
+    const spec = parseEdgeBorderLoosePart(borderRaw);
+    if (!spec || (!spec.penwidth && !spec.style && !spec.color)) continue;
+
+    const effW = spec.penwidth ? Math.round(Number(spec.penwidth)) : defW;
+    const effStyle = spec.style ? String(spec.style).trim().toLowerCase() : defStyle;
+    const effColorCmp = spec.color ? normalizeColourForCompare(String(spec.color).trim()) : defColorCmp;
+
+    const wDiff = effW !== defW;
+    const styleDiff = effStyle !== defStyle;
+    const colorDiff = effColorCmp !== defColorCmp;
+
+    let nextBorder = borderRaw;
+    if (!wDiff && !styleDiff && !colorDiff) {
+      // Fully redundant.
+      nextBorder = "";
+    } else {
+      const colourToken = pickColourTokenFromBorderRaw(borderRaw) || (spec.color ? String(spec.color).trim() : "");
+
+      // Emit the shortest border token string we can that will parse correctly.
+      if (!wDiff && !styleDiff && colorDiff) nextBorder = colourToken; // colour only
+      else if (!wDiff && styleDiff && !colorDiff) nextBorder = effStyle; // style only
+      else if (!wDiff && styleDiff && colorDiff) nextBorder = `${effStyle} ${colourToken}`.trim();
+      else if (wDiff && !styleDiff && !colorDiff) nextBorder = `${effW}px`;
+      else if (wDiff && styleDiff && !colorDiff) nextBorder = `${effW}px ${effStyle}`;
+      else if (wDiff && !styleDiff && colorDiff) nextBorder = `${effW}px ${defStyle} ${colourToken}`.trim(); // needs a style token to parse width+colour
+      else nextBorder = `${effW}px ${effStyle} ${colourToken}`.trim();
+    }
+
+    if (nextBorder !== borderRaw) {
+      setEdgeLine(lines, i + 1, { label: parsed.label, border: nextBorder });
+      changed = true;
+    }
+  }
+
+  return changed ? lines.join("\n") : text;
+}
+
+function normalizeDslRemoveRedundantSpecs(dsl, settings) {
+  // Purpose: remove redundant styling/specification from the editor DSL while preserving meaning.
+  // Kept intentionally simple; only touches:
+  // - edge border tokens (including dropping fully redundant ones)
+  // - node and group (cluster) style overrides that repeat the global defaults
+  // - a small set of safe redundant settings lines (e.g. default link width=1)
+  const text = String(dsl || "");
+  const lines = text.split(/\r?\n/);
+
+  const normalizeColourForCompare = (token) => {
+    const raw = String(token || "").trim();
+    if (!raw) return "";
+    const rgb = resolveCssColorToRgb(raw);
+    return rgb ? rgbToHex(rgb) : normalizeColor(raw);
+  };
+
+  const s = settings && typeof settings === "object" ? settings : {};
+
+  // ----- Safe redundant settings lines (only those that are true no-ops vs Graphviz/app defaults)
+  const isSettingLine = (trimmed) => {
+    if (!trimmed) return false;
+    if (trimmed.startsWith("#")) return false;
+    if (trimmed.includes("->") || trimmed.includes("::")) return false;
+    const m = trimmed.match(/^([^:]+):\s*(.+)$/);
+    if (!m) return false;
+    const key = m[1].trim().toLowerCase();
+    return SUPPORTED_SETTING_LINE_KEYS.has(key);
+  };
+
+  const dropSettingLineIfRedundant = (rawLine) => {
+    const t = String(rawLine || "").trim();
+    if (!isSettingLine(t)) return rawLine;
+    const m = t.match(/^([^:]+):\s*(.+)$/);
+    if (!m) return rawLine;
+    const key = m[1].trim().toLowerCase();
+    const value = m[2].trim();
+
+    // Default node shadow: dslToDot() default is already "medium"
+    if (key === "default node shadow") {
+      const v = value.trim().toLowerCase();
+      if (!v || v === "medium") return ""; // redundant
+      return rawLine;
+    }
+
+    // Default link width/style/colour: only remove when it matches Graphviz defaults.
+    if (key === "default link width") {
+      const n = parseLeadingNumber(value);
+      if (Number.isFinite(n) && Math.round(n) === 1) return "";
+      return rawLine;
+    }
+    if (key === "default link style") {
+      const v = value.trim().toLowerCase();
+      if (!v || v === "solid") return "";
+      return rawLine;
+    }
+    if (key === "default link colour" || key === "default link color") {
+      const vCmp = normalizeColourForCompare(value);
+      if (vCmp && vCmp === normalizeColourForCompare("black")) return "";
+      return rawLine;
+    }
+
+    return rawLine;
+  };
+
+  // ----- Node defaults for redundancy checks
+  const defNodeFillCmp = s.defaultBoxColour ? normalizeColourForCompare(s.defaultBoxColour) : "";
+  const defNodeBorder = s.defaultBoxBorder ? parseBorderRaw(String(s.defaultBoxBorder)) : {};
+  const defNodeBorderW = Number.isFinite(Number(defNodeBorder.penwidth)) ? Math.round(Number(defNodeBorder.penwidth)) : null;
+  const defNodeBorderStyle = defNodeBorder.style ? String(defNodeBorder.style).trim().toLowerCase() : null;
+  const defNodeBorderColorCmp = defNodeBorder.colorRaw ? normalizeColourForCompare(defNodeBorder.colorRaw) : "";
+  const defNodeRounded = String(s.defaultBoxShape || "").trim().toLowerCase() === "rounded";
+
+  // ----- Cluster defaults for redundancy checks (from dslToDot's emitCluster())
+  const defClusterBorderW = 1;
+  const defClusterBorderStyle = "solid";
+  const defClusterBorderColorCmp = normalizeColourForCompare("#cccccc");
+  const defClusterTextColorCmp = normalizeColourForCompare(s.defaultBoxTextColour || "black");
+
+  // First, drop safe redundant settings lines (but keep blank/comment formatting stable).
+  let changed = false;
+  for (let i = 0; i < lines.length; i++) {
+    const next = dropSettingLineIfRedundant(lines[i]);
+    if (next !== lines[i]) {
+      lines[i] = next;
+      changed = true;
+    }
+  }
+
+  // Normalize edge borders (reuse the existing routine over the current text).
+  const afterSettings = lines.join("\n");
+  const edgeNormalized = normalizeDslRemoveRedundantEdgeBorders(afterSettings, settings);
+  if (edgeNormalized !== afterSettings) {
+    changed = true;
+    lines.splice(0, lines.length, ...edgeNormalized.split(/\r?\n/));
+  }
+
+  // Normalize nodes and clusters in-place, preserving unknown attrs verbatim.
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const { code, comment } = stripCommentKeepSuffix(String(raw || ""));
+    const trimmed = String(code || "").trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith("#")) continue;
+
+    // Edge line: remove redundant edge label attrs (label style/size) while preserving meaning.
+    // (Border redundancy is handled earlier; this is for kv-only attrs.)
+    if (trimmed.includes("->") && !trimmed.includes("::")) {
+      const parsed = parseEdgeLine(lines, i + 1);
+      if (parsed) {
+        const keptKv = parsed.keptKv && typeof parsed.keptKv === "object" ? { ...parsed.keptKv } : {};
+
+        const ls = String(keptKv["label style"] || keptKv.labelstyle || "").trim().toLowerCase();
+        if (ls === "normal" || ls === "plain") {
+          delete keptKv["label style"];
+          delete keptKv.labelstyle;
+          changed = true;
+        }
+
+        const lszRaw = keptKv["label size"] || keptKv.labelsize || "";
+        const lsz = parseLeadingNumber(lszRaw);
+        if (Number.isFinite(lsz) && Math.round(lsz) === 12) {
+          delete keptKv["label size"];
+          delete keptKv.labelsize;
+          changed = true;
+        }
+
+        const inner = buildEdgeBracketInner({
+          label: parsed.label,
+          border: parsed.border,
+          keptKv,
+          keptLoose: parsed.keptLoose,
+        });
+        const bracket = inner ? ` [${inner}]` : "";
+        const c = comment ? ` ${comment.trim()}` : "";
+        const nextLine = `${String(parsed.before || "").trimEnd()}${bracket}${c}`.trimEnd();
+        if (nextLine !== raw) {
+          lines[i] = nextLine;
+          changed = true;
+        }
+      }
+      continue;
+    }
+
+    // Node line: "A:: Label [attrs]"
+    const nodeMatch = trimmed.match(/^(\S+)\s*::\s*(.+)$/);
+    if (nodeMatch) {
+      const idToken = nodeMatch[1].trim();
+      const after = code.split("::").slice(1).join("::");
+      const { before: labelPart, inner: styleInner } = parseTrailingBracket(after);
+      const inner = String(styleInner || "").trim();
+      if (!inner) continue;
+
+      const parts = inner.split("|").map((p) => p.trim()).filter(Boolean);
+      const kept = [];
+
+      for (const p of parts) {
+        const eq = p.indexOf("=");
+        if (eq < 0) {
+          kept.push(p);
+          continue;
+        }
+        const k = p.slice(0, eq).trim().toLowerCase();
+        const v = p.slice(eq + 1).trim();
+
+        // Node fill: redundant only if global default node fill is set and matches.
+        if (k === "colour" || k === "color" || k === "background") {
+          const vCmp = normalizeColourForCompare(v);
+          if (defNodeFillCmp && vCmp && vCmp === defNodeFillCmp) {
+            changed = true;
+            continue;
+          }
+          kept.push(p);
+          continue;
+        }
+
+        // Node border: redundant only if global default node border is set and matches.
+        if (k === "border") {
+          if (s.defaultBoxBorder) {
+            const b = parseBorderRaw(v);
+            const bw = Number.isFinite(Number(b.penwidth)) ? Math.round(Number(b.penwidth)) : null;
+            const bs = b.style ? String(b.style).trim().toLowerCase() : null;
+            const bc = b.colorRaw ? normalizeColourForCompare(b.colorRaw) : "";
+            const same = bw === defNodeBorderW && bs === defNodeBorderStyle && bc === defNodeBorderColorCmp;
+            if (same) {
+              changed = true;
+              continue;
+            }
+          }
+          kept.push(p);
+          continue;
+        }
+
+        // Node rounded: redundant only if global default node shape is rounded.
+        if (k === "shape") {
+          const vv = v.trim().toLowerCase();
+          if (vv === "rounded" && defNodeRounded) {
+            changed = true;
+            continue;
+          }
+          kept.push(p);
+          continue;
+        }
+
+        // Node text size: drop if it's effectively 1 (no-op).
+        if (k === "text size" || k === "textscale" || k === "text scale") {
+          const scale = parseRelativeScale(v);
+          if (Number.isFinite(scale) && Math.abs(scale - 1) < 1e-9) {
+            changed = true;
+            continue;
+          }
+          kept.push(p);
+          continue;
+        }
+
+        kept.push(p);
+      }
+
+      const nextInner = kept.join(" | ").trim();
+      const bracket = nextInner ? ` [${nextInner}]` : "";
+      const c = comment ? ` ${comment.trim()}` : "";
+      const nextLine = `${idToken}:: ${String(labelPart || "").trim()}${bracket}${c}`.trimEnd();
+      if (nextLine !== raw) {
+        lines[i] = nextLine;
+        changed = true;
+      }
+      continue;
+    }
+
+    // Cluster line: "--Label [attrs]" (syntactic only; safe to normalize styleInner if present)
+    const cl = parseClusterDefLineAt(lines, i);
+    if (cl && cl.styleInner) {
+      const parts = String(cl.styleInner || "")
+        .split("|")
+        .map((p) => p.trim())
+        .filter(Boolean);
+      const kept = [];
+      for (const p of parts) {
+        const eq = p.indexOf("=");
+        if (eq < 0) {
+          kept.push(p);
+          continue;
+        }
+        const k = p.slice(0, eq).trim().toLowerCase();
+        const v = p.slice(eq + 1).trim();
+
+        // Cluster border: redundant if it matches the built-in default cluster border (rounded + #cccccc).
+        if (k === "border") {
+          const b = parseBorderRaw(v);
+          const bw = Number.isFinite(Number(b.penwidth)) ? Math.round(Number(b.penwidth)) : null;
+          const bs = b.style ? String(b.style).trim().toLowerCase() : null;
+          const bc = b.colorRaw ? normalizeColourForCompare(b.colorRaw) : "";
+          const same = bw === defClusterBorderW && bs === defClusterBorderStyle && bc === defClusterBorderColorCmp;
+          if (same) {
+            changed = true;
+            continue;
+          }
+          kept.push(p);
+          continue;
+        }
+
+        // Cluster title text colour: redundant if it matches the effective default.
+        if (k === "text colour" || k === "text color" || k === "textcolour" || k === "textcolor") {
+          const vCmp = normalizeColourForCompare(v);
+          if (vCmp && vCmp === defClusterTextColorCmp) {
+            changed = true;
+            continue;
+          }
+          kept.push(p);
+          continue;
+        }
+
+        // Cluster title text size: drop if effectively 1 (no-op).
+        if (k === "text size" || k === "textscale" || k === "text scale") {
+          const scale = parseRelativeScale(v);
+          if (Number.isFinite(scale) && Math.abs(scale - 1) < 1e-9) {
+            changed = true;
+            continue;
+          }
+          kept.push(p);
+          continue;
+        }
+
+        kept.push(p);
+      }
+
+      const nextInner = kept.join(" | ").trim();
+      if (nextInner !== cl.styleInner) {
+        setClusterDefLineAt(lines, cl.idx, { dashes: cl.dashes, label: cl.label, styleInner: nextInner, comment: cl.comment });
+        changed = true;
+      }
+      continue;
+    }
+  }
+
+  // Tidy: remove blank lines that we may have created by dropping setting lines (keep it conservative).
+  // Only collapse runs of >2 blank lines to 2.
+  const out = [];
+  let blankRun = 0;
+  for (const l of lines) {
+    const isBlank = String(l || "").trim() === "";
+    if (isBlank) blankRun++;
+    else blankRun = 0;
+    if (blankRun > 2) {
+      changed = true;
+      continue;
+    }
+    out.push(l);
+  }
+
+  return changed ? out.join("\n").trimEnd() : text;
+}
+
 function styleInnerToNodeUi(styleInner) {
   const inner = String(styleInner || "").trim();
   if (!inner) return null;
@@ -3154,6 +3761,41 @@ function upsertClusterStyleInner(existingInner, { fillHex, borderText, textColou
   return out.join(" | ");
 }
 
+function upsertTitleStyleInner(existingInner, { textColourHex, textSizePt }) {
+  // Update/replace only title keys we manage; preserve any other attrs/loose tokens.
+  const parts = String(existingInner || "")
+    .split("|")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const kept = [];
+  for (const p of parts) {
+    const eq = p.indexOf("=");
+    if (eq < 0) {
+      kept.push(p);
+      continue;
+    }
+    const k = p.slice(0, eq).trim().toLowerCase();
+    if (k === "text colour" || k === "text color" || k === "textcolour" || k === "textcolor") continue;
+    if (k === "text size" || k === "textscale" || k === "text scale") continue;
+    kept.push(p);
+  }
+
+  const out = [];
+
+  if (textColourHex) {
+    const rgb = hexToRgb(textColourHex);
+    if (rgb) out.push(`text colour=rgb(${rgb.r},${rgb.g},${rgb.b})`);
+  }
+
+  if (Number.isFinite(Number(textSizePt)) && Number(textSizePt) > 0) {
+    out.push(`text size=${String(Math.round(Number(textSizePt)))}`);
+  }
+
+  out.push(...kept);
+  return out.join(" | ");
+}
+
 function parseBracketAttrs(text) {
   // Node form: [colour=red | border=1px solid blue]
   // Edge form: [some edgelabel | 1px solid]
@@ -3182,7 +3824,15 @@ function toDotAttrs(attrs) {
   const pairs = Object.entries(attrs)
     .filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== "")
     // NOTE: don't escape backslashes here; Graphviz uses sequences like "\n" inside quoted labels.
-    .map(([k, v]) => `${k}="${String(v).replaceAll('"', '\\"')}"`);
+    .map(([k, v]) => {
+      let s = String(v);
+      const kk = String(k).trim().toLowerCase();
+      if (kk === "label" || kk === "xlabel" || kk === "headlabel" || kk === "taillabel") {
+        const manual = dotLabelWithManualBreaks(s);
+        if (manual != null) s = manual;
+      }
+      return `${k}="${s.replaceAll('"', '\\"')}"`;
+    });
   return pairs.length ? ` [${pairs.join(", ")}]` : "";
 }
 
@@ -3198,7 +3848,21 @@ function addStyle(attrs, styleToken) {
   attrs.style = existing.join(",");
 }
 
+function dotLabelWithManualBreaks(rawLabel) {
+  // Purpose: allow explicit line breaks inside labels using "///".
+  // If present, this overrides the default wrap behavior for that one label.
+  const s = String(rawLabel ?? "");
+  if (!s.includes("///")) return null;
+  return s
+    .split("///")
+    .map((p) => String(p).trim())
+    .join("\\n");
+}
+
 function wrapLabelToDot(label, maxChars) {
+  const manual = dotLabelWithManualBreaks(label);
+  if (manual != null) return manual;
+
   const n = Number(maxChars);
   if (!Number.isFinite(n) || n <= 0) return label;
   const words = String(label).split(/\s+/).filter(Boolean);
@@ -3308,6 +3972,8 @@ function dslToDot(dslText) {
   const BASE_CLUSTER_FONT_SIZE = 14; // used only when user sets a relative cluster title text size
   const settings = {
     title: null,
+    titleStyleInner: "", // optional attrs stored on the Title: line as "[text colour=... | text size=...]"
+    description: null,
     background: null,
     textColour: null,
     defaultNodeTextColour: null,
@@ -3375,10 +4041,20 @@ function dslToDot(dslText) {
   }
 
   const lines = dslText.split(/\r?\n/);
+  let inLinksSection = false; // once true, groups are implicitly closed (no nodes are assigned to groups after this point)
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const line = stripComment(raw);
     if (!line) continue;
+
+    // Groups are always implicitly closed before the links section.
+    // We treat the links section as explicit: a "## Links" heading (recommended style).
+    // Links can appear anywhere; they don't affect box membership.
+    if (/^##\s*links\b/i.test(line)) {
+      inLinksSection = true;
+      clusterStack.length = 0;
+      continue;
+    }
 
     // Grouping box line:
     // - "--Label" opens a level-1 cluster
@@ -3389,6 +4065,7 @@ function dslToDot(dslText) {
     // Rule: the number of leading '-' determines nesting depth (2 = level 1, 4 = level 2, etc).
     const clusterMatch = line.match(/^(-{2,})(.*)$/);
     if (clusterMatch) {
+      if (inLinksSection) continue; // boxes are closed/ignored in the links section
       const dashes = clusterMatch[1];
       let rest = (clusterMatch[2] || "").trim();
       const depth = dashes.length;
@@ -3406,13 +4083,9 @@ function dslToDot(dslText) {
         rest = rest.slice(0, bracketStart).trim();
       }
 
-      // Empty marker ("--" / "----") is ambiguous: it can either CLOSE an existing box at that depth,
-      // or OPEN an untitled box if there is nothing to close at that depth yet.
-      //
-      // Rule used here (and mirrored in the UI cluster scanner):
-      // - If there's an open cluster at depth >= this depth, treat as a CLOSE.
-      // - Otherwise, treat as an OPEN with an empty label.
-      if (!rest && !bracket && clusterStack.length && clusterStack[clusterStack.length - 1].depth >= depth) {
+      // Closing marker is *only* "--" / "----" with no label and no bracket.
+      // Untitled opener must be explicit ("--[]"/"--[...]" etc).
+      if (!rest && !bracket) {
         while (clusterStack.length && clusterStack[clusterStack.length - 1].depth >= depth) {
           clusterStack.pop();
         }
@@ -3447,7 +4120,12 @@ function dslToDot(dslText) {
     if (settingMatch && !line.includes("->") && !line.includes("::")) {
       const key = settingMatch[1].trim().toLowerCase();
       const value = settingMatch[2].trim();
-      if (key === "title") settings.title = value;
+      if (key === "title") {
+        const { before, inner } = parseTrailingBracket(value);
+        settings.title = String(before || "").trim();
+        settings.titleStyleInner = String(inner || "").trim();
+      }
+      else if (key === "description") settings.description = value;
       else if (key === "background") settings.background = normalizeColor(value);
       else if (key === "text colour" || key === "text color") settings.textColour = normalizeColor(value);
       else if (key === "default node text colour" || key === "default node text color") settings.defaultNodeTextColour = normalizeColor(value);
@@ -3642,7 +4320,10 @@ function dslToDot(dslText) {
   // Build DOT
   const dot = [];
   dot.push("digraph G {");
-  dot.push('  graph [fontname="Arial"];');
+  // Keep a little breathing room so the graph title doesn't visually "sit inside" an outer cluster box,
+  // especially when the first/top cluster has an empty label.
+  // (Graphviz pad is inches; keep this subtle to avoid layout shifts.)
+  dot.push(`  graph${toDotAttrs({ fontname: "Arial", ...(settings.title && clusters.length ? { pad: "0.20" } : {}) })};`);
   const nodeDefaults = { fontname: "Arial", shape: "box" };
   if (settings.defaultNodeTextColour) nodeDefaults.fontcolor = settings.defaultNodeTextColour;
   dot.push(`  node${toDotAttrs(nodeDefaults)};`);
@@ -3658,16 +4339,28 @@ function dslToDot(dslText) {
   dot.push(`  edge${toDotAttrs(edgeDefaults)};`);
 
   if (settings.background) dot.push(`  bgcolor="${settings.background.replaceAll('"', '\\"')}";`);
-  if (settings.textColour) dot.push(`  fontcolor="${settings.textColour.replaceAll('"', '\\"')}";`);
   if (settings.title) {
     // Title (graph label): slightly larger by default, with a bit of extra space below.
     // Graphviz doesn't have a simple "margin-bottom for title", so we add a trailing newline.
-    const fsRaw = Number(settings.titleSize);
+    let titleFontColor = settings.textColour || null; // legacy default (also used for edge labels)
+    let titleFontSize = null;
+
+    // Optional title-only styling stored on the Title: line.
+    const titleInner = String(settings.titleStyleInner || "").trim();
+    if (titleInner) {
+      const { kv } = parseBracketAttrs(`[${titleInner}]`);
+      const tc = kv["text colour"] || kv["text color"] || kv.textcolour || kv.textcolor;
+      if (tc) titleFontColor = normalizeColor(tc);
+      const sz = parseLeadingNumber(kv["text size"] || kv.textsize || kv["text scale"] || kv.textscale);
+      if (Number.isFinite(sz) && sz > 0) titleFontSize = sz;
+    }
+
+    const fsRaw = Number.isFinite(Number(titleFontSize)) ? Number(titleFontSize) : Number(settings.titleSize);
     const fs = Number.isFinite(fsRaw) && fsRaw > 0 ? fsRaw : 18;
     const tp = titlePositionToGraphvizAttrs(settings.titlePosition);
-    dot.push(
-      `  label="${settings.title.replaceAll('"', '\\"')}\\n"; labelloc="${tp.labelloc}"; labeljust="${tp.labeljust}"; fontsize="${String(fs)}";`
-    );
+    const fc = titleFontColor ? ` fontcolor="${String(titleFontColor).replaceAll('"', '\\"')}";` : "";
+    const titleDot = dotLabelWithManualBreaks(settings.title) ?? settings.title;
+    dot.push(`  label="${String(titleDot).replaceAll('"', '\\"')}\\n"; labelloc="${tp.labelloc}"; labeljust="${tp.labeljust}"; fontsize="${String(fs)}";${fc}`);
   }
   if (settings.direction) dot.push(`  rankdir="${settings.direction}";`);
   // Graphviz ranksep/nodesep are in inches; MapScript values are treated as "px-ish", so scale down.
@@ -3684,8 +4377,10 @@ function dslToDot(dslText) {
     // - Default: rounded + light grey border (existing behavior)
     // - Optional: allow cluster lines to override fill/border and title text styling
     const clusterAttrs = {};
-    // If the label is empty, omit it entirely so Graphviz doesn't reserve label space.
-    clusterAttrs.label = String(c.label || "").trim() ? c.label : null;
+    // IMPORTANT: Graphviz subgraphs can inherit graph-level attributes (including `label`).
+    // If we omit `label` entirely for an untitled cluster, it can accidentally inherit the map title.
+    // So for untitled clusters we explicitly set label="" to override inheritance.
+    clusterAttrs.label = String(c.label || "").trim() ? c.label : "";
     addStyle(clusterAttrs, "rounded");
     if (!clusterAttrs.color) clusterAttrs.color = "#cccccc";
     if (settings.defaultBoxTextColour) clusterAttrs.fontcolor = settings.defaultBoxTextColour;
@@ -3720,7 +4415,10 @@ function dslToDot(dslText) {
     }
 
     // Emit cluster attrs (stable order)
-    if (clusterAttrs.label != null) dot.push(`${indent}  label="${String(clusterAttrs.label).replaceAll('"', '\\"')}";`);
+    if (clusterAttrs.label != null) {
+      const lab = dotLabelWithManualBreaks(clusterAttrs.label) ?? clusterAttrs.label;
+      dot.push(`${indent}  label="${String(lab).replaceAll('"', '\\"')}";`);
+    }
     if (clusterAttrs.style) dot.push(`${indent}  style="${String(clusterAttrs.style).replaceAll('"', '\\"')}";`);
     if (clusterAttrs.color) dot.push(`${indent}  color="${String(clusterAttrs.color).replaceAll('"', '\\"')}";`);
     if (clusterAttrs.penwidth) dot.push(`${indent}  penwidth="${String(clusterAttrs.penwidth).replaceAll('"', '\\"')}";`);
@@ -3792,6 +4490,12 @@ function parseTrailingBracket(codePart) {
   return { before: c.trimEnd(), inner: "" };
 }
 
+function hasTrailingBracket(codePart) {
+  // True for "[]", "[x]", "Label [x]" etc; false for plain text.
+  const c = String(codePart || "");
+  return c.lastIndexOf("[") >= 0 && c.trimEnd().endsWith("]");
+}
+
 function findNodeDefLineIndex(lines, nodeId) {
   const re = new RegExp(`^\\s*${nodeId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\s*::\\s*`, "i");
   for (let i = 0; i < lines.length; i++) {
@@ -3813,8 +4517,11 @@ function getExplicitNodeIdsFromLines(lines) {
 }
 
 function makeUniqueNodeIdFromLabel(label, existingIds) {
-  const base = `N_${slugId(label || "node")}`.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 40);
-  let id = base.match(/^[A-Za-z]\w*$/) ? base : `N_${base}`.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 40);
+  // Prefer a clean slug (no "N_" prefix) when it's already a valid MapScript ID token.
+  // Only add "N_" when needed to make it a valid identifier (must start with a letter).
+  const rawSlug = slugId(label || "node"); // lower_snake, may start with digit
+  const cleaned = String(rawSlug || "node").replace(/[^A-Za-z0-9_]/g, "_").slice(0, 40);
+  let id = cleaned.match(/^[A-Za-z]\w*$/) ? cleaned : `N_${cleaned}`.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 40);
   if (!id.match(/^[A-Za-z]\w*$/)) id = "N_node";
 
   if (!existingIds?.has?.(id)) return id;
@@ -3840,6 +4547,33 @@ function parseNodeDefLine(lines, nodeId) {
   };
 }
 
+function parseTitleDefLineAt(lines, idx) {
+  // Title line: "Title: My title [text colour=... | text size=...]"
+  const raw = lines[idx] || "";
+  const { code, comment } = stripCommentKeepSuffix(raw);
+  const trimmed = String(code || "").trim();
+  const m = trimmed.match(/^title\s*:\s*(.*)$/i);
+  if (!m) return null;
+  const value = String(m[1] || "");
+  const { before, inner } = parseTrailingBracket(value);
+  return {
+    idx,
+    comment,
+    title: String(before || "").trim(),
+    styleInner: String(inner || "").trim(),
+  };
+}
+
+function setTitleDefLineAt(lines, idx, { title, styleInner, comment }) {
+  const c = String(comment || "").trim();
+  const commentSuffix = c ? ` ${c}` : "";
+  const t = String(title ?? "").trim();
+  const inner = String(styleInner ?? "").trim();
+  const styleSuffix = inner ? ` [${inner}]` : "";
+  lines[idx] = `Title: ${t}${styleSuffix}${commentSuffix}`.trimEnd();
+  return true;
+}
+
 function parseClusterDefLineAt(lines, idx) {
   const raw = lines[idx] || "";
   const { code, comment } = stripCommentKeepSuffix(raw);
@@ -3849,14 +4583,16 @@ function parseClusterDefLineAt(lines, idx) {
   const dashes = m[1];
   if (dashes.length % 2 !== 0) return null;
   const rest = String(m[2] || "").trim();
-  // NOTE: This parser is *syntactic* only; opener/closer disambiguation is handled by
-  // scanClusterOpenersFromLines() so untitled groups ("--") can be valid.
+  const hasBracket = hasTrailingBracket(rest);
   const { before: labelPart, inner: styleInner } = parseTrailingBracket(rest);
+  const label = String(labelPart || "").trim();
+  // Close marker is *only* "--" / "----" with nothing else. Untitled opener must be "--[]"/"--[...]" etc.
+  if (!label && !hasBracket) return null;
   return {
     idx,
     comment,
     dashes,
-    label: String(labelPart || "").trim(),
+    label,
     styleInner: String(styleInner || "").trim(),
   };
 }
@@ -3866,6 +4602,7 @@ function scanClusterOpenersFromLines(lines) {
   // Returns openers in the exact order they will be assigned cluster ids (cluster_0, cluster_1, ...).
   const openers = [];
   const stack = []; // { depth }
+  let inLinks = false;
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i] || "";
@@ -3873,21 +4610,25 @@ function scanClusterOpenersFromLines(lines) {
     const trimmed = String(code || "").trim();
     if (!trimmed) continue;
 
+    // Groups do not cross into the links section (explicit heading).
+    if (/^##\s*links\b/i.test(trimmed)) {
+      inLinks = true;
+      stack.length = 0;
+    }
+
     const m = trimmed.match(/^(-{2,})(.*)$/);
     if (!m) continue;
+    if (inLinks) continue; // boxes are closed/ignored in the links section
     const dashes = m[1];
     const depth = dashes.length;
     if (depth % 2 !== 0) continue;
 
     const rest = String(m[2] || "").trim();
+    const hasBracket = hasTrailingBracket(rest);
     const { before: labelPart, inner: styleInnerRaw } = parseTrailingBracket(rest);
     const label = String(labelPart || "").trim();
     const styleInner = String(styleInnerRaw || "").trim();
-    const hasOpenerContent = Boolean(label || styleInner);
-
-    const hasOpenAtOrDeeper = stack.length && stack[stack.length - 1].depth >= depth;
-    const isClose = !hasOpenerContent && hasOpenAtOrDeeper;
-
+    const isClose = !label && !hasBracket;
     if (isClose) {
       while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop();
       continue;
@@ -3907,9 +4648,15 @@ function scanClusterOpenersFromLines(lines) {
 function setClusterDefLineAt(lines, idx, { dashes, label, styleInner, comment }) {
   const c = String(comment || "").trim();
   const commentSuffix = c ? ` ${c}` : "";
-  const inner = String(styleInner || "").trim();
-  const styleSuffix = inner ? ` [${inner}]` : "";
-  lines[idx] = `${String(dashes || "").trim()}${String(label || "").trim()}${styleSuffix}${commentSuffix}`.trimEnd();
+  const lbl = String(label ?? "").trim();
+  const inner = String(styleInner ?? "").trim();
+  // If the user clears the label AND has no style attrs, force an explicit empty bracket ("[]")
+  // to keep the line an OPENING marker. Plain "--" is a closing marker.
+  const needEmptyBracket = !lbl && !inner;
+  const bracket = inner || needEmptyBracket ? `[${inner}]` : "";
+  const sep = bracket ? (lbl ? " " : "") : "";
+  // Note: MapScript group opener is "--Label" (no space). Untitled opener is "--[]".
+  lines[idx] = `${String(dashes || "").trim()}${lbl}${sep}${bracket}${commentSuffix}`.trimEnd();
   return true;
 }
 
@@ -4128,13 +4875,11 @@ function deleteCluster(lines, clusterId) {
     if (depth % 2 !== 0) continue;
     
     const rest = String(m[2] || "").trim();
+    const hasBracket = hasTrailingBracket(rest);
     const { before: labelPart, inner: styleInnerRaw } = parseTrailingBracket(rest);
     const label = String(labelPart || "").trim();
     const styleInner = String(styleInnerRaw || "").trim();
-    const hasOpenerContent = Boolean(label || styleInner);
-
-    const hasOpenAtOrDeeper = stack.length && stack[stack.length - 1].depth >= depth;
-    const isClose = !hasOpenerContent && hasOpenAtOrDeeper;
+    const isClose = !label && !hasBracket;
 
     if (isClose) {
       // Closing marker - closes everything >= depth
@@ -5439,6 +6184,46 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     return -1;
   }
 
+  function isEdgeLineRaw(rawLine) {
+    const { code } = stripCommentKeepSuffix(String(rawLine || ""));
+    const t = String(code || "").trim();
+    if (!t) return false;
+    const m = t.match(/^(.+?)\s*->\s*(.+)$/);
+    return Boolean(m);
+  }
+
+  function findTrailingLinksBlockStart(lines) {
+    // Purpose: keep "aliases + boxes" above the final block of link lines (recommended style).
+    // We treat the *bottom* contiguous block of edge lines (allowing blank/comment lines between)
+    // as the "links at end" region, and we insert groups above it.
+    let i = lines.length - 1;
+    // Skip trailing blanks/comments
+    while (i >= 0) {
+      const { code } = stripCommentKeepSuffix(String(lines[i] || ""));
+      if (String(code || "").trim()) break;
+      i--;
+    }
+    // Walk upward through the trailing edge block
+    let sawEdge = false;
+    while (i >= 0) {
+      const raw = String(lines[i] || "");
+      const { code } = stripCommentKeepSuffix(raw);
+      const t = String(code || "").trim();
+      if (!t) {
+        i--;
+        continue;
+      }
+      if (isEdgeLineRaw(raw)) {
+        sawEdge = true;
+        i--;
+        continue;
+      }
+      break;
+    }
+    if (!sawEdge) return lines.length;
+    return i + 1;
+  }
+
   function groupNodesIntoCluster(lines, nodeIds, labelText) {
     // Group selected nodes by moving their explicit definition lines into a new cluster block.
     const ids = Array.from(nodeIds || []).map((s) => String(s || "").trim()).filter(Boolean);
@@ -5454,7 +6239,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
     if (!defs.length) return { ok: false, message: "No selected nodes have explicit 'A:: ...' lines to group." };
 
-    // Insert at the earliest selected node definition line.
+    // Insert at the earliest selected node definition line (but keep groups above the trailing link block).
     defs.sort((a, b) => a.idx - b.idx);
     const insertIdx = defs[0].idx;
 
@@ -5462,18 +6247,21 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     const removeIdxs = defs.map((d) => d.idx).sort((a, b) => b - a);
     for (const i of removeIdxs) lines.splice(i, 1);
 
+    const trailingLinksStart = findTrailingLinksBlockStart(lines);
+    const insertAt = Math.min(insertIdx, trailingLinksStart);
+
     // Determine nesting depth at insertion point (after removals; cluster markers unchanged).
-    const curDepth = getClusterDepthAtLine(lines, insertIdx);
+    const curDepth = getClusterDepthAtLine(lines, insertAt);
     const newDepth = curDepth + 2;
     const dashes = "-".repeat(newDepth);
 
-    const label = String(labelText || "Group").trim() || "Group";
-    const openLine = `${dashes}${label}`;
+    const label = String(labelText ?? "").trim();
+    const openLine = label ? `${dashes}${label}` : `${dashes}[]`; // explicit untitled opener
     const closeLine = `${dashes}`;
 
     // Insert: open, node defs (in original order), close.
     const nodeLines = defs.map((d) => d.raw);
-    lines.splice(insertIdx, 0, openLine, ...nodeLines, closeLine);
+    lines.splice(insertAt, 0, openLine, ...nodeLines, closeLine);
 
     const msg = missing.length
       ? `Grouped ${defs.length} node(s). Skipped (no explicit A:: line): ${missing.join(", ")}`
@@ -5502,7 +6290,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   groupSelectedBtn?.addEventListener("click", () => {
     if (selectedNodes.size === 0) return;
     const lines = editor.getValue().split(/\r?\n/);
-    const label = String(groupLabelInput?.value || "").trim() || "Group";
+    // Allow empty label (creates an untitled group using "--[]").
+    const label = String(groupLabelInput?.value ?? "");
     const res = groupNodesIntoCluster(lines, selectedNodes, label);
     if (!res.ok) return setVizStatus(res.message || "Group failed");
     applyEditorLines(lines);
@@ -5797,7 +6586,8 @@ function applyVizScale() {
 }
 
 function fitVizToContainerWidth() {
-  // Fit the rendered SVG to the current viz panel width (so the map fills the panel by default).
+  // Fit the rendered SVG to the current viz panel *both* width and height
+  // (so tall diagrams don't run off-screen below the fold by default).
   const viz = document.getElementById("tm-viz");
   const svg = getVizSvgEl();
   if (!viz || !svg) return;
@@ -5805,14 +6595,19 @@ function fitVizToContainerWidth() {
   const base = getSvgBaseSizePx(svg);
   if (!base) return;
 
-  // Available content width excludes padding.
+  // Available content size excludes padding.
   const cs = getComputedStyle(viz);
   const padL = Number.parseFloat(cs.paddingLeft || "0") || 0;
   const padR = Number.parseFloat(cs.paddingRight || "0") || 0;
-  const available = Math.max(1, viz.clientWidth - padL - padR);
+  const padT = Number.parseFloat(cs.paddingTop || "0") || 0;
+  const padB = Number.parseFloat(cs.paddingBottom || "0") || 0;
+  const availableW = Math.max(1, viz.clientWidth - padL - padR);
+  const availableH = Math.max(1, viz.clientHeight - padT - padB);
 
-  // Choose a scale that makes SVG width match the available panel width.
-  const next = available / base.w;
+  // Choose a scale that fits within both width and height.
+  const scaleW = availableW / base.w;
+  const scaleH = availableH / base.h;
+  const next = Math.min(scaleW, scaleH);
   vizScale = Math.max(0.2, Math.min(6, next));
   applyVizScale();
 }
@@ -6101,7 +6896,7 @@ function initVizToolbar() {
   zoomResetBtn?.addEventListener("click", () => {
     vizHasUserZoomed = false;
     fitVizToContainerWidth();
-    setVizStatus("Fit to width");
+    setVizStatus("Fit to panel");
   });
 
   copyRawUrlBtn?.addEventListener("click", async () => {
@@ -6421,6 +7216,13 @@ async function renderNow(graphviz, editor) {
   showErrors(errors);
   applyVizCssSettings(document.getElementById("tm-viz"), settings);
   lastVizSettings = settings;
+  // MapScript: "Description: ..." -> show as a simple legend below the diagram.
+  const legendEl = document.getElementById("tm-viz-legend");
+  if (legendEl) {
+    const desc = String(settings?.description || "").trim();
+    legendEl.textContent = desc ? `Description: ${desc}` : "";
+    legendEl.classList.toggle("d-none", !desc);
+  }
 
   try {
     const svg = await graphviz.layout(dot, "svg", "dot");
@@ -6970,7 +7772,24 @@ async function main() {
     if (historyBurstTimer) clearTimeout(historyBurstTimer);
     historyBurstTimer = setTimeout(() => {
       const text = editor.getValue();
-      setMapScriptInUrl(text);
+      // Normalize away redundant specs (kept simple; removes no-op/redundant styling).
+      const { settings } = dslToDot(text);
+      const normalized = normalizeDslRemoveRedundantSpecs(text, settings);
+      if (normalized !== text) {
+        // Update editor without triggering another history/render burst.
+        const cursor = editor.getCursorPosition();
+        suppressHistorySync = true;
+        try {
+          editor.setValue(normalized, -1);
+          editor.moveCursorToPosition(cursor);
+          editor.clearSelection();
+        } finally {
+          suppressHistorySync = false;
+        }
+      }
+
+      const nextText = editor.getValue();
+      setMapScriptInUrl(nextText);
       renderNow(graphviz, editor);
       historyBurstActive = false; // next change starts a new history entry
     }, 350);

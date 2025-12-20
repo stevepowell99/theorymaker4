@@ -317,6 +317,8 @@
               </div>
 
               <div id="tm-viz" class="tm-viz"></div>
+              <!-- MapScript: Description: ... (rendered below the diagram) -->
+              <div id="tm-viz-legend" class="tm-viz-legend small text-muted d-none"></div>
 
               <!-- Quick link drawer: hidden behind the diagram, then revealed as the diagram shifts right -->
               <div id="tm-viz-quicklink-drawer" class="tm-viz-drawer" aria-labelledby="tm-viz-quicklink-drawer-title">
@@ -489,6 +491,8 @@
                   <a href="#" class="tm-help-subtab" data-help-tab="ai">ai</a>
                   <span class="text-muted px-1">|</span>
                   <a href="#" class="tm-help-subtab" data-help-tab="syntax">syntax</a>
+                  <span class="text-muted px-1">|</span>
+                  <a href="#" class="tm-help-subtab" data-help-tab="faq">faq</a>
                   <span class="text-muted px-1">|</span>
                   <a href="#" class="tm-help-subtab" data-help-tab="quickref">quickref</a>
                   <span id="tm-help-admin-sep" class="text-muted px-1 d-none">|</span>
@@ -865,7 +869,6 @@ A -> B [increases | 1px]</code></pre>
       <div class="border-bottom bg-white px-3 py-2 d-flex align-items-start justify-content-between gap-3">
         <div>
           <div class="fw-semibold" id="tm-title-drawer-title">Title</div>
-          <div class="small text-muted">Changes apply live</div>
         </div>
         <button id="tm-title-close-x" type="button" class="btn-close" aria-label="Close"></button>
       </div>
@@ -880,7 +883,6 @@ A -> B [increases | 1px]</code></pre>
           <div class="col-12">
             <label class="form-label mb-1" for="tm-title-text-color">Colour</label>
             <input id="tm-title-text-color" class="form-control form-control-sm form-control-color" type="color" value="#111827" />
-            <div class="small text-muted mt-1">This is the global “Text colour” (also affects edge labels).</div>
           </div>
           <div class="col-12">
             <div class="d-flex align-items-center justify-content-between">
@@ -1181,7 +1183,7 @@ A -> B [increases | 1px]</code></pre>
 
         <!-- Shown when the current line isn't a node or a link -->
         <div id="tm-ace-style-none" class="small text-muted d-none">
-          Put the cursor on a node line (<code>ID:: ...</code>) or a link line (<code>A -&gt; B</code>) to style it.
+          Put the cursor on a node line (<code>ID:: ...</code>), a group line (<code>--...</code>), a title line (<code>Title: ...</code>), or a link line (<code>A -&gt; B</code>) to style it.
         </div>
 
         <!-- Node styling -->
@@ -1299,6 +1301,32 @@ A -> B [increases | 1px]</code></pre>
             <div class="mt-1">
               <label class="form-label mb-1" for="tm-ace-style-cluster-text-size">Scale (×)</label>
               <input id="tm-ace-style-cluster-text-size" class="form-range tm-range-compact" type="range" min="0.5" max="2.5" step="0.1" value="1" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Diagram title styling (Title: ... [ ... ]) -->
+        <div id="tm-ace-style-title" class="d-none">
+          <div class="d-flex align-items-center justify-content-between">
+            <div class="fw-semibold">Title styling</div>
+          </div>
+
+          <div class="mt-2">
+            <div class="form-check form-switch">
+              <input id="tm-ace-style-title-text-colour-enabled" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" for="tm-ace-style-title-text-colour-enabled">Override title colour</label>
+            </div>
+            <input id="tm-ace-style-title-text-colour" class="form-control form-control-sm form-control-color mt-1" type="color" value="#111827" />
+          </div>
+
+          <div class="mt-2">
+            <div class="form-check form-switch">
+              <input id="tm-ace-style-title-text-size-enabled" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" for="tm-ace-style-title-text-size-enabled">Override title size</label>
+            </div>
+            <div class="mt-1">
+              <label class="form-label mb-1" for="tm-ace-style-title-text-size">Size (pt)</label>
+              <input id="tm-ace-style-title-text-size" class="form-range tm-range-compact" type="range" min="10" max="36" step="1" value="18" />
             </div>
           </div>
         </div>
