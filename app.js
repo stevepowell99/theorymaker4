@@ -72,6 +72,35 @@ function afterEditorMutation({ editor, graphviz }) {
   renderNow(graphviz, editor);
 }
 
+function positionVizDrawerAgainstDiagram(drawerEl, { topOffsetPx = 100 } = {}) {
+  // Purpose: use the same positioning as the quick-link drawer:
+  // - slide in from the far left
+  // - stop with the drawer's RIGHT edge flush against the diagram's LEFT edge
+  // - place it ~100px below the top of the diagram panel (so it doesn't collide with tabs/toolbars)
+  const el = drawerEl || null;
+  if (!el) return;
+
+  const vizWrap = document.querySelector(".tm-viz-wrap");
+  if (!vizWrap) return;
+
+  const w = el.offsetWidth || 360;
+  const vizRect = vizWrap.getBoundingClientRect();
+  const openX = Math.max(0, Math.round(vizRect.left - w));
+
+  el.style.setProperty("--tm-viz-drawer-open-x", `${openX}px`);
+  el.style.setProperty("--tm-viz-drawer-top", `${Math.round(vizRect.top + Number(topOffsetPx || 0))}px`);
+  el.style.setProperty("--tm-viz-drawer-h", `${Math.round(vizRect.height)}px`);
+}
+
+function closeOtherVizDrawers(exceptEl) {
+  // Purpose: ensure only ONE drawer is open at a time (opening one replaces the previous).
+  const except = exceptEl || null;
+  document.querySelectorAll(".tm-viz-drawer.tm-open").forEach((el) => {
+    if (except && el === except) return;
+    el.classList.remove("tm-open");
+  });
+}
+
 function cssColorToEditorToken(value) {
   // Purpose: avoid "#rrggbb" in MapScript (because "#" starts comments).
   const raw = String(value ?? "").trim();
@@ -222,8 +251,8 @@ function initAceLineStylePopover({ editor, graphviz }) {
   const settingModalTitle = document.getElementById("tm-setting-line-modal-title");
   const settingModalMeta = document.getElementById("tm-setting-line-modal-meta");
   const settingModalBody = document.getElementById("tm-setting-line-modal-body");
-  const bs = globalThis.bootstrap;
-  const settingModal = settingModalEl && bs?.Modal ? new bs.Modal(settingModalEl) : null;
+  const settingModalCloseX = document.getElementById("tm-setting-line-close-x");
+  const settingModalCloseBtn = document.getElementById("tm-setting-line-close");
 
   // Node fields
   const nodeFillEnabled = document.getElementById("tm-ace-style-node-fill-enabled");
@@ -652,17 +681,10 @@ function initAceLineStylePopover({ editor, graphviz }) {
 
   function openStylesModalForSettingKey(keyLower) {
     // Reuse the existing Styles modal (diagram-wide) rather than inventing a second UI.
-    // Open the "More settings" accordion panel since these settings are there.
-    const morePanel = document.getElementById("tm-style-more-panel");
-    if (morePanel) {
-      const bsCollapse = globalThis.bootstrap?.Collapse;
-      if (bsCollapse) {
-        const collapse = bsCollapse.getOrCreateInstance(morePanel);
-        collapse.show();
-      }
-    }
-
     // Button exists in the toolbar and already opens the modal.
+    // Hint to the modal which accordion panel should be open when it appears.
+    const styleModalEl = document.getElementById("tm-style-modal");
+    if (styleModalEl?.dataset) styleModalEl.dataset.tmStyleOpenPanel = "more";
     document.getElementById("tm-editor-style")?.click();
 
     const idByKey = {
@@ -699,8 +721,8 @@ function initAceLineStylePopover({ editor, graphviz }) {
 
   function openSettingLineModal(keyLower) {
     // Focused modal for the current setting line (background/direction/gaps/etc).
-    // Falls back to the big Styles modal if Bootstrap isn't available.
-    if (!settingModal || !settingModalBody) return openStylesModalForSettingKey(keyLower);
+    // Falls back to the big Styles drawer if the focused UI isn't available.
+    if (!settingModalEl || !settingModalBody) return openStylesModalForSettingKey(keyLower);
 
     const key = String(keyLower || "").trim().toLowerCase();
     const parsed = dslToDot(editor.getValue()).settings;
@@ -826,10 +848,10 @@ function initAceLineStylePopover({ editor, graphviz }) {
     } else if (key === "direction") {
       const { el, focusEl: f } = makeSelect(
         [
-          { value: "LR", label: "left → right" },
-          { value: "RL", label: "right → left" },
-          { value: "TB", label: "top → bottom" },
-          { value: "BT", label: "bottom → top" },
+          { value: "LR", label: "→" },
+          { value: "RL", label: "←" },
+          { value: "TB", label: "↓" },
+          { value: "BT", label: "↑" },
         ],
         cur.direction || "LR",
         (v) => applyPatch({ direction: normalizeDirection(v) || v })
@@ -919,7 +941,7 @@ function initAceLineStylePopover({ editor, graphviz }) {
           { value: "medium", label: "medium" },
           { value: "strong", label: "strong" },
         ],
-        String(cur.defaultBoxShadow || "subtle"),
+        String(cur.defaultBoxShadow || "medium"),
         (v) => applyPatch({ defaultBoxShadow: String(v || "").trim() || null })
       );
       settingModalBody.appendChild(el);
@@ -977,9 +999,18 @@ function initAceLineStylePopover({ editor, graphviz }) {
       return openStylesModalForSettingKey(keyLower);
     }
 
-    settingModal.show();
+    closeOtherVizDrawers(settingModalEl);
+    settingModalEl.classList.add("tm-open");
+    positionVizDrawerAgainstDiagram(settingModalEl);
     if (focusEl) setTimeout(() => focusEl.focus?.(), 0);
   }
+
+  function closeSettingLineDrawer() {
+    settingModalEl?.classList?.remove?.("tm-open");
+  }
+
+  settingModalCloseX?.addEventListener("click", closeSettingLineDrawer);
+  settingModalCloseBtn?.addEventListener("click", closeSettingLineDrawer);
 
   function applyToEditor({ hideAfter = true, focusEditor = true } = {}) {
     const info = getCursorLineInfo();
@@ -1328,6 +1359,7 @@ function initStyleModal({ editor, graphviz }) {
   const btn = document.getElementById("tm-editor-style");
   const modalEl = document.getElementById("tm-style-modal");
   const btnApply = document.getElementById("tm-style-apply");
+  const btnCloseX = document.getElementById("tm-style-close-x");
   if (!btn || !modalEl || !btnApply) return;
 
   // Preset grids
@@ -1367,8 +1399,40 @@ function initStyleModal({ editor, graphviz }) {
   const nodeGapVal = document.getElementById("tm-style-node-gap-val");
 
   const bs = globalThis.bootstrap;
-  const modal = bs?.Modal ? new bs.Modal(modalEl) : null;
+  const bsCollapse = bs?.Collapse || null;
+  const presetsPanel = document.getElementById("tm-style-presets-panel");
+  const morePanel = document.getElementById("tm-style-more-panel");
   let suppressLiveApply = false; // prevents feedback loops while we populate widgets
+  let lastRequestedPanel = "presets";
+ 
+  function openStyleAccordionPanel(panel) {
+    // Purpose: default the Styles modal to Presets on open; allow callers to opt into More settings.
+    if (!bsCollapse) return;
+    const wantMore = String(panel || "").toLowerCase() === "more";
+    const toShow = wantMore ? morePanel : presetsPanel;
+    const toHide = wantMore ? presetsPanel : morePanel;
+    if (toShow) bsCollapse.getOrCreateInstance(toShow).show();
+    if (toHide) bsCollapse.getOrCreateInstance(toHide).hide();
+  }
+
+  function openStyleDrawer() {
+    // Purpose: show the styles UI as a sliding drawer (replaces the old bootstrap modal).
+    closeOtherVizDrawers(modalEl);
+    modalEl.classList.add("tm-open");
+    positionVizDrawerAgainstDiagram(modalEl);
+    // Defer so collapse measures/layout runs after the drawer becomes visible.
+    // Default to Presets unless explicitly requested to open More.
+    requestAnimationFrame(() => {
+      const panel = String(lastRequestedPanel || "presets").trim().toLowerCase() === "more" ? "more" : "presets";
+      openStyleAccordionPanel(panel);
+    });
+  }
+
+  function closeStyleDrawer() {
+    modalEl.classList.remove("tm-open");
+    // Default back to Presets next time (unless a caller explicitly requests "more").
+    lastRequestedPanel = "presets";
+  }
 
   function syncRangeValueLabel(rangeEl, valEl) {
     if (!rangeEl || !valEl) return;
@@ -1473,7 +1537,8 @@ function initStyleModal({ editor, graphviz }) {
       if (boxBorderColor) boxBorderColor.value = String(b.colorHex || "#1e90ff");
       syncRangeValueLabel(boxBorderW, boxBorderWVal);
 
-      if (boxShadow) boxShadow.value = String(s.defaultBoxShadow || "subtle");
+      // Default node shadow: prefer "medium" when no explicit setting is present.
+      if (boxShadow) boxShadow.value = String(s.defaultBoxShadow || "medium");
 
       const linkRgb = resolveCssColorToRgb(s.defaultLinkColour || "#6c757d") || { r: 108, g: 117, b: 125 };
       if (linkColor) linkColor.value = rgbToHex(linkRgb);
@@ -1633,50 +1698,54 @@ function initStyleModal({ editor, graphviz }) {
       return rgbToHex(best);
     }
 
-    // Colourways (36): keep overall number, but replace 6 palest ones with stronger dark-ish backgrounds.
-    // Each preset sets diagram background + default node fill + border/link colours.
+    // Colourways (36): ordered to scan well in the UI:
+    // - professional neutrals first (near-white/near-black)
+    // - muted light palettes
+    // - stronger dark backgrounds last
     const COLOURWAYS = [
-      // Replacements (dark-ish)
-      { name: "Burgundy night", bg: "#3b0a17", box: "#5a1224", border: "#fb7185", link: "#fb7185" },
-      { name: "Deep maroon", bg: "#4a0f0f", box: "#6b1d1d", border: "#fca5a5", link: "#fca5a5" },
-      { name: "Royal purple", bg: "#2b0f3a", box: "#3f1a59", border: "#d8b4fe", link: "#d8b4fe" },
-      { name: "Navy", bg: "#0b2a5b", box: "#123b73", border: "#93c5fd", link: "#93c5fd" },
-      { name: "Pine", bg: "#052e1b", box: "#0b4a2b", border: "#34d399", link: "#34d399" },
-      { name: "Deep teal", bg: "#05343b", box: "#0a4a54", border: "#2dd4bf", link: "#2dd4bf" },
-
-      // Existing (kept)
+      // Professional / neutral (light)
+      { name: "Paper + ink", bg: "#fffdf5", box: "#ffffff", border: "#111827", link: "#111827" },
       { name: "Slate", bg: "#f1f5f9", box: "#f1f3f5", border: "#495057", link: "#495057" },
-      { name: "Teal", bg: "#ecfeff", box: "#e6fcf5", border: "#0ca678", link: "#0ca678" },
-      { name: "Lemon", bg: "#fffbeb", box: "#fff9db", border: "#f59f00", link: "#6c757d" },
-      { name: "Indigo", bg: "#eef2ff", box: "#edf2ff", border: "#364fc7", link: "#364fc7" },
-      { name: "Dark mode", bg: "#0b1020", box: "#111827", border: "#93c5fd", link: "#93c5fd" },
-      { name: "Night mint", bg: "#0b1020", box: "#1ff2a8", border: "#9ec5fe", link: "#9ec5fe" },
+      { name: "Mono high-contrast", bg: "#ffffff", box: "#ffffff", border: "#000000", link: "#000000" },
 
-      // More (24): varied palettes (light, dark, muted, high-contrast)
+      // Professional / neutral (dark)
+      { name: "Charcoal", bg: "#0f172a", box: "#111827", border: "#94a3b8", link: "#e2e8f0" },
+      { name: "Dark mode", bg: "#0b1020", box: "#111827", border: "#93c5fd", link: "#93c5fd" },
+
+      // Muted light palettes
+      { name: "Arctic", bg: "#e0f2fe", box: "#bae6fd", border: "#0284c7", link: "#334155" },
+      { name: "Indigo", bg: "#eef2ff", box: "#edf2ff", border: "#364fc7", link: "#364fc7" },
+      { name: "Teal", bg: "#ecfeff", box: "#e6fcf5", border: "#0ca678", link: "#0ca678" },
+      { name: "Aqua", bg: "#ecfeff", box: "#cffafe", border: "#06b6d4", link: "#0891b2" },
+      { name: "Spring", bg: "#f0fdf4", box: "#dcfce7", border: "#22c55e", link: "#16a34a" },
+      { name: "Lime", bg: "#f7fee7", box: "#ecfccb", border: "#84cc16", link: "#65a30d" },
+      { name: "Amber", bg: "#fffbeb", box: "#fef3c7", border: "#f59e0b", link: "#f59e0b" },
+      { name: "Lemon", bg: "#fffbeb", box: "#fff9db", border: "#f59f00", link: "#6c757d" },
+      { name: "Mocha", bg: "#faf5ef", box: "#f3e8d9", border: "#7c4a2d", link: "#7c4a2d" },
       { name: "Coral", bg: "#fff1f2", box: "#ffe4e6", border: "#fb7185", link: "#fb7185" },
       { name: "Tangerine", bg: "#fff7ed", box: "#ffedd5", border: "#f97316", link: "#f97316" },
-      { name: "Amber", bg: "#fffbeb", box: "#fef3c7", border: "#f59e0b", link: "#f59e0b" },
-      { name: "Lime", bg: "#f7fee7", box: "#ecfccb", border: "#84cc16", link: "#65a30d" },
-      { name: "Spring", bg: "#f0fdf4", box: "#dcfce7", border: "#22c55e", link: "#16a34a" },
-      { name: "Aqua", bg: "#ecfeff", box: "#cffafe", border: "#06b6d4", link: "#0891b2" },
+      { name: "Magenta", bg: "#fdf2f8", box: "#fce7f3", border: "#db2777", link: "#be185d" },
       { name: "Cobalt", bg: "#eff6ff", box: "#dbeafe", border: "#2563eb", link: "#1d4ed8" },
       { name: "Violet", bg: "#f5f3ff", box: "#ede9fe", border: "#8b5cf6", link: "#7c3aed" },
-      { name: "Magenta", bg: "#fdf2f8", box: "#fce7f3", border: "#db2777", link: "#be185d" },
-      { name: "Mocha", bg: "#faf5ef", box: "#f3e8d9", border: "#7c4a2d", link: "#7c4a2d" },
       { name: "Forest", bg: "#f0fdf4", box: "#dcfce7", border: "#166534", link: "#166534" },
-      { name: "Arctic", bg: "#e0f2fe", box: "#bae6fd", border: "#0284c7", link: "#334155" },
-      { name: "Paper + ink", bg: "#fffdf5", box: "#ffffff", border: "#111827", link: "#111827" },
-      { name: "Mono high-contrast", bg: "#ffffff", box: "#ffffff", border: "#000000", link: "#000000" },
-      { name: "Charcoal", bg: "#0f172a", box: "#111827", border: "#94a3b8", link: "#e2e8f0" },
-      { name: "Midnight blue", bg: "#0b132b", box: "#1c2541", border: "#5bc0be", link: "#5bc0be" },
-      { name: "Neon on black", bg: "#0b0f14", box: "#0b0f14", border: "#22d3ee", link: "#f472b6" },
-      { name: "Cyber lime", bg: "#0b0f14", box: "#111827", border: "#a3e635", link: "#a3e635" },
-      { name: "Plum night", bg: "#120a1f", box: "#2a0a3d", border: "#c084fc", link: "#c084fc" },
-      { name: "Desert dusk", bg: "#2d1b12", box: "#1f2937", border: "#f59e0b", link: "#f97316" },
-      { name: "Ocean night", bg: "#082f49", box: "#0b2a3d", border: "#38bdf8", link: "#38bdf8" },
-      { name: "Nord", bg: "#2e3440", box: "#3b4252", border: "#88c0d0", link: "#a3be8c" },
-      { name: "Burgundy", bg: "#fff1f2", box: "#ffe4e6", border: "#7f1d1d", link: "#7f1d1d" },
       { name: "Evergreen + gold", bg: "#f0fdf4", box: "#dcfce7", border: "#065f46", link: "#b45309" },
+      { name: "Burgundy", bg: "#fff1f2", box: "#ffe4e6", border: "#7f1d1d", link: "#7f1d1d" },
+
+      // Strong dark backgrounds
+      { name: "Navy", bg: "#0b2a5b", box: "#123b73", border: "#93c5fd", link: "#93c5fd" },
+      { name: "Ocean night", bg: "#082f49", box: "#0b2a3d", border: "#38bdf8", link: "#38bdf8" },
+      { name: "Deep teal", bg: "#05343b", box: "#0a4a54", border: "#2dd4bf", link: "#2dd4bf" },
+      { name: "Pine", bg: "#052e1b", box: "#0b4a2b", border: "#34d399", link: "#34d399" },
+      { name: "Midnight blue", bg: "#0b132b", box: "#1c2541", border: "#5bc0be", link: "#5bc0be" },
+      { name: "Nord", bg: "#2e3440", box: "#3b4252", border: "#88c0d0", link: "#a3be8c" },
+      { name: "Plum night", bg: "#120a1f", box: "#2a0a3d", border: "#c084fc", link: "#c084fc" },
+      { name: "Royal purple", bg: "#2b0f3a", box: "#3f1a59", border: "#d8b4fe", link: "#d8b4fe" },
+      { name: "Burgundy night", bg: "#3b0a17", box: "#5a1224", border: "#fb7185", link: "#fb7185" },
+      { name: "Deep maroon", bg: "#4a0f0f", box: "#6b1d1d", border: "#fca5a5", link: "#fca5a5" },
+      { name: "Desert dusk", bg: "#2d1b12", box: "#1f2937", border: "#f59e0b", link: "#f97316" },
+      { name: "Night mint", bg: "#0b1020", box: "#1ff2a8", border: "#9ec5fe", link: "#9ec5fe" },
+      { name: "Cyber lime", bg: "#0b0f14", box: "#111827", border: "#a3e635", link: "#a3e635" },
+      { name: "Neon on black", bg: "#0b0f14", box: "#0b0f14", border: "#22d3ee", link: "#f472b6" },
     ];
 
     COLOURWAYS.forEach((cw) => {
@@ -1781,13 +1850,23 @@ function initStyleModal({ editor, graphviz }) {
     const parsed = dslToDot(editor.getValue()).settings;
     const fromEditor = coerceUiStyleSettings(pickStyleSettings(parsed));
     setControlsFromStyleSettings(fromEditor || {});
-    modal?.show();
+    // Always open on Presets unless a caller explicitly requests "more".
+    const requestedPanel = modalEl?.dataset?.tmStyleOpenPanel || "presets";
+    if (modalEl?.dataset) delete modalEl.dataset.tmStyleOpenPanel;
+    lastRequestedPanel = requestedPanel;
+    openStyleDrawer();
   });
 
   btnApply.addEventListener("click", async () => {
     // Ensure the latest values are applied (the modal is live, but keep this deterministic).
     applyLiveFromModal();
-    modal?.hide();
+    closeStyleDrawer();
+  });
+
+  btnCloseX?.addEventListener("click", () => {
+    // Keep behavior consistent with the footer close button (apply latest, then close).
+    applyLiveFromModal();
+    closeStyleDrawer();
   });
 
   // Live preview: update URL + rerender on any input change.
@@ -1821,6 +1900,8 @@ function initStyleModal({ editor, graphviz }) {
 function initTitleModal({ editor, graphviz }) {
   // Purpose: small focused modal for editing title styling (size/colour/position).
   const modalEl = document.getElementById("tm-title-modal");
+  const btnCloseX = document.getElementById("tm-title-close-x");
+  const btnClose = document.getElementById("tm-title-close");
   if (!modalEl) return null;
 
   const titleText = document.getElementById("tm-title-text");
@@ -1831,8 +1912,6 @@ function initTitleModal({ editor, graphviz }) {
   const titlePosBtnsWrap = document.getElementById("tm-title-position-btns");
   const titlePosBtns = titlePosBtnsWrap ? Array.from(titlePosBtnsWrap.querySelectorAll('button[data-value]')) : [];
 
-  const bs = globalThis.bootstrap;
-  const modal = bs?.Modal ? new bs.Modal(modalEl) : null;
   let suppressLiveApply = false;
 
   function syncRangeValueLabel(rangeEl, valEl) {
@@ -1955,11 +2034,24 @@ function initTitleModal({ editor, graphviz }) {
     el.addEventListener("change", applyLive);
   }
 
+  function openTitleDrawer() {
+    closeOtherVizDrawers(modalEl);
+    modalEl.classList.add("tm-open");
+    positionVizDrawerAgainstDiagram(modalEl);
+  }
+
+  function closeTitleDrawer() {
+    modalEl.classList.remove("tm-open");
+  }
+
+  btnCloseX?.addEventListener("click", closeTitleDrawer);
+  btnClose?.addEventListener("click", closeTitleDrawer);
+
   return function openTitleModal() {
     const parsed = dslToDot(editor.getValue()).settings;
     // Need `title` too (not in pickStyleSettings), so pass the parsed settings directly.
     setControlsFromStyleSettings(parsed || {});
-    modal?.show();
+    openTitleDrawer();
   };
 }
 
@@ -2540,6 +2632,38 @@ function initHistoryNav({ editor, graphviz }) {
   // Navbar buttons mirror browser back/forward.
   document.getElementById("tm-undo")?.addEventListener("click", () => history.back());
   document.getElementById("tm-redo")?.addEventListener("click", () => history.forward());
+
+  // Keyboard shortcuts: Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z for undo/redo (when not typing in an input/editor).
+  // Purpose: match "usual" undo/redo without stealing Ace/text-field undo.
+  function isEditableTarget(el) {
+    const x = el && el.nodeType === 1 ? el : null;
+    if (!x) return false;
+    const tag = x.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (x.isContentEditable) return true;
+    // Ace editor handles its own undo/redo; don't override it.
+    if (x.closest?.(".ace_editor")) return true;
+    return false;
+  }
+
+  window.addEventListener("keydown", (e) => {
+    if (e.defaultPrevented) return;
+    const mod = e.ctrlKey || e.metaKey;
+    if (!mod || e.altKey) return;
+    if (isEditableTarget(e.target)) return;
+
+    const k = String(e.key || "").toLowerCase();
+    if (k === "z") {
+      e.preventDefault();
+      if (e.shiftKey) history.forward();
+      else history.back();
+      return;
+    }
+    if (k === "y") {
+      e.preventDefault();
+      history.forward();
+    }
+  });
 
   // Browser back/forward: restore editor from the URL hash.
   window.addEventListener("popstate", (e) => {
@@ -3192,7 +3316,8 @@ function dslToDot(dslText) {
     defaultBoxColour: null,
     defaultBoxShape: null,
     defaultBoxBorder: null,
-    defaultBoxShadow: null,
+    // Default node shadow (used for rendered SVG via CSS filter drop-shadow()).
+    defaultBoxShadow: "medium",
     defaultLinkColour: null,
     defaultLinkStyle: null,
     defaultLinkWidth: null,
@@ -3273,20 +3398,25 @@ function dslToDot(dslText) {
         continue;
       }
 
-      // Closing marker (no label): pop stack to one level above this depth.
-      if (!rest) {
-        while (clusterStack.length && clusterStack[clusterStack.length - 1].depth >= depth) {
-          clusterStack.pop();
-        }
-        continue;
-      }
-
       // Optional cluster attrs: "--Label [colour=... | border=... | text colour=... | text size=...]"
       let bracket = null;
       const bracketStart = rest.lastIndexOf("[");
       if (bracketStart >= 0 && rest.endsWith("]")) {
         bracket = rest.slice(bracketStart);
         rest = rest.slice(0, bracketStart).trim();
+      }
+
+      // Empty marker ("--" / "----") is ambiguous: it can either CLOSE an existing box at that depth,
+      // or OPEN an untitled box if there is nothing to close at that depth yet.
+      //
+      // Rule used here (and mirrored in the UI cluster scanner):
+      // - If there's an open cluster at depth >= this depth, treat as a CLOSE.
+      // - Otherwise, treat as an OPEN with an empty label.
+      if (!rest && !bracket && clusterStack.length && clusterStack[clusterStack.length - 1].depth >= depth) {
+        while (clusterStack.length && clusterStack[clusterStack.length - 1].depth >= depth) {
+          clusterStack.pop();
+        }
+        continue;
       }
 
       // Opening marker: ensure stack is aligned to parent level (depth-2)
@@ -3554,7 +3684,8 @@ function dslToDot(dslText) {
     // - Default: rounded + light grey border (existing behavior)
     // - Optional: allow cluster lines to override fill/border and title text styling
     const clusterAttrs = {};
-    clusterAttrs.label = c.label;
+    // If the label is empty, omit it entirely so Graphviz doesn't reserve label space.
+    clusterAttrs.label = String(c.label || "").trim() ? c.label : null;
     addStyle(clusterAttrs, "rounded");
     if (!clusterAttrs.color) clusterAttrs.color = "#cccccc";
     if (settings.defaultBoxTextColour) clusterAttrs.fontcolor = settings.defaultBoxTextColour;
@@ -3716,9 +3847,10 @@ function parseClusterDefLineAt(lines, idx) {
   const m = trimmed.match(/^(-{2,})(.*)$/);
   if (!m) return null;
   const dashes = m[1];
-  const rest = String(m[2] || "").trim();
-  if (!rest) return null; // closing marker; not editable as a "box"
   if (dashes.length % 2 !== 0) return null;
+  const rest = String(m[2] || "").trim();
+  // NOTE: This parser is *syntactic* only; opener/closer disambiguation is handled by
+  // scanClusterOpenersFromLines() so untitled groups ("--") can be valid.
   const { before: labelPart, inner: styleInner } = parseTrailingBracket(rest);
   return {
     idx,
@@ -3727,6 +3859,49 @@ function parseClusterDefLineAt(lines, idx) {
     label: String(labelPart || "").trim(),
     styleInner: String(styleInner || "").trim(),
   };
+}
+
+function scanClusterOpenersFromLines(lines) {
+  // Purpose: mirror the cluster open/close rules from dslToDot(), but keep editor line indices.
+  // Returns openers in the exact order they will be assigned cluster ids (cluster_0, cluster_1, ...).
+  const openers = [];
+  const stack = []; // { depth }
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i] || "";
+    const { code, comment } = stripCommentKeepSuffix(raw);
+    const trimmed = String(code || "").trim();
+    if (!trimmed) continue;
+
+    const m = trimmed.match(/^(-{2,})(.*)$/);
+    if (!m) continue;
+    const dashes = m[1];
+    const depth = dashes.length;
+    if (depth % 2 !== 0) continue;
+
+    const rest = String(m[2] || "").trim();
+    const { before: labelPart, inner: styleInnerRaw } = parseTrailingBracket(rest);
+    const label = String(labelPart || "").trim();
+    const styleInner = String(styleInnerRaw || "").trim();
+    const hasOpenerContent = Boolean(label || styleInner);
+
+    const hasOpenAtOrDeeper = stack.length && stack[stack.length - 1].depth >= depth;
+    const isClose = !hasOpenerContent && hasOpenAtOrDeeper;
+
+    if (isClose) {
+      while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop();
+      continue;
+    }
+
+    // Opener: align to parent depth (depth-2), matching dslToDot().
+    const parentDepth = depth - 2;
+    while (stack.length && stack[stack.length - 1].depth > parentDepth) stack.pop();
+
+    openers.push({ idx: i, comment, dashes, label, styleInner, depth });
+    stack.push({ depth });
+  }
+
+  return openers;
 }
 
 function setClusterDefLineAt(lines, idx, { dashes, label, styleInner, comment }) {
@@ -3924,6 +4099,74 @@ function deleteNodeEverywhere(lines, nodeId) {
   return out;
 }
 
+function deleteCluster(lines, clusterId) {
+  // Delete the opening line and corresponding closing line for a cluster (keeping contents).
+  // clusterId is like "cluster_0", "cluster_1", etc.
+  // We need to find the opening line and track to the matching closing line.
+  
+  // Find the opening line index by mirroring dslToDot() cluster open/close rules.
+  const openers = scanClusterOpenersFromLines(lines);
+  const target = openers.find((o, idx) => `cluster_${idx}` === clusterId) || null;
+  const targetOpenIdx = target ? target.idx : -1;
+  const targetDepth = target ? target.depth : -1;
+  
+  if (targetOpenIdx < 0) return lines; // cluster not found
+  
+  // Find the corresponding closing line: first closing marker with matching or greater depth
+  let targetCloseIdx = -1;
+  const stack = [{ depth: targetDepth, openIdx: targetOpenIdx }];
+  
+  for (let i = targetOpenIdx + 1; i < lines.length; i++) {
+    const raw = lines[i];
+    const { code } = stripCommentKeepSuffix(raw);
+    const line = code.trim();
+    const m = line.match(/^(-{2,})(.*)$/);
+    if (!m) continue;
+    
+    const dashes = m[1];
+    const depth = dashes.length;
+    if (depth % 2 !== 0) continue;
+    
+    const rest = String(m[2] || "").trim();
+    const { before: labelPart, inner: styleInnerRaw } = parseTrailingBracket(rest);
+    const label = String(labelPart || "").trim();
+    const styleInner = String(styleInnerRaw || "").trim();
+    const hasOpenerContent = Boolean(label || styleInner);
+
+    const hasOpenAtOrDeeper = stack.length && stack[stack.length - 1].depth >= depth;
+    const isClose = !hasOpenerContent && hasOpenAtOrDeeper;
+
+    if (isClose) {
+      // Closing marker - closes everything >= depth
+      while (stack.length && stack[stack.length - 1].depth >= depth) {
+        const popped = stack.pop();
+        if (popped.openIdx === targetOpenIdx && depth === targetDepth) {
+          targetCloseIdx = i;
+          break;
+        }
+      }
+      if (targetCloseIdx >= 0) break;
+      continue;
+    }
+
+    // Opener: mirror dslToDot() alignment (can implicitly close nested stacks)
+    const parentDepth = depth - 2;
+    while (stack.length && stack[stack.length - 1].depth > parentDepth) stack.pop();
+    if (depth > targetDepth) stack.push({ depth, openIdx: i });
+  }
+  
+  // If no closing marker found, just delete the opening line
+  if (targetCloseIdx < 0) {
+    lines.splice(targetOpenIdx, 1);
+    return lines;
+  }
+  
+  // Delete both lines (close first to preserve indices)
+  lines.splice(targetCloseIdx, 1);
+  lines.splice(targetOpenIdx, 1);
+  return lines;
+}
+
 function clearVizSelection() {
   document.querySelectorAll("#tm-viz .tm-viz-selected").forEach((el) => el.classList.remove("tm-viz-selected"));
 }
@@ -3948,7 +4191,11 @@ function parseTmEdgeDomIdFromEl(el) {
 function initVizInteractivity(editor, graphviz, opts = {}) {
   const vizEl = document.getElementById("tm-viz");
   if (!vizEl) return;
+  const vizWrapEl = vizEl.closest(".tm-viz-wrap");
   const openTitleModal = typeof opts?.openTitleModal === "function" ? opts.openTitleModal : null;
+
+  // Track selected nodes for multi-select
+  const selectedNodes = new Set();
 
   // Hover-only delete button (red X) for nodes/links (fast delete with confirm).
   let hoverDeleteBtn = document.getElementById("tm-viz-hover-delete");
@@ -3963,10 +4210,37 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     vizEl.appendChild(hoverDeleteBtn);
   }
 
+  // Hover-only checkbox for multi-select
+  let hoverCheckbox = document.getElementById("tm-viz-hover-checkbox");
+  if (!hoverCheckbox) {
+    hoverCheckbox = document.createElement("label");
+    hoverCheckbox.id = "tm-viz-hover-checkbox";
+    hoverCheckbox.className = "btn btn-sm btn-outline-primary tm-viz-hover-checkbox";
+    hoverCheckbox.innerHTML = '<input type="checkbox" />';
+    hoverCheckbox.setAttribute("aria-label", "Select node");
+    hoverCheckbox.title = "Select node";
+    vizEl.appendChild(hoverCheckbox);
+  }
+  const checkboxInput = hoverCheckbox.querySelector("input");
+
+  // Hover-only "Source" button for quick link creation: Source -> Target.
+  let hoverSourceBtn = document.getElementById("tm-viz-hover-source");
+  if (!hoverSourceBtn) {
+    hoverSourceBtn = document.createElement("button");
+    hoverSourceBtn.id = "tm-viz-hover-source";
+    hoverSourceBtn.type = "button";
+    hoverSourceBtn.className = "btn btn-sm btn-outline-primary tm-viz-hover-source";
+    hoverSourceBtn.innerHTML = '<i class="bi bi-arrow-right" aria-hidden="true"></i>';
+    hoverSourceBtn.setAttribute("aria-label", "Start link");
+    hoverSourceBtn.title = "Start link (pick source, then click target)";
+    vizEl.appendChild(hoverSourceBtn);
+  }
+
   const modalEl = document.getElementById("tm-viz-edit-modal");
   const modalTitle = document.getElementById("tm-viz-edit-modal-title");
   const modalMeta = document.getElementById("tm-viz-edit-meta");
   const modalDisabled = document.getElementById("tm-viz-edit-disabled");
+  const modalCloseX = document.getElementById("tm-viz-edit-close-x");
   const nodeFields = document.getElementById("tm-viz-edit-node-fields");
   const clusterFields = document.getElementById("tm-viz-edit-cluster-fields");
   const edgeFields = document.getElementById("tm-viz-edit-edge-fields");
@@ -4008,8 +4282,37 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   const btnDelete = document.getElementById("tm-viz-edit-delete");
   const btnSave = document.getElementById("tm-viz-edit-save");
 
-  const bs = globalThis.bootstrap;
-  const modal = modalEl && bs?.Modal ? new bs.Modal(modalEl) : null;
+  function openEditDrawer() {
+    closeOtherVizDrawers(modalEl);
+    modalEl?.classList?.add?.("tm-open");
+    positionVizDrawerAgainstDiagram(modalEl);
+  }
+
+  function closeEditDrawer() {
+    modalEl?.classList?.remove?.("tm-open");
+  }
+
+  // Quick link drawer (opens when setting a Source; does not block clicking the viz)
+  const quickDrawerEl = document.getElementById("tm-viz-quicklink-drawer");
+  const quickDrawerMeta = document.getElementById("tm-viz-quicklink-meta");
+  const quickDirOut = document.getElementById("tm-viz-quicklink-dir-out");
+  const quickDirIn = document.getElementById("tm-viz-quicklink-dir-in");
+  const quickNewLabelsWrap = document.getElementById("tm-viz-quicklink-new-labels");
+  const quickCreateNewBtn = document.getElementById("tm-viz-quicklink-create-new-btn");
+  const quickEdgeLabelInput = document.getElementById("tm-viz-quicklink-edge-label");
+  const quickBorderEnabled = document.getElementById("tm-viz-quicklink-border-enabled");
+  const quickBorderControls = document.getElementById("tm-viz-quicklink-border-controls");
+  const quickBwInput = document.getElementById("tm-viz-quicklink-border-width");
+  const quickBsSel = document.getElementById("tm-viz-quicklink-border-style");
+  const quickBcInput = document.getElementById("tm-viz-quicklink-border-color");
+  const quickStatus = document.getElementById("tm-viz-quicklink-status");
+  const quickCancelBtn = document.getElementById("tm-viz-quicklink-cancel");
+  const quickCloseBtn = document.getElementById("tm-viz-quicklink-close");
+
+  // Selection drawer (opens when nodes are multi-selected via checkboxes)
+  const selDrawerEl = document.getElementById("tm-viz-selection-drawer");
+  const selDrawerMeta = document.getElementById("tm-viz-selection-meta");
+  const selDrawerCloseBtn = document.getElementById("tm-viz-selection-close");
 
   let selection = null; // { type: "node", nodeId } | { type: "cluster", clusterId } | { type: "edge", lineNo, fromId, toId }
   let canSave = false;
@@ -4017,6 +4320,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   let suppressLiveApply = false; // prevents feedback loops while we populate widgets
 
   let hoverDeleteTarget = null; // { type: "node", nodeId } | { type: "edge", lineNo, fromId, toId }
+  let hoverSourceTarget = null; // { type: "node", nodeId }
+  let pendingLinkSourceId = null; // nodeId while user is choosing a target
 
   // Baseline values captured when the modal opens; used to write ONLY changed attrs (and remove duplicates/redundant overrides).
   let baseline = null;
@@ -4033,11 +4338,334 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
     // Convert viewport coordinates to coordinates inside the scrollable viz container.
     const x = r.right - vizRect.left + vizEl.scrollLeft - 18;
-    const y = r.top - vizRect.top + vizEl.scrollTop + 2;
+    let y = r.top - vizRect.top + vizEl.scrollTop + 2;
+
+    // For nodes, put the delete widget near the vertical center (rounded corners make top/bottom fiddly).
+    if (gEl.classList?.contains?.("node")) {
+      hoverDeleteBtn.style.visibility = "hidden";
+      hoverDeleteBtn.classList.add("tm-show"); // ensure measurable
+      const bh = hoverDeleteBtn.offsetHeight || 24;
+      hoverDeleteBtn.style.visibility = "";
+      y = r.top - vizRect.top + vizEl.scrollTop + r.height * 0.5 - bh / 2;
+    }
 
     hoverDeleteBtn.style.left = `${Math.max(0, x)}px`;
     hoverDeleteBtn.style.top = `${Math.max(0, y)}px`;
     hoverDeleteBtn.classList.add("tm-show");
+  }
+
+  function showHoverDeleteAtSvgPoint(svgX, svgY) {
+    // Purpose: place the hover delete X directly on an edge path (used when an edge has no label element).
+    if (!hoverDeleteBtn) return;
+    const svg = getVizSvgEl();
+    if (!svg) return;
+
+    const vizRect = vizEl.getBoundingClientRect();
+    const vb = svg.viewBox?.baseVal;
+    if (!vb || !Number.isFinite(vb.width) || !Number.isFinite(vb.height) || vb.width <= 0 || vb.height <= 0) return;
+
+    // Convert SVG viewBox coordinates -> viewport coords, then -> coords inside the scrollable viz container.
+    // IMPORTANT: edge label positioning + path points are in the SVG's viewBox coordinate space.
+    const svgRect = svg.getBoundingClientRect();
+    const viewportX = svgRect.left + ((svgX - vb.x) * svgRect.width) / vb.width;
+    const viewportY = svgRect.top + ((svgY - vb.y) * svgRect.height) / vb.height;
+    const x = viewportX - vizRect.left + vizEl.scrollLeft;
+    const y = viewportY - vizRect.top + vizEl.scrollTop;
+
+    // Show first so we can measure size, then center on the point.
+    hoverDeleteBtn.classList.add("tm-show");
+
+    const bw = hoverDeleteBtn.offsetWidth || 24;
+    const bh = hoverDeleteBtn.offsetHeight || 24;
+    hoverDeleteBtn.style.left = `${x - bw / 2}px`;
+    hoverDeleteBtn.style.top = `${y - bh / 2}px`;
+  }
+
+  function refreshHoverSourceBtnAppearance() {
+    if (!hoverSourceBtn) return;
+    const on = Boolean(pendingLinkSourceId);
+    hoverSourceBtn.classList.toggle("btn-primary", on);
+    hoverSourceBtn.classList.toggle("btn-outline-primary", !on);
+  }
+
+  function hideHoverSource() {
+    hoverSourceBtn?.classList?.remove("tm-show");
+    hoverSourceTarget = null;
+  }
+
+  function showHoverSourceAtSvgGroup(gEl) {
+    if (!hoverSourceBtn || !gEl) return;
+    const vizRect = vizEl.getBoundingClientRect();
+    const r = gEl.getBoundingClientRect();
+
+    // Convert viewport coordinates to coordinates inside the scrollable viz container.
+    const x = r.left - vizRect.left + vizEl.scrollLeft + 2;
+    hoverSourceBtn.style.visibility = "hidden";
+    hoverSourceBtn.classList.add("tm-show"); // ensure measurable
+    const bh = hoverSourceBtn.offsetHeight || 24;
+    hoverSourceBtn.style.visibility = "";
+    // Slightly above center so it doesn't collide with the checkbox on the left side.
+    const y = r.top - vizRect.top + vizEl.scrollTop + r.height * 0.35 - bh / 2;
+
+    hoverSourceBtn.style.left = `${Math.max(0, x)}px`;
+    hoverSourceBtn.style.top = `${Math.max(0, y)}px`;
+    hoverSourceBtn.classList.add("tm-show");
+  }
+
+  function hideHoverCheckbox() {
+    hoverCheckbox?.classList?.remove("tm-show");
+  }
+
+  function showHoverCheckboxAtSvgGroup(gEl, nodeId) {
+    if (!hoverCheckbox || !gEl) return;
+    // Purpose: once we are in multi-select mode (per-node checkboxes are shown),
+    // the hover-only checkbox becomes redundant and visually noisy.
+    if (selectedNodes.size > 0) {
+      hideHoverCheckbox();
+      return;
+    }
+    const vizRect = vizEl.getBoundingClientRect();
+    const r = gEl.getBoundingClientRect();
+
+    // Convert viewport coordinates to coordinates inside the scrollable viz container.
+    const x = r.left - vizRect.left + vizEl.scrollLeft + 2;
+    hoverCheckbox.style.visibility = "hidden";
+    hoverCheckbox.classList.add("tm-show"); // ensure measurable
+    const bh = hoverCheckbox.offsetHeight || 24;
+    hoverCheckbox.style.visibility = "";
+    // Slightly below center so it doesn't collide with the Source button on the left side.
+    const y = r.top - vizRect.top + vizEl.scrollTop + r.height * 0.65 - bh / 2;
+
+    hoverCheckbox.style.left = `${Math.max(0, x)}px`;
+    hoverCheckbox.style.top = `${Math.max(0, y)}px`;
+    
+    // Update checkbox state based on selection
+    if (checkboxInput) {
+      checkboxInput.checked = selectedNodes.has(nodeId);
+    }
+    
+    hoverCheckbox.classList.add("tm-show");
+  }
+
+  function updateDeleteSelectedButton() {
+    // Purpose: show multi-select actions via a sliding drawer (not toolbar icons).
+    const n = selectedNodes.size;
+    const show = n > 0;
+
+    if (!selDrawerEl) return;
+
+    if (!show) {
+      selDrawerEl.classList.remove("tm-open");
+      if (selDrawerMeta) selDrawerMeta.textContent = "";
+      return;
+    }
+
+    closeOtherVizDrawers(selDrawerEl);
+    selDrawerEl.classList.add("tm-open");
+    if (selDrawerMeta) selDrawerMeta.textContent = `${n} selected`;
+    positionVizDrawerAgainstDiagram(selDrawerEl, { topOffsetPx: 100 });
+  }
+
+  function applyMultiSelectVisuals() {
+    // If at least one node is selected, show checkboxes on ALL nodes (so selection is obvious),
+    // otherwise fall back to hover-only checkbox UI.
+    const svg = getVizSvgEl();
+    if (!svg) return;
+
+    // Remove any previous per-node checkbox overlays (we re-create them to stay simple).
+    svg.querySelectorAll(".tm-node-checkbox").forEach((el) => el.remove());
+
+    if (selectedNodes.size === 0) return;
+
+    for (const nodeG of svg.querySelectorAll("g.node")) {
+      const nodeId = getGraphvizTitleText(nodeG);
+      if (!nodeId) continue;
+
+      // Place a small checkbox at the bottom-left of the node group.
+      const bbox = nodeG.getBBox();
+      const fo = document.createElementNS("http://www.w3.org/2000/svg", "foreignObject");
+      fo.setAttribute("class", "tm-node-checkbox");
+      fo.setAttribute("x", String(bbox.x));
+      fo.setAttribute("y", String(bbox.y + bbox.height - 18));
+      fo.setAttribute("width", "18");
+      fo.setAttribute("height", "18");
+
+      // Use a plain checkbox (no Bootstrap button chrome) so it's small.
+      const wrap = document.createElement("div");
+      wrap.style.width = "18px";
+      wrap.style.height = "18px";
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "center";
+      wrap.style.justifyContent = "center";
+      wrap.style.pointerEvents = "auto";
+
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = selectedNodes.has(nodeId);
+      cb.style.width = "14px";
+      cb.style.height = "14px";
+      cb.style.margin = "0";
+      cb.style.cursor = "pointer";
+
+      cb.addEventListener("click", (e) => {
+        // Prevent opening the node modal
+        e.stopPropagation();
+      });
+
+      cb.addEventListener("change", (e) => {
+        e.stopPropagation();
+        if (cb.checked) selectedNodes.add(nodeId);
+        else selectedNodes.delete(nodeId);
+        updateDeleteSelectedButton();
+        applyMultiSelectVisuals(); // refresh checks + remove overlays if selection empties
+      });
+
+      wrap.appendChild(cb);
+      fo.appendChild(wrap);
+      nodeG.appendChild(fo);
+    }
+  }
+
+  function setQuickStatus(msg) {
+    if (!quickStatus) return;
+    quickStatus.textContent = String(msg || "");
+  }
+
+  function syncQuickBorderControls() {
+    const on = Boolean(quickBorderEnabled?.checked);
+    quickBorderControls?.classList.toggle("d-none", !on);
+  }
+
+  function openQuickDrawerForSource(nodeId) {
+    if (quickDrawerMeta) quickDrawerMeta.textContent = nodeId ? `Source: ${nodeId} → (click target)` : "";
+    setQuickStatus("");
+    syncQuickBorderControls();
+    ensureTrailingBlankQuickNewLabel();
+    syncQuickCreateBtn();
+    closeOtherVizDrawers(quickDrawerEl);
+    quickDrawerEl?.classList?.add("tm-open");
+    positionQuickDrawerAgainstDiagram();
+  }
+
+  function closeQuickDrawer() {
+    quickDrawerEl?.classList?.remove("tm-open");
+  }
+
+  function positionQuickDrawerAgainstDiagram() {
+    // Purpose: slide in from the far left, but stop so the drawer's RIGHT edge touches the diagram's LEFT edge.
+    if (!quickDrawerEl) return;
+    positionVizDrawerAgainstDiagram(quickDrawerEl, { topOffsetPx: 100 });
+  }
+
+  function maybeRepositionQuickDrawer() {
+    // Keep all open drawers aligned with the diagram when the layout changes.
+    document.querySelectorAll(".tm-viz-drawer.tm-open").forEach((el) => positionVizDrawerAgainstDiagram(el, { topOffsetPx: 100 }));
+  }
+
+  window.addEventListener("resize", maybeRepositionQuickDrawer);
+  document.getElementById("tm-splitter")?.addEventListener?.("pointerup", maybeRepositionQuickDrawer);
+  document.getElementById("tm-splitter")?.addEventListener?.("mouseup", maybeRepositionQuickDrawer);
+
+  function getQuickDir() {
+    return quickDirIn?.checked ? "in" : "out";
+  }
+
+  function ensureTrailingBlankQuickNewLabel() {
+    // Purpose: when the user types into the last "new node label" input, add another blank below.
+    if (!quickNewLabelsWrap) return;
+    const inputs = Array.from(quickNewLabelsWrap.querySelectorAll("input.tm-viz-quicklink-new-label"));
+    const last = inputs[inputs.length - 1] || null;
+    const lastHasText = Boolean(String(last?.value || "").trim());
+    if (!last || lastHasText) {
+      const inp = document.createElement("input");
+      inp.className = "form-control form-control-sm tm-viz-quicklink-new-label";
+      inp.type = "text";
+      inp.placeholder = "(optional)";
+      quickNewLabelsWrap.appendChild(inp);
+    }
+  }
+
+  function getQuickNewLabels() {
+    if (!quickNewLabelsWrap) return [];
+    return Array.from(quickNewLabelsWrap.querySelectorAll("input.tm-viz-quicklink-new-label"))
+      .map((el) => String(el.value || "").trim())
+      .filter(Boolean);
+  }
+
+  function syncQuickCreateBtn() {
+    if (!quickCreateNewBtn) return;
+    const hasAny = getQuickNewLabels().length > 0;
+    // Visual "glow" using Bootstrap primary styling when there's something to create.
+    quickCreateNewBtn.classList.toggle("btn-outline-secondary", !hasAny);
+    quickCreateNewBtn.classList.toggle("btn-primary", hasAny);
+  }
+
+  function resetQuickNewLabels() {
+    if (!quickNewLabelsWrap) return;
+    quickNewLabelsWrap.innerHTML = "";
+    const inp = document.createElement("input");
+    inp.className = "form-control form-control-sm tm-viz-quicklink-new-label";
+    inp.type = "text";
+    inp.placeholder = "(optional)";
+    quickNewLabelsWrap.appendChild(inp);
+    syncQuickCreateBtn();
+  }
+
+  quickNewLabelsWrap?.addEventListener("input", (e) => {
+    const isLabel = e?.target?.classList?.contains?.("tm-viz-quicklink-new-label");
+    if (!isLabel) return;
+    ensureTrailingBlankQuickNewLabel();
+    syncQuickCreateBtn();
+  });
+
+  function clearSourceGlow() {
+    vizEl?.querySelectorAll?.("svg g.node.tm-viz-source")?.forEach?.((g) => g.classList.remove("tm-viz-source"));
+  }
+
+  function applySourceGlow(nodeId) {
+    clearSourceGlow();
+    const id = String(nodeId || "").trim();
+    if (!id) return;
+    const svg = vizEl?.querySelector?.("svg");
+    if (!svg) return;
+    for (const g of svg.querySelectorAll("g.node")) {
+      if (getGraphvizTitleText(g) === id) {
+        g.classList.add("tm-viz-source");
+        return;
+      }
+    }
+  }
+
+  function buildQuickLinkBracket() {
+    // Purpose: optional label + optional border override for the next link.
+    const lbl = String(quickEdgeLabelInput?.value || "").trim();
+    const wantsBorder = Boolean(quickBorderEnabled?.checked);
+    const border = wantsBorder
+      ? uiToBorderText({
+          width: quickBwInput?.value ?? 0,
+          style: quickBsSel?.value ?? "solid",
+          colorHex: quickBcInput?.value ?? "#6c757d",
+        })
+      : "";
+
+    if (lbl && border) return ` [${lbl} | ${border}]`;
+    if (lbl) return ` [${lbl}]`;
+    if (border) return ` [${border}]`;
+    return "";
+  }
+
+  function appendEdgeLineToEditor({ fromId, toId, alsoAddNewNodeLine = "" }) {
+    // Purpose: keep quick-link and modal add-link behavior consistent (append DSL + rerender).
+    const bracket = buildQuickLinkBracket();
+    const edgeLine = `${fromId} -> ${toId}${bracket}`;
+
+    const text = editor.getValue().trimEnd();
+    const chunk = alsoAddNewNodeLine ? `${alsoAddNewNodeLine}\n${edgeLine}` : edgeLine;
+    const next = text ? `${text}\n${chunk}\n` : `${chunk}\n`;
+
+    editor.setValue(next, -1);
+    setMapScriptInUrl(editor.getValue());
+    renderNow(graphviz, editor);
   }
 
   function getDiagramBackgroundHexFromEditor(dslText) {
@@ -4165,18 +4793,18 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   }
 
   function openModal() {
-    if (modal) modal.show();
+    // Purpose: keep existing naming, but use the sliding drawer (not a bootstrap modal).
+    openEditDrawer();
   }
 
   function buildClustersByIdFromLines(lines) {
     // Must match dslToDot(): clusters get ids in the order opening markers appear.
     const out = new Map(); // id -> { id, idx, dashes, label, styleInner, comment }
-    let n = 0;
-    for (let i = 0; i < lines.length; i++) {
-      const parsed = parseClusterDefLineAt(lines, i);
-      if (!parsed) continue;
-      const id = `cluster_${n++}`;
-      out.set(id, { id, ...parsed });
+    const openers = scanClusterOpenersFromLines(lines);
+    for (let n = 0; n < openers.length; n++) {
+      const o = openers[n];
+      const id = `cluster_${n}`;
+      out.set(id, { id, idx: o.idx, comment: o.comment, dashes: o.dashes, label: o.label, styleInner: o.styleInner });
     }
     return out;
   }
@@ -4427,7 +5055,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
       setClusterDefLineAt(lines, c.idx, {
         dashes: c.dashes,
-        label: String(clusterLabelInput?.value || "").trim() || c.label,
+        // Allow empty cluster titles (valid): an empty label is written as "-- []" (see setClusterDefLineAt).
+        label: String(clusterLabelInput?.value ?? "").trim(),
         styleInner: nextInner,
         comment: c.comment,
       });
@@ -4470,7 +5099,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       afterEditorMutation({ editor, graphviz });
     }
 
-    if (closeAfter) modal?.hide();
+    if (closeAfter) closeEditDrawer();
   }
 
   vizEl.addEventListener("click", (e) => {
@@ -4480,9 +5109,26 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       return;
     }
 
+    // Ignore clicks on any selection checkbox UI (hover checkbox or per-node checkboxes)
+    if (e.target === hoverCheckbox || hoverCheckbox?.contains?.(e.target) || e.target.closest?.(".tm-node-checkbox")) {
+      return;
+    }
+
     const nodeG = getClosestGraphvizGroup(e.target, "node");
     const clusterG = getClosestGraphvizGroup(e.target, "cluster");
     const edgeG = getClosestGraphvizGroup(e.target, "edge");
+
+    // If we're in "pick target" mode, only a node click should complete it; anything else cancels.
+    if (pendingLinkSourceId && !nodeG) {
+      pendingLinkSourceId = null;
+      delete vizEl.dataset.tmPendingSourceId;
+      clearSourceGlow();
+      refreshHoverSourceBtnAppearance();
+      setVizStatus("Source cleared");
+      closeQuickDrawer();
+      return;
+    }
+
     if (!nodeG && !clusterG && !edgeG) {
       // Title click: open title-only modal (size/colour/position).
       const title = String(lastVizSettings?.title || "").trim();
@@ -4497,14 +5143,6 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
       // Diagram background click: open diagram-wide style modal (background + title settings).
       clearVizSelection();
-      const morePanel = document.getElementById("tm-style-more-panel");
-      if (morePanel) {
-        const bsCollapse = globalThis.bootstrap?.Collapse;
-        if (bsCollapse) {
-          const collapse = bsCollapse.getOrCreateInstance(morePanel);
-          collapse.show();
-        }
-      }
       document.getElementById("tm-editor-style")?.click();
       return;
     }
@@ -4515,6 +5153,29 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     if (nodeG) {
       const nodeId = getGraphvizTitleText(nodeG);
       if (!nodeId) return;
+
+      // Quick add link: Source -> Target (without opening the modal).
+      if (pendingLinkSourceId) {
+        const dir = getQuickDir();
+        const fromId = dir === "out" ? pendingLinkSourceId : nodeId;
+        const toId = dir === "out" ? nodeId : pendingLinkSourceId;
+        if (fromId === toId) {
+          setVizStatus("Pick a different target");
+          return;
+        }
+
+        pendingLinkSourceId = null;
+        delete vizEl.dataset.tmPendingSourceId;
+        clearSourceGlow();
+        refreshHoverSourceBtnAppearance();
+        appendEdgeLineToEditor({ fromId, toId });
+        setVizStatus(`Added link ${fromId} -> ${toId}`);
+        hideHoverDelete();
+        hideHoverSource();
+        closeQuickDrawer();
+        return;
+      }
+
       selection = { type: "node", nodeId };
       refreshFormFromEditor();
       openModal();
@@ -4548,16 +5209,55 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     if (!hoverDeleteBtn) return;
     // Don't flicker when moving onto the button itself.
     if (e.target === hoverDeleteBtn || hoverDeleteBtn.contains(e.target)) return;
+    if (e.target === hoverSourceBtn || hoverSourceBtn?.contains?.(e.target)) return;
+    if (e.target === hoverCheckbox || hoverCheckbox?.contains?.(e.target)) return;
 
     const nodeG = getClosestGraphvizGroup(e.target, "node");
     const edgeG = getClosestGraphvizGroup(e.target, "edge");
-    if (!nodeG && !edgeG) return hideHoverDelete();
+    const clusterG = getClosestGraphvizGroup(e.target, "cluster");
+    
+    if (!nodeG && !edgeG && !clusterG) {
+      hideHoverDelete();
+      hideHoverSource();
+      hideHoverCheckbox();
+      return;
+    }
 
     if (nodeG) {
       const nodeId = getGraphvizTitleText(nodeG);
-      if (!nodeId) return hideHoverDelete();
+      if (!nodeId) {
+        hideHoverDelete();
+        hideHoverSource();
+        hideHoverCheckbox();
+        return;
+      }
       hoverDeleteTarget = { type: "node", nodeId };
-      return showHoverDeleteAtSvgGroup(nodeG);
+      showHoverDeleteAtSvgGroup(nodeG);
+
+      hoverSourceTarget = { type: "node", nodeId };
+      refreshHoverSourceBtnAppearance();
+      showHoverSourceAtSvgGroup(nodeG);
+      
+      showHoverCheckboxAtSvgGroup(nodeG, nodeId);
+      
+      return;
+    }
+
+    if (clusterG) {
+      const clusterId = getGraphvizTitleText(clusterG);
+      if (!clusterId || !clusterId.startsWith("cluster_")) {
+        hideHoverDelete();
+        hideHoverSource();
+        hideHoverCheckbox();
+        return;
+      }
+      hoverDeleteTarget = { type: "cluster", clusterId };
+      // Position on the cluster label text if available
+      const labelText = clusterG.querySelector("text");
+      hideHoverSource();
+      hideHoverCheckbox();
+      if (labelText) return showHoverDeleteAtSvgGroup(clusterG, labelText);
+      return showHoverDeleteAtSvgGroup(clusterG);
     }
 
     if (edgeG) {
@@ -4566,15 +5266,60 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       const fromId = m ? m[1].trim() : "";
       const toId = m ? m[2].trim() : "";
       const lineNo = parseTmEdgeDomIdFromEl(e.target);
-      if (!fromId || !toId || !lineNo) return hideHoverDelete();
+      if (!fromId || !toId || !lineNo) {
+        hideHoverDelete();
+        hideHoverSource();
+        hideHoverCheckbox();
+        return;
+      }
       hoverDeleteTarget = { type: "edge", fromId, toId, lineNo };
-      // Prefer positioning over the edge label (closer to cursor) rather than the whole edge bbox.
+      // Prefer positioning over the edge label (when present), otherwise place directly on the edge path.
       const labelText = edgeG.querySelector("text");
-      return showHoverDeleteAtSvgGroup(edgeG, labelText);
+      const path = edgeG.querySelector("path");
+      hideHoverSource();
+      hideHoverCheckbox();
+      if (labelText) return showHoverDeleteAtSvgGroup(edgeG, labelText);
+
+      // For unlabeled edges: compute closest point on path, create a temp anchor element there, position button relative to it.
+      if (path) {
+        const svg = getVizSvgEl();
+        if (!svg) return showHoverDeleteAtSvgGroup(edgeG);
+
+        const svgRect = svg.getBoundingClientRect();
+        const base = getSvgBaseSizePx(svg);
+        if (!base) return showHoverDeleteAtSvgGroup(edgeG);
+
+        // Convert mouse client coords to SVG coordinate space (same system as path.getPointAtLength).
+        const mouseSvgX = ((e.clientX - svgRect.left) * base.w) / svgRect.width;
+        const mouseSvgY = ((e.clientY - svgRect.top) * base.h) / svgRect.height;
+        const pt = getClosestPointOnSvgPath(path, mouseSvgX, mouseSvgY);
+        if (!pt) return showHoverDeleteAtSvgGroup(edgeG);
+
+        // Create a temporary circle at the computed point so we can use its bounding rect (browser does coord conversion).
+        let anchor = edgeG.querySelector(".tm-edge-hover-anchor");
+        if (!anchor) {
+          anchor = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          anchor.classList.add("tm-edge-hover-anchor");
+          anchor.setAttribute("r", "1");
+          anchor.setAttribute("fill", "none");
+          anchor.setAttribute("stroke", "none");
+          anchor.setAttribute("pointer-events", "none");
+          edgeG.appendChild(anchor);
+        }
+        anchor.setAttribute("cx", pt.x);
+        anchor.setAttribute("cy", pt.y);
+        return showHoverDeleteAtSvgGroup(edgeG, anchor);
+      }
+
+      return showHoverDeleteAtSvgGroup(edgeG);
     }
   });
 
-  vizEl.addEventListener("mouseleave", () => hideHoverDelete());
+  vizEl.addEventListener("mouseleave", () => {
+    hideHoverDelete();
+    hideHoverSource();
+    hideHoverCheckbox();
+  });
 
   hoverDeleteBtn?.addEventListener("click", (e) => {
     e.preventDefault();
@@ -4584,24 +5329,257 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     const lines = editor.getValue().split(/\r?\n/);
 
     if (hoverDeleteTarget.type === "node") {
-      const ok = confirm(`Delete node "${hoverDeleteTarget.nodeId}" (and any links that mention it)?`);
-      if (!ok) return;
+      // Delete immediately (no confirm modal).
       const next = deleteNodeEverywhere(lines, hoverDeleteTarget.nodeId);
       applyEditorLines(next);
+      selectedNodes.delete(hoverDeleteTarget.nodeId);
+      updateDeleteSelectedButton();
+      clearVizSelection();
+      hideHoverDelete();
+      return;
+    }
+
+    if (hoverDeleteTarget.type === "cluster") {
+      // Delete cluster box (keeping contents).
+      deleteCluster(lines, hoverDeleteTarget.clusterId);
+      applyEditorLines(lines);
       clearVizSelection();
       hideHoverDelete();
       return;
     }
 
     if (hoverDeleteTarget.type === "edge") {
-      const ok = confirm(`Delete link ${hoverDeleteTarget.fromId} -> ${hoverDeleteTarget.toId}?`);
-      if (!ok) return;
+      // Delete immediately (no confirm modal).
       const did = deleteEdgeLine(lines, hoverDeleteTarget.lineNo);
       if (!did) return setVizStatus("Delete failed: edge line not found");
       applyEditorLines(lines);
       clearVizSelection();
       hideHoverDelete();
     }
+  });
+
+  hoverSourceBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const nodeId = hoverSourceTarget?.type === "node" ? hoverSourceTarget.nodeId : "";
+    if (!nodeId) return;
+
+    // Toggle: clicking Source again on the same node clears the mode.
+    pendingLinkSourceId = pendingLinkSourceId === nodeId ? null : nodeId;
+    if (pendingLinkSourceId) vizEl.dataset.tmPendingSourceId = pendingLinkSourceId;
+    else delete vizEl.dataset.tmPendingSourceId;
+    applySourceGlow(pendingLinkSourceId);
+    refreshHoverSourceBtnAppearance();
+    if (pendingLinkSourceId) {
+      setVizStatus(`Source: ${pendingLinkSourceId} (click target)`);
+      openQuickDrawerForSource(pendingLinkSourceId);
+    } else {
+      setVizStatus("Source cleared");
+      closeQuickDrawer();
+    }
+  });
+
+  // Checkbox for multi-select toggle
+  checkboxInput?.addEventListener("change", (e) => {
+    e.stopPropagation();
+    const nodeId = hoverSourceTarget?.type === "node" ? hoverSourceTarget.nodeId : "";
+    if (!nodeId) return;
+    
+    if (checkboxInput.checked) {
+      selectedNodes.add(nodeId);
+    } else {
+      selectedNodes.delete(nodeId);
+    }
+    updateDeleteSelectedButton();
+    applyMultiSelectVisuals();
+    hideHoverCheckbox(); // keep UI clean; per-node checkboxes will take over once selection exists
+  });
+
+  // Also stop propagation on the checkbox label click
+  hoverCheckbox?.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+
+  function getClusterDepthAtLine(lines, idx) {
+    // Return current open cluster depth (0 = none, 2 = level-1, 4 = level-2, etc) just BEFORE lines[idx].
+    const stack = [];
+    for (let i = 0; i < idx; i++) {
+      const raw = lines[i] || "";
+      const line = stripComment(raw).trim();
+      if (!line) continue;
+      const m = line.match(/^(-{2,})(.*)$/);
+      if (!m) continue;
+      const dashes = m[1];
+      const rest = String(m[2] || "").trim();
+      const depth = dashes.length;
+      if (depth % 2 !== 0) continue;
+
+      // Closing marker
+      if (!rest) {
+        while (stack.length && stack[stack.length - 1] >= depth) stack.pop();
+        continue;
+      }
+
+      // Opening marker: align to parent depth
+      const parentDepth = depth - 2;
+      while (stack.length && stack[stack.length - 1] > parentDepth) stack.pop();
+      stack.push(depth);
+    }
+    return stack.length ? stack[stack.length - 1] : 0;
+  }
+
+  function findExplicitNodeDefIdx(lines, nodeId) {
+    const id = String(nodeId || "").trim();
+    if (!id) return -1;
+    const re = new RegExp(`^\\s*${id.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\s*::\\s*`, "i");
+    for (let i = 0; i < lines.length; i++) {
+      const { code } = stripCommentKeepSuffix(lines[i] || "");
+      if (re.test(code)) return i;
+    }
+    return -1;
+  }
+
+  function groupNodesIntoCluster(lines, nodeIds, labelText) {
+    // Group selected nodes by moving their explicit definition lines into a new cluster block.
+    const ids = Array.from(nodeIds || []).map((s) => String(s || "").trim()).filter(Boolean);
+    if (!ids.length) return { ok: false, message: "No selected nodes." };
+
+    const defs = [];
+    const missing = [];
+    for (const id of ids) {
+      const idx = findExplicitNodeDefIdx(lines, id);
+      if (idx < 0) missing.push(id);
+      else defs.push({ id, idx, raw: lines[idx] });
+    }
+
+    if (!defs.length) return { ok: false, message: "No selected nodes have explicit 'A:: ...' lines to group." };
+
+    // Insert at the earliest selected node definition line.
+    defs.sort((a, b) => a.idx - b.idx);
+    const insertIdx = defs[0].idx;
+
+    // Remove original node definition lines (bottom-up so indices stay valid).
+    const removeIdxs = defs.map((d) => d.idx).sort((a, b) => b - a);
+    for (const i of removeIdxs) lines.splice(i, 1);
+
+    // Determine nesting depth at insertion point (after removals; cluster markers unchanged).
+    const curDepth = getClusterDepthAtLine(lines, insertIdx);
+    const newDepth = curDepth + 2;
+    const dashes = "-".repeat(newDepth);
+
+    const label = String(labelText || "Group").trim() || "Group";
+    const openLine = `${dashes}${label}`;
+    const closeLine = `${dashes}`;
+
+    // Insert: open, node defs (in original order), close.
+    const nodeLines = defs.map((d) => d.raw);
+    lines.splice(insertIdx, 0, openLine, ...nodeLines, closeLine);
+
+    const msg = missing.length
+      ? `Grouped ${defs.length} node(s). Skipped (no explicit A:: line): ${missing.join(", ")}`
+      : `Grouped ${defs.length} node(s).`;
+    return { ok: true, message: msg };
+  }
+
+  // Delete selected nodes button
+  const deleteSelectedBtn = document.getElementById("tm-delete-selected");
+  deleteSelectedBtn?.addEventListener("click", () => {
+    if (selectedNodes.size === 0) return;
+    
+    let lines = editor.getValue().split(/\r?\n/);
+    for (const nodeId of selectedNodes) {
+      lines = deleteNodeEverywhere(lines, nodeId);
+    }
+    applyEditorLines(lines);
+    selectedNodes.clear();
+    updateDeleteSelectedButton();
+    clearVizSelection();
+  });
+
+  // Group selected nodes into a grouping box (cluster)
+  const groupSelectedBtn = document.getElementById("tm-group-selected");
+  const groupLabelInput = document.getElementById("tm-viz-selection-group-label");
+  groupSelectedBtn?.addEventListener("click", () => {
+    if (selectedNodes.size === 0) return;
+    const lines = editor.getValue().split(/\r?\n/);
+    const label = String(groupLabelInput?.value || "").trim() || "Group";
+    const res = groupNodesIntoCluster(lines, selectedNodes, label);
+    if (!res.ok) return setVizStatus(res.message || "Group failed");
+    applyEditorLines(lines);
+    setVizStatus(res.message);
+    // After grouping, clear selection (requested).
+    selectedNodes.clear();
+    updateDeleteSelectedButton();
+    applyMultiSelectVisuals();
+  });
+
+  // Clear selection
+  const clearSelBtn = document.getElementById("tm-clear-selection");
+  clearSelBtn?.addEventListener("click", () => {
+    if (selectedNodes.size === 0) return;
+    selectedNodes.clear();
+    updateDeleteSelectedButton();
+    applyMultiSelectVisuals();
+  });
+
+  selDrawerCloseBtn?.addEventListener("click", () => {
+    // Purpose: let the user hide the actions drawer without altering the selection.
+    selDrawerEl?.classList?.remove("tm-open");
+  });
+
+  // Quick drawer interactions
+  quickBorderEnabled?.addEventListener("change", syncQuickBorderControls);
+
+  quickCancelBtn?.addEventListener("click", () => {
+    pendingLinkSourceId = null;
+    delete vizEl.dataset.tmPendingSourceId;
+    clearSourceGlow();
+    refreshHoverSourceBtnAppearance();
+    setVizStatus("Source cleared");
+    closeQuickDrawer();
+  });
+
+  quickCloseBtn?.addEventListener("click", () => {
+    closeQuickDrawer();
+  });
+
+  quickCreateNewBtn?.addEventListener("click", () => {
+    if (!pendingLinkSourceId) return setQuickStatus("Pick a source first");
+    const labels = getQuickNewLabels();
+    if (!labels.length) return setQuickStatus("Enter at least one new node label");
+
+    const lines = editor.getValue().split(/\r?\n/);
+    const existingIds = new Set(getExplicitNodeIdsFromLines(lines));
+    const dir = getQuickDir();
+    const bracket = buildQuickLinkBracket();
+
+    const newNodeLines = [];
+    const edgeLines = [];
+    for (const label of labels) {
+      const newId = makeUniqueNodeIdFromLabel(label, existingIds);
+      existingIds.add(newId);
+      newNodeLines.push(`${newId}:: ${label}`);
+      const fromId = dir === "out" ? pendingLinkSourceId : newId;
+      const toId = dir === "out" ? newId : pendingLinkSourceId;
+      edgeLines.push(`${fromId} -> ${toId}${bracket}`);
+    }
+
+    pendingLinkSourceId = null;
+    delete vizEl.dataset.tmPendingSourceId;
+    clearSourceGlow();
+    refreshHoverSourceBtnAppearance();
+
+    const text = editor.getValue().trimEnd();
+    const chunk = newNodeLines.concat(edgeLines).join("\n");
+    const next = text ? `${text}\n${chunk}\n` : `${chunk}\n`;
+    editor.setValue(next, -1);
+    setMapScriptInUrl(editor.getValue());
+    renderNow(graphviz, editor);
+
+    setVizStatus(`Added ${edgeLines.length} link${edgeLines.length === 1 ? "" : "s"}`);
+    setQuickStatus("Added");
+    resetQuickNewLabels();
+    closeQuickDrawer();
   });
 
   // Live preview in the viz edit modal: any change updates editor + rerenders.
@@ -4638,7 +5616,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   }
 
   // "Done" just closes (changes are applied live).
-  btnSave?.addEventListener("click", () => modal?.hide());
+  btnSave?.addEventListener("click", () => closeEditDrawer());
+  modalCloseX?.addEventListener("click", () => closeEditDrawer());
 
   // Add-link interactions (node modal)
   addOtherSel?.addEventListener("change", () => {
@@ -4723,6 +5702,9 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       applyEditorLines(lines);
     }
   });
+
+  // Return functions that need to be called from outside
+  return { applyMultiSelectVisuals };
 }
 
 // -----------------------------
@@ -4868,6 +5850,31 @@ function enhanceEdgeHitTargets() {
   });
 }
 
+function getClosestPointOnSvgPath(pathEl, targetX, targetY) {
+  // Purpose: reuse the edge-label placement logic (closest point on edge path) for other overlays (eg hover delete X).
+  if (!pathEl) return null;
+
+  const pathLen = pathEl.getTotalLength();
+  let closestDist = Infinity;
+  let closestPoint = null;
+
+  // Sample at fine intervals to find closest point (same approach as edge label placement).
+  const samples = Math.max(50, Math.ceil(pathLen / 2));
+  for (let i = 0; i <= samples; i++) {
+    const t = (i / samples) * pathLen;
+    const pt = pathEl.getPointAtLength(t);
+    const dx = pt.x - targetX;
+    const dy = pt.y - targetY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < closestDist) {
+      closestDist = dist;
+      closestPoint = pt;
+    }
+  }
+
+  return closestPoint;
+}
+
 function repositionEdgeLabels() {
   // Position edge labels on the edge path by calculating where a Graphviz-style
   // connector from the label center to the edge would intersect the edge.
@@ -4879,30 +5886,36 @@ function repositionEdgeLabels() {
     const textEl = g.querySelector("text");
     if (!path || !textEl) return;
 
+    // Remove link-label background (we want plain text labels)
+    g.querySelector(".tm-edge-label-bg")?.remove?.();
+
+    // Edge label readability: if the label text is light, use a darker halo (stroke) behind it.
+    // Default halo is set in CSS (white-ish); here we only override when needed.
+    try {
+      const fillCss = getComputedStyle(textEl).fill; // typically "rgb(r,g,b)" or a resolved token
+      const rgb = resolveCssColorToRgb(fillCss);
+      if (rgb) {
+        // WCAG relative luminance for sRGB (0..1). Higher = lighter.
+        const toLin = (v) => {
+          const s = (Number(v) || 0) / 255;
+          return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+        };
+        const lum = 0.2126 * toLin(rgb.r) + 0.7152 * toLin(rgb.g) + 0.0722 * toLin(rgb.b);
+        const useDarkHalo = lum >= 0.65;
+        if (useDarkHalo) textEl.style.stroke = "rgba(0, 0, 0, 0.55)";
+        else textEl.style.removeProperty("stroke"); // fall back to CSS default
+      }
+    } catch {
+      // Ignore: keep CSS default.
+    }
+
     // Get label's current position in SVG coordinate space
     const bbox = textEl.getBBox();
     const labelCx = bbox.x + bbox.width / 2;
     const labelCy = bbox.y + bbox.height / 2;
 
     // Find the closest point on the edge path to the label center
-    const pathLen = path.getTotalLength();
-    let closestDist = Infinity;
-    let closestPoint = null;
-
-    // Sample the path at fine intervals to find closest point
-    const samples = Math.max(50, Math.ceil(pathLen / 2));
-    for (let i = 0; i <= samples; i++) {
-      const t = (i / samples) * pathLen;
-      const pt = path.getPointAtLength(t);
-      const dx = pt.x - labelCx;
-      const dy = pt.y - labelCy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestPoint = pt;
-      }
-    }
-
+    const closestPoint = getClosestPointOnSvgPath(path, labelCx, labelCy);
     if (!closestPoint) return;
 
     // Set text anchor to middle for proper centering
@@ -4917,25 +5930,7 @@ function repositionEdgeLabels() {
     textEl.removeAttribute("transform");
 
     // Recalculate bbox after repositioning
-    const newBbox = textEl.getBBox();
-
-    // Add semi-transparent white background
-    let bgRect = g.querySelector(".tm-edge-label-bg");
-    if (!bgRect) {
-      bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      bgRect.classList.add("tm-edge-label-bg");
-      g.insertBefore(bgRect, textEl);
-    }
-
-    // Position background rect behind the text with padding
-    const padding = 3;
-    bgRect.setAttribute("x", newBbox.x - padding);
-    bgRect.setAttribute("y", newBbox.y - padding);
-    bgRect.setAttribute("width", newBbox.width + padding * 2);
-    bgRect.setAttribute("height", newBbox.height + padding * 2);
-    bgRect.setAttribute("rx", "2");
-    bgRect.setAttribute("fill", "rgba(255, 255, 255, 0.7)");
-    bgRect.setAttribute("stroke", "none");
+    textEl.getBBox();
   });
 }
 
@@ -5394,12 +6389,29 @@ function startIntroTour({ force = false } = {}) {
 
   function persistDontShowAgain() {
     const cb = document.getElementById("tm-intro-dontshow");
-    if (cb && cb.checked) localStorage.setItem(TM_INTRO_TOUR_HIDE_KEY, "1");
+    if (cb && cb.checked) {
+      localStorage.setItem(TM_INTRO_TOUR_HIDE_KEY, "1");
+    }
   }
 
   intro.onafterchange(syncDontShowFooter);
   intro.onexit(persistDontShowAgain);
   intro.oncomplete(persistDontShowAgain);
+  
+  // Add immediate checkbox change handler
+  intro.onafterchange(() => {
+    syncDontShowFooter();
+    const cb = document.getElementById("tm-intro-dontshow");
+    if (cb && !cb.dataset.listenerAttached) {
+      cb.addEventListener("change", () => {
+        if (cb.checked) {
+          localStorage.setItem(TM_INTRO_TOUR_HIDE_KEY, "1");
+        }
+      });
+      cb.dataset.listenerAttached = "true";
+    }
+  });
+  
   intro.start();
 }
 
@@ -5415,8 +6427,27 @@ async function renderNow(graphviz, editor) {
     // Keep any overlay UI (eg hover delete button) across rerenders.
     const viz = document.getElementById("tm-viz");
     const hoverDeleteBtn = document.getElementById("tm-viz-hover-delete"); // may be null on first render
+    const hoverSourceBtn = document.getElementById("tm-viz-hover-source"); // may be null on first render
+    const hoverCheckbox = document.getElementById("tm-viz-hover-checkbox"); // may be null on first render
     if (viz) viz.innerHTML = svg;
     if (viz && hoverDeleteBtn) viz.appendChild(hoverDeleteBtn);
+    if (viz && hoverSourceBtn) viz.appendChild(hoverSourceBtn);
+    if (viz && hoverCheckbox) viz.appendChild(hoverCheckbox);
+    // Re-apply "source glow" after rerender if the user is mid link-creation.
+    const pendingSourceId = String(viz?.dataset?.tmPendingSourceId || "").trim();
+    if (pendingSourceId && viz) {
+      const getTitle = (g) => String(g?.querySelector?.("title")?.textContent || "").trim();
+      for (const g of viz.querySelectorAll("svg g.node")) {
+        if (getTitle(g) === pendingSourceId) {
+          g.classList.add("tm-viz-source");
+          break;
+        }
+      }
+    }
+    // Re-apply multi-select visuals after rerender
+    if (window.vizInteractivityApi?.applyMultiSelectVisuals) {
+      window.vizInteractivityApi.applyMultiSelectVisuals();
+    }
     // Default behavior: fill the panel width until user zooms manually.
     if (!vizHasUserZoomed) fitVizToContainerWidth();
     else applyVizScale(); // keep zoom consistent across rerenders
@@ -5924,7 +6955,8 @@ async function main() {
   }
 
   // Viz interactivity (click-to-edit)
-  initVizInteractivity(editor, graphviz, { openTitleModal });
+  const vizInteractivityApi = initVizInteractivity(editor, graphviz, { openTitleModal });
+  window.vizInteractivityApi = vizInteractivityApi;
 
   // Light “autocorrect/validate then render” on idle typing (kept minimal)
   editor.session.on("change", () => {

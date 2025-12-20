@@ -14,6 +14,18 @@ body {
 }
 
 /* -----------------------------
+   Navbar brand/title styling
+   ----------------------------- */
+
+.tm-brand {
+  /* Purpose: make the "theorymaker" brand larger + more modern without affecting the rest of Bootstrap typography */
+  font-family: "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  font-weight: 700; /* match loaded weights; keep it crisp */
+  font-size: clamp(1.25rem, 1.05rem + 0.9vw, 1.9rem);
+  letter-spacing: -0.02em;
+}
+
+/* -----------------------------
    Intro.js: make the tour feel Bootstrap-native
    ----------------------------- */
 
@@ -152,7 +164,7 @@ body {
 
 /* Splitter */
 .tm-splitter {
-  width: 10px;
+  width: 14px; /* wider grab area for resizing editor/diagram */
   cursor: col-resize;
   background: #f6f6f6;
   border-left: 1px solid #e5e5e5;
@@ -188,6 +200,15 @@ body {
   color: #0d6efd; /* Bootstrap primary */
 }
 
+/* Styles drawer: make direction arrows big/bold for quick scanning */
+#tm-style-direction-btns > button.btn {
+  font-weight: 800;
+  font-size: 1.15rem;
+  line-height: 1;
+  padding-left: 0.55rem;
+  padding-right: 0.55rem;
+}
+
 .tm-right-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -205,6 +226,34 @@ body {
   flex-direction: column;
   min-height: 0;
   min-width: 0; /* allow flex children to shrink; prevents horizontal overflow pushing panel */
+  position: relative; /* anchor the diagram-attached quicklink drawer */
+}
+
+/* Quick link drawer: slides in from the far left of the viewport, but stops flush against the diagram's left edge */
+.tm-viz-drawer {
+  --tm-viz-drawer-w: 360px;
+  --tm-viz-drawer-open-x: 0px; /* set by JS so right edge touches diagram */
+  --tm-viz-drawer-top: 0px; /* set by JS to align with diagram panel */
+  --tm-viz-drawer-h: 100vh; /* set by JS to align with diagram panel */
+  position: fixed;
+  top: var(--tm-viz-drawer-top);
+  left: 0;
+  height: var(--tm-viz-drawer-h);
+  width: var(--tm-viz-drawer-w);
+  max-width: min(420px, 92vw);
+  background: #fff;
+  border-right: 1px solid #e9ecef;
+  z-index: 200; /* above left panel; should not overlap diagram due to JS positioning */
+  overflow: auto;
+  /* Strong shadow so the drawer stands out over the left panel */
+  box-shadow: -18px 0 32px rgba(0, 0, 0, 0.22), -6px 0 12px rgba(0, 0, 0, 0.12);
+  transform: translateX(-100%); /* start offscreen at far left */
+  transition: transform 180ms ease;
+  pointer-events: auto;
+}
+
+.tm-viz-drawer.tm-open {
+  transform: translateX(var(--tm-viz-drawer-open-x));
 }
 
 .tm-viz-toolbar {
@@ -263,6 +312,14 @@ body {
   cursor: pointer;
 }
 
+/* Edge labels: faint translucent "halo" behind glyphs (no box), improves readability on crossings */
+.tm-viz svg g.edge text {
+  paint-order: stroke fill;
+  stroke: rgba(255, 255, 255, 0.65);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
 /* Hover delete button (red X) shown when hovering nodes/links */
 .tm-viz-hover-delete {
   position: absolute;
@@ -273,6 +330,44 @@ body {
 }
 
 .tm-viz-hover-delete.tm-show {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Hover checkbox button (bottom-left) shown when hovering nodes */
+.tm-viz-hover-checkbox {
+  position: absolute;
+  z-index: 30;
+  display: none;
+  line-height: 1;
+  padding: 2px 6px;
+  min-width: auto;
+}
+
+.tm-viz-hover-checkbox.tm-show {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tm-viz-hover-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Hover "Source" button (top-left) shown when hovering nodes */
+.tm-viz-hover-source {
+  position: absolute;
+  z-index: 30;
+  display: none;
+  line-height: 1;
+  padding: 0 6px;
+}
+
+.tm-viz-hover-source.tm-show {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -289,6 +384,15 @@ body {
 .tm-viz svg .tm-viz-selected ellipse {
   stroke: #0d6efd !important;
   stroke-width: 2px !important;
+}
+
+/* Glow the chosen "Source" node while user is picking a target */
+.tm-viz svg g.node.tm-viz-source polygon,
+.tm-viz svg g.node.tm-viz-source path,
+.tm-viz svg g.node.tm-viz-source ellipse {
+  stroke: #0d6efd !important;
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 6px rgba(13, 110, 253, 0.85)) !important;
 }
 
 /* Node modal: chevron disclosure */
@@ -475,34 +579,40 @@ body {
   gap: 8px;
 }
 
-/* Style modal: preset selector grid + chevron details */
+/* Style drawer: preset selector grid + chevron details */
 .tm-style-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr)); /* bigger preset tiles */
   gap: 6px;
 }
 
 @media (max-width: 576px) {
   .tm-style-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr)); /* bigger preset tiles on small screens */
   }
 }
 
-/* Style modal sizing: keep it wider (esp preset galleries) and prevent it growing too tall */
+/* Styles drawer sizing: wider than the other drawers (so presets are easier to browse) */
+#tm-style-modal {
+  --tm-viz-drawer-w: 520px;
+  max-width: min(680px, 92vw); /* override .tm-viz-drawer default cap (420px) */
+}
+
 @media (min-width: 992px) {
-  #tm-style-modal .modal-dialog {
-    max-width: min(1200px, 96vw);
+  .tm-style-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr)); /* bigger preset tiles on desktop */
   }
 
-  .tm-style-grid {
-    grid-template-columns: repeat(8, minmax(0, 1fr));
+  #tm-style-modal {
+    --tm-viz-drawer-w: 600px;
+    max-width: min(760px, 92vw);
   }
 }
 
-#tm-style-modal .modal-body {
-  /* Keep the modal within the viewport; scroll inside the body instead of making the modal too tall */
-  max-height: calc(100vh - 220px);
-  overflow-y: auto;
+/* Style modal accordion: make the non-opened panel look like a distinct, clickable panel */
+#tm-style-modal #tm-style-accordion .accordion-button.collapsed {
+  background: #f8f9fa; /* subtle tint so the "other panel" is obvious */
+  border: 1px solid #e9ecef;
 }
 
 .tm-style-preset-btn {
@@ -665,5 +775,6 @@ details[open] .tm-chevron {
     display: none; /* hamburger replaces tabs on narrow screens */
   }
 }
+
 
 

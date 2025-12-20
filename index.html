@@ -21,6 +21,9 @@
       href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
     />
 
+    <!-- Title font (modern + distinctive, used only for the app brand text) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&display=swap" />
+
     <!-- App styling -->
     <link rel="stylesheet" href="./styles.css" />
 
@@ -32,7 +35,7 @@
     <!-- Simple navbar -->
     <nav class="navbar navbar-expand-lg navbar-light border-bottom bg-white">
       <div class="container-fluid">
-        <a class="navbar-brand fw-semibold" href="#">theorymaker</a>
+        <a class="navbar-brand fw-semibold tm-brand" href="#">theorymaker</a>
 
         <!-- Mobile: hamburger menu for switching between screens -->
         <button
@@ -89,7 +92,7 @@
     <!-- Mobile: offcanvas navigation (single-screen mode) -->
     <div class="offcanvas offcanvas-start" tabindex="-1" id="tm-mobile-nav" aria-labelledby="tm-mobile-nav-label">
       <div class="offcanvas-header">
-        <h5 class="offcanvas-title" id="tm-mobile-nav-label">theorymaker</h5>
+        <h5 class="offcanvas-title tm-brand" id="tm-mobile-nav-label">theorymaker</h5>
         <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
       </div>
       <div class="offcanvas-body">
@@ -314,6 +317,126 @@
               </div>
 
               <div id="tm-viz" class="tm-viz"></div>
+
+              <!-- Quick link drawer: hidden behind the diagram, then revealed as the diagram shifts right -->
+              <div id="tm-viz-quicklink-drawer" class="tm-viz-drawer" aria-labelledby="tm-viz-quicklink-drawer-title">
+                <div class="border-bottom bg-white px-3 py-2 d-flex align-items-start justify-content-between gap-3">
+                  <div>
+                    <div class="fw-semibold" id="tm-viz-quicklink-drawer-title">Add link</div>
+                    <div id="tm-viz-quicklink-meta" class="small text-muted"></div>
+                  </div>
+                  <button id="tm-viz-quicklink-close" type="button" class="btn-close" aria-label="Close"></button>
+                </div>
+
+                <div class="p-3">
+                  <div class="alert alert-primary py-2 px-2 mb-3" role="status">
+                    <div class="fw-semibold">Now click another node in the diagram to create a link</div>
+                    <div class="small mb-0">Or below you can create new nodes to link to, and/or add styling to the new link.</div>
+                  </div>
+
+                  <div>
+                    <div class="form-label mb-1">Direction</div>
+                    <div class="btn-group" role="group" aria-label="Link direction">
+                      <input type="radio" class="btn-check" name="tm-viz-quicklink-dir" id="tm-viz-quicklink-dir-out" autocomplete="off" checked />
+                      <label class="btn btn-sm btn-outline-primary" for="tm-viz-quicklink-dir-out">Source → target</label>
+
+                      <input type="radio" class="btn-check" name="tm-viz-quicklink-dir" id="tm-viz-quicklink-dir-in" autocomplete="off" />
+                      <label class="btn btn-sm btn-outline-primary" for="tm-viz-quicklink-dir-in">Target → source</label>
+                    </div>
+                  </div>
+
+                  <hr class="my-3" />
+
+                  <div>
+                    <div class="d-flex align-items-center justify-content-between">
+                      <div class="form-label mb-1">New target node label(s)</div>
+                      <button id="tm-viz-quicklink-create-new-btn" type="button" class="btn btn-sm btn-outline-secondary py-0 px-2">
+                        Create
+                      </button>
+                    </div>
+                    <div id="tm-viz-quicklink-new-labels" class="d-grid gap-2">
+                      <input class="form-control form-control-sm tm-viz-quicklink-new-label" type="text" placeholder="(optional)" />
+                    </div>
+                  </div>
+
+                  <hr class="my-3" />
+
+                  <label class="form-label mb-1" for="tm-viz-quicklink-edge-label">Link label</label>
+                  <input id="tm-viz-quicklink-edge-label" class="form-control form-control-sm" type="text" placeholder="(optional)" />
+
+                  <div class="form-check form-switch mt-3">
+                    <input id="tm-viz-quicklink-border-enabled" class="form-check-input" type="checkbox" />
+                    <label class="form-check-label" for="tm-viz-quicklink-border-enabled">Override link style</label>
+                  </div>
+
+                  <div id="tm-viz-quicklink-border-controls" class="row g-2 mt-2 d-none">
+                    <div class="col-4">
+                      <label class="form-label mb-1" for="tm-viz-quicklink-border-width">Border width</label>
+                      <input id="tm-viz-quicklink-border-width" class="form-range tm-range-compact" type="range" min="0" max="12" step="1" value="1" />
+                    </div>
+                    <div class="col-4">
+                      <label class="form-label mb-1" for="tm-viz-quicklink-border-style">Border style</label>
+                      <select id="tm-viz-quicklink-border-style" class="form-select form-select-sm">
+                        <option value="solid">solid</option>
+                        <option value="dotted">dotted</option>
+                        <option value="dashed">dashed</option>
+                        <option value="bold">bold</option>
+                      </select>
+                    </div>
+                    <div class="col-4">
+                      <label class="form-label mb-1" for="tm-viz-quicklink-border-color">Border colour</label>
+                      <input id="tm-viz-quicklink-border-color" class="form-control form-control-sm form-control-color" type="color" value="#6c757d" />
+                    </div>
+                  </div>
+
+                  <div class="d-flex gap-2 mt-3 align-items-center">
+                    <div id="tm-viz-quicklink-status" class="small text-muted me-auto"></div>
+                    <button id="tm-viz-quicklink-cancel" type="button" class="btn btn-sm btn-outline-secondary">Clear source</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Selection drawer: shown when nodes are multi-selected (checkboxes) -->
+              <div id="tm-viz-selection-drawer" class="tm-viz-drawer" aria-labelledby="tm-viz-selection-drawer-title">
+                <div class="border-bottom bg-white px-3 py-2 d-flex align-items-start justify-content-between gap-3">
+                  <div>
+                    <div class="fw-semibold" id="tm-viz-selection-drawer-title">Selection</div>
+                    <div id="tm-viz-selection-meta" class="small text-muted"></div>
+                  </div>
+                  <button id="tm-viz-selection-close" type="button" class="btn-close" aria-label="Close"></button>
+                </div>
+
+                <div class="p-3">
+                  <div class="d-grid gap-2 mb-3">
+                    <button id="tm-clear-selection" type="button" class="btn btn-sm btn-outline-secondary">
+                      <i class="bi bi-x-square me-1" aria-hidden="true"></i>
+                      Clear selection
+                    </button>
+                    <button id="tm-delete-selected" type="button" class="btn btn-sm btn-outline-danger">
+                      <i class="bi bi-trash me-1" aria-hidden="true"></i>
+                      Delete selected
+                    </button>
+                  </div>
+
+                  <hr class="my-3" />
+                  <div class="d-grid gap-2">
+                    <button id="tm-group-selected" type="button" class="btn btn-sm btn-outline-secondary">
+                      <i class="bi bi-bounding-box me-1" aria-hidden="true"></i>
+                      Group selected
+                    </button>
+                  </div>
+                  <label class="form-label mb-1" for="tm-viz-selection-group-label">Group label</label>
+                  <input
+                    id="tm-viz-selection-group-label"
+                    class="form-control form-control-sm mb-3"
+                    type="text"
+                    placeholder="Group"
+                    autocomplete="off"
+                  />
+
+
+                </div>
+              </div>
             </div>
           </section>
 
@@ -485,18 +608,19 @@ A -> B [increases | 1px]</code></pre>
     <!-- App logic (module so we can import Graphviz WASM cleanly) -->
     <script type="module" src="./app.js"></script>
 
-    <!-- Style modal (edit diagram-wide style settings without putting them in the editor text) -->
-    <div class="modal fade" id="tm-style-modal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title">Styles</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
+    <!-- Style drawer (replaces the old bootstrap modal; edits diagram-wide style settings) -->
+    <div id="tm-style-modal" class="tm-viz-drawer" aria-labelledby="tm-style-drawer-title">
+      <div class="border-bottom bg-white px-3 py-2 d-flex align-items-start justify-content-between gap-3">
+        <div>
+          <div class="fw-semibold" id="tm-style-drawer-title">Styles</div>
+          <div class="small text-muted">Diagram-wide defaults</div>
+        </div>
+        <button id="tm-style-close-x" type="button" class="btn-close" aria-label="Close"></button>
+      </div>
 
-          <div class="modal-body">
-            <!-- Always visible: Direction + Spacing -->
-            <div class="row g-3 mb-3">
+      <div class="p-3">
+        <!-- Always visible: Direction + Spacing -->
+        <div class="row g-3 mb-3">
               <div class="col-12 col-md-6">
                 <label class="form-label mb-1" for="tm-style-direction">Direction</label>
                 <select id="tm-style-direction" class="form-select form-select-sm d-none">
@@ -506,10 +630,10 @@ A -> B [increases | 1px]</code></pre>
                   <option value="BT">bottom → top</option>
                 </select>
                 <div id="tm-style-direction-btns" class="btn-group btn-group-sm" role="group" aria-label="Direction">
-                  <button type="button" class="btn btn-outline-secondary" data-value="LR">L → R</button>
-                  <button type="button" class="btn btn-outline-secondary" data-value="RL">R → L</button>
-                  <button type="button" class="btn btn-outline-secondary" data-value="TB">T → B</button>
-                  <button type="button" class="btn btn-outline-secondary" data-value="BT">B → T</button>
+                  <button type="button" class="btn btn-outline-secondary" data-value="LR">→</button>
+                  <button type="button" class="btn btn-outline-secondary" data-value="RL">←</button>
+                  <button type="button" class="btn btn-outline-secondary" data-value="TB">↓</button>
+                  <button type="button" class="btn btn-outline-secondary" data-value="BT">↑</button>
                 </div>
               </div>
 
@@ -531,15 +655,15 @@ A -> B [increases | 1px]</code></pre>
                   </div>
                 </div>
               </div>
-            </div>
+        </div>
 
-            <!-- Accordion: Presets vs More settings -->
-            <div class="accordion" id="tm-style-accordion">
+        <!-- Accordion: Presets vs More settings -->
+        <div class="accordion" id="tm-style-accordion">
               <!-- Presets panel -->
               <div class="accordion-item">
                 <h2 class="accordion-header">
                   <button
-                    class="accordion-button"
+                    class="accordion-button fw-bold"
                     type="button"
                     data-bs-toggle="collapse"
                     data-bs-target="#tm-style-presets-panel"
@@ -558,7 +682,7 @@ A -> B [increases | 1px]</code></pre>
                       </div>
 
                       <div class="col-12 col-lg-6">
-                        <div class="small text-muted mb-1">Styles</div>
+                        <div class="fw-bold text-dark mb-1">Styles</div>
                         <div id="tm-style-presets-styles" class="tm-style-grid" aria-label="Style presets"></div>
                       </div>
                     </div>
@@ -614,12 +738,12 @@ A -> B [increases | 1px]</code></pre>
                           <div id="tm-style-title-position-btns" class="d-flex flex-column gap-1" role="group" aria-label="Title position">
                             <div class="btn-group btn-group-sm" role="group" aria-label="Title position top row">
                               <button type="button" class="btn btn-outline-secondary" data-value="top-left">TL</button>
-                              <button type="button" class="btn btn-outline-secondary" data-value="top-centre">TC</button>
+                              <button type="button" class="btn btn-outline-secondary" data-value="top-centre">TM</button>
                               <button type="button" class="btn btn-outline-secondary" data-value="top-right">TR</button>
                             </div>
                             <div class="btn-group btn-group-sm" role="group" aria-label="Title position bottom row">
                               <button type="button" class="btn btn-outline-secondary" data-value="bottom-left">BL</button>
-                              <button type="button" class="btn btn-outline-secondary" data-value="bottom-centre">BC</button>
+                              <button type="button" class="btn btn-outline-secondary" data-value="bottom-centre">BM</button>
                               <button type="button" class="btn btn-outline-secondary" data-value="bottom-right">BR</button>
                             </div>
                           </div>
@@ -659,6 +783,7 @@ A -> B [increases | 1px]</code></pre>
                             <option value="none">none</option>
                             <option value="subtle">subtle</option>
                             <option value="medium">medium</option>
+                            <option value="strong">strong</option>
                           </select>
                         </div>
                         <div class="col-12">
@@ -727,91 +852,90 @@ A -> B [increases | 1px]</code></pre>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline-secondary" id="tm-style-apply" data-bs-dismiss="modal">Close</button>
-          </div>
         </div>
+      </div>
+
+      <div class="border-top bg-white px-3 py-2 d-flex justify-content-end">
+        <button type="button" class="btn btn-outline-secondary" id="tm-style-apply">Close</button>
       </div>
     </div>
 
-    <!-- Title-only modal (click the title in the diagram) -->
-    <div class="modal fade" id="tm-title-modal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title">Title</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <!-- Title-only drawer (click the title in the diagram) -->
+    <div id="tm-title-modal" class="tm-viz-drawer" aria-labelledby="tm-title-drawer-title">
+      <div class="border-bottom bg-white px-3 py-2 d-flex align-items-start justify-content-between gap-3">
+        <div>
+          <div class="fw-semibold" id="tm-title-drawer-title">Title</div>
+          <div class="small text-muted">Changes apply live</div>
+        </div>
+        <button id="tm-title-close-x" type="button" class="btn-close" aria-label="Close"></button>
+      </div>
+
+      <div class="p-3">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label mb-1" for="tm-title-text">Title</label>
+            <input id="tm-title-text" class="form-control form-control-sm" type="text" placeholder="(no title)" />
+            <div class="small text-muted mt-1">This edits the <code>Title:</code> line in the editor.</div>
           </div>
-          <div class="modal-body">
-            <div class="row g-3">
-              <div class="col-12">
-                <label class="form-label mb-1" for="tm-title-text">Title</label>
-                <input id="tm-title-text" class="form-control form-control-sm" type="text" placeholder="(no title)" />
-                <div class="small text-muted mt-1">This edits the <code>Title:</code> line in the editor.</div>
+          <div class="col-12">
+            <label class="form-label mb-1" for="tm-title-text-color">Colour</label>
+            <input id="tm-title-text-color" class="form-control form-control-sm form-control-color" type="color" value="#111827" />
+            <div class="small text-muted mt-1">This is the global “Text colour” (also affects edge labels).</div>
+          </div>
+          <div class="col-12">
+            <div class="d-flex align-items-center justify-content-between">
+              <label class="form-label mb-1" for="tm-title-size">Font size</label>
+              <div class="small text-muted"><span id="tm-title-size-val">18</span>pt</div>
+            </div>
+            <input id="tm-title-size" class="form-range" type="range" min="10" max="36" step="1" value="18" />
+          </div>
+          <div class="col-12">
+            <label class="form-label mb-1" for="tm-title-position">Position</label>
+            <select id="tm-title-position" class="form-select form-select-sm d-none">
+              <option value="bottom-left">bottom left</option>
+              <option value="bottom-centre">bottom centre</option>
+              <option value="bottom-right">bottom right</option>
+              <option value="top-left">top left</option>
+              <option value="top-centre">top centre</option>
+              <option value="top-right">top right</option>
+            </select>
+            <div id="tm-title-position-btns" class="d-flex flex-column gap-1" role="group" aria-label="Title position">
+              <div class="btn-group btn-group-sm" role="group" aria-label="Title position top row">
+                <button type="button" class="btn btn-outline-secondary" data-value="top-left">TL</button>
+                <button type="button" class="btn btn-outline-secondary" data-value="top-centre">TM</button>
+                <button type="button" class="btn btn-outline-secondary" data-value="top-right">TR</button>
               </div>
-              <div class="col-12">
-                <label class="form-label mb-1" for="tm-title-text-color">Colour</label>
-                <input id="tm-title-text-color" class="form-control form-control-sm form-control-color" type="color" value="#111827" />
-                <div class="small text-muted mt-1">This is the global “Text colour” (also affects edge labels).</div>
-              </div>
-              <div class="col-12">
-                <div class="d-flex align-items-center justify-content-between">
-                  <label class="form-label mb-1" for="tm-title-size">Font size</label>
-                  <div class="small text-muted"><span id="tm-title-size-val">18</span>pt</div>
-                </div>
-                <input id="tm-title-size" class="form-range" type="range" min="10" max="36" step="1" value="18" />
-              </div>
-              <div class="col-12">
-                <label class="form-label mb-1" for="tm-title-position">Position</label>
-                <select id="tm-title-position" class="form-select form-select-sm d-none">
-                  <option value="bottom-left">bottom left</option>
-                  <option value="bottom-centre">bottom centre</option>
-                  <option value="bottom-right">bottom right</option>
-                  <option value="top-left">top left</option>
-                  <option value="top-centre">top centre</option>
-                  <option value="top-right">top right</option>
-                </select>
-                <div id="tm-title-position-btns" class="d-flex flex-column gap-1" role="group" aria-label="Title position">
-                  <div class="btn-group btn-group-sm" role="group" aria-label="Title position top row">
-                    <button type="button" class="btn btn-outline-secondary" data-value="top-left">TL</button>
-                    <button type="button" class="btn btn-outline-secondary" data-value="top-centre">TC</button>
-                    <button type="button" class="btn btn-outline-secondary" data-value="top-right">TR</button>
-                  </div>
-                  <div class="btn-group btn-group-sm" role="group" aria-label="Title position bottom row">
-                    <button type="button" class="btn btn-outline-secondary" data-value="bottom-left">BL</button>
-                    <button type="button" class="btn btn-outline-secondary" data-value="bottom-centre">BC</button>
-                    <button type="button" class="btn btn-outline-secondary" data-value="bottom-right">BR</button>
-                  </div>
-                </div>
+              <div class="btn-group btn-group-sm" role="group" aria-label="Title position bottom row">
+                <button type="button" class="btn btn-outline-secondary" data-value="bottom-left">BL</button>
+                <button type="button" class="btn btn-outline-secondary" data-value="bottom-centre">BM</button>
+                <button type="button" class="btn btn-outline-secondary" data-value="bottom-right">BR</button>
               </div>
             </div>
           </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-          </div>
         </div>
+      </div>
+
+      <div class="border-top bg-white px-3 py-2 d-flex justify-content-end">
+        <button id="tm-title-close" type="button" class="btn btn-outline-secondary">Close</button>
       </div>
     </div>
 
-    <!-- Single setting-line modal (when cursor is on a "Key: Value" style line in the editor) -->
-    <div class="modal fade" id="tm-setting-line-modal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="tm-setting-line-modal-title">Edit setting</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <div id="tm-setting-line-modal-meta" class="small text-muted"></div>
-            <div id="tm-setting-line-modal-body" class="mt-3"></div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-          </div>
+    <!-- Single setting-line drawer (when cursor is on a "Key: Value" style line in the editor) -->
+    <div id="tm-setting-line-modal" class="tm-viz-drawer" aria-labelledby="tm-setting-line-modal-title">
+      <div class="border-bottom bg-white px-3 py-2 d-flex align-items-start justify-content-between gap-3">
+        <div>
+          <div class="fw-semibold" id="tm-setting-line-modal-title">Edit setting</div>
+          <div id="tm-setting-line-modal-meta" class="small text-muted"></div>
         </div>
+        <button id="tm-setting-line-close-x" type="button" class="btn-close" aria-label="Close"></button>
+      </div>
+
+      <div class="p-3">
+        <div id="tm-setting-line-modal-body"></div>
+      </div>
+
+      <div class="border-top bg-white px-3 py-2 d-flex justify-content-end">
+        <button id="tm-setting-line-close" type="button" class="btn btn-outline-secondary">Close</button>
       </div>
     </div>
 
@@ -841,17 +965,15 @@ A -> B [increases | 1px]</code></pre>
       </div>
     </div>
 
-    <!-- Viz edit modal (node/link interactivity) -->
-    <div class="modal fade" id="tm-viz-edit-modal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="tm-viz-edit-modal-title">Edit</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
+    <!-- Viz edit drawer (node/link interactivity; replaces the old bootstrap modal) -->
+    <div id="tm-viz-edit-modal" class="tm-viz-drawer" aria-labelledby="tm-viz-edit-modal-title">
+      <div class="border-bottom bg-white px-3 py-2 d-flex align-items-start justify-content-between gap-3">
+        <div class="fw-semibold" id="tm-viz-edit-modal-title">Edit</div>
+        <button id="tm-viz-edit-close-x" type="button" class="btn-close" aria-label="Close"></button>
+      </div>
 
-          <div class="modal-body">
-            <div id="tm-viz-edit-meta" class="small text-muted"></div>
+      <div class="p-3">
+        <div id="tm-viz-edit-meta" class="small text-muted"></div>
 
             <!-- Shown when the clicked thing can't be edited via widgets (implicit / multi-edge line) -->
             <div id="tm-viz-edit-disabled" class="alert alert-info mt-3 d-none"></div>
@@ -1044,13 +1166,11 @@ A -> B [increases | 1px]</code></pre>
                 </div>
               </div>
             </div>
-          </div>
+      </div>
 
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline-danger" id="tm-viz-edit-delete">Delete</button>
-            <button type="button" class="btn btn-outline-secondary" id="tm-viz-edit-save" data-bs-dismiss="modal">Close</button>
-          </div>
-        </div>
+      <div class="border-top bg-white px-3 py-2 d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-outline-danger" id="tm-viz-edit-delete">Delete</button>
+        <button type="button" class="btn btn-outline-secondary" id="tm-viz-edit-save">Close</button>
       </div>
     </div>
 
