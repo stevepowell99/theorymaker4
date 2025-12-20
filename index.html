@@ -120,7 +120,7 @@
               id="tm-chat-input"
               class="form-control tm-chat-input"
               rows="2"
-              placeholder="Chat with AI to create a new diagram or update the existing diagram: contents and/or styles. Or use the manual editor below."
+              placeholder="Chat with AI to create a new diagram or update the existing diagram: contents and/or styles. Or click on the diagram to edito manually, or use the manual editor below."
               aria-label="Chat input"
             ></textarea>
             <button
@@ -435,8 +435,50 @@
                     autocomplete="off"
                   />
 
+                  <hr class="my-3" />
+                  <div class="form-check form-switch mb-2">
+                    <input class="form-check-input" type="checkbox" role="switch" id="tm-viz-selection-link-mode" />
+                    <label class="form-check-label" for="tm-viz-selection-link-mode">Link mode</label>
+                  </div>
+                  <div id="tm-viz-selection-link-controls" class="d-none">
+                    <label class="form-label mb-1" for="tm-viz-selection-link-dir">Direction</label>
+                    <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Link direction">
+                      <input type="radio" class="btn-check" name="tm-viz-selection-link-dir" id="tm-viz-selection-link-dir-out" autocomplete="off" checked />
+                      <label class="btn btn-outline-secondary" for="tm-viz-selection-link-dir-out">Selected → clicked</label>
+
+                      <input type="radio" class="btn-check" name="tm-viz-selection-link-dir" id="tm-viz-selection-link-dir-in" autocomplete="off" />
+                      <label class="btn btn-outline-secondary" for="tm-viz-selection-link-dir-in">Clicked → selected</label>
+                    </div>
+
+                    <label class="form-label mb-1" for="tm-viz-selection-link-label">Link label</label>
+                    <input
+                      id="tm-viz-selection-link-label"
+                      class="form-control form-control-sm mb-2"
+                      type="text"
+                      placeholder="(optional)"
+                      autocomplete="off"
+                    />
+                    <div class="small text-muted mb-2">
+                      With Link mode on: click a target node to create link(s).
+                    </div>
+
+                    <hr class="my-3" />
+                    <label class="form-label mb-1">New node labels</label>
+                    <div id="tm-viz-selection-link-new-labels" class="d-grid gap-2"></div>
+                    <button id="tm-viz-selection-link-create-new-btn" type="button" class="btn btn-sm btn-outline-secondary mt-2">
+                      <i class="bi bi-plus-square me-1" aria-hidden="true"></i>
+                      Create new + link
+                    </button>
+                    <div class="small text-muted mt-2">
+                      Tip: each new label creates a node and links it to all selected nodes (using the direction above).
+                    </div>
+                  </div>
+
                   <div class="small text-muted">
-                    Tip: Shift+drag to move these nodes into/out of grouping boxes.
+                    Tips:
+                    <div>• Click a group box to move the selection into it (Link mode off)</div>
+                    <div>• Click the diagram background to move the selection out of groups (Link mode off)</div>
+                    <div>• Shift+drag also moves the selection into/out of grouping boxes</div>
                   </div>
 
                 </div>

@@ -5327,6 +5327,13 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   const selDrawerEl = document.getElementById("tm-viz-selection-drawer");
   const selDrawerMeta = document.getElementById("tm-viz-selection-meta");
   const selDrawerCloseBtn = document.getElementById("tm-viz-selection-close");
+  const selLinkModeChk = document.getElementById("tm-viz-selection-link-mode");
+  const selLinkControls = document.getElementById("tm-viz-selection-link-controls");
+  const selLinkDirOut = document.getElementById("tm-viz-selection-link-dir-out");
+  const selLinkDirIn = document.getElementById("tm-viz-selection-link-dir-in");
+  const selLinkLabelInput = document.getElementById("tm-viz-selection-link-label");
+  const selLinkNewLabelsWrap = document.getElementById("tm-viz-selection-link-new-labels");
+  const selLinkCreateNewBtn = document.getElementById("tm-viz-selection-link-create-new-btn");
 
   let selection = null; // { type: "node", nodeId } | { type: "cluster", clusterId } | { type: "edge", lineNo, fromId, toId }
   let canSave = false;
@@ -5483,6 +5490,19 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     positionVizDrawerAgainstDiagram(selDrawerEl, { topOffsetPx: 100 });
   }
 
+  function syncSelectionLinkControls() {
+    // Purpose: show Link mode controls only when the toggle is on.
+    if (!selLinkControls) return;
+    const on = Boolean(selLinkModeChk?.checked);
+    selLinkControls.classList.toggle("d-none", !on);
+    if (on) {
+      ensureTrailingBlankSelLinkNewLabel();
+      syncSelLinkCreateBtn();
+    }
+  }
+  selLinkModeChk?.addEventListener?.("change", syncSelectionLinkControls);
+  syncSelectionLinkControls();
+
   function applyMultiSelectVisuals() {
     // If at least one node is selected, show checkboxes on ALL nodes (so selection is obvious),
     // otherwise fall back to hover-only checkbox UI.
@@ -5548,6 +5568,48 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     quickStatus.textContent = String(msg || "");
   }
 
+  function ensureTrailingBlankLabelInput(wrapEl, inputClassName) {
+    // Purpose: when the user types into the last "new node label" input, add another blank below.
+    // Shared between quick-link drawer and selection drawer link mode.
+    if (!wrapEl) return;
+    const cls = String(inputClassName || "").trim();
+    if (!cls) return;
+    const selector = `input.${cls.split(/\s+/).join(".")}`;
+    const inputs = Array.from(wrapEl.querySelectorAll(selector));
+    const last = inputs[inputs.length - 1] || null;
+    const lastHasText = Boolean(String(last?.value || "").trim());
+    if (!last || lastHasText) {
+      const inp = document.createElement("input");
+      inp.className = `form-control form-control-sm ${cls}`;
+      inp.type = "text";
+      inp.placeholder = "(optional)";
+      wrapEl.appendChild(inp);
+    }
+  }
+
+  function getLabelInputValues(wrapEl, inputClassName) {
+    if (!wrapEl) return [];
+    const cls = String(inputClassName || "").trim();
+    if (!cls) return [];
+    const selector = `input.${cls.split(/\s+/).join(".")}`;
+    return Array.from(wrapEl.querySelectorAll(selector))
+      .map((el) => String(el.value || "").trim())
+      .filter(Boolean);
+  }
+
+  function resetLabelInputs(wrapEl, inputClassName) {
+    if (!wrapEl) return;
+    wrapEl.innerHTML = "";
+    ensureTrailingBlankLabelInput(wrapEl, inputClassName);
+  }
+
+  function setCreateBtnActive(btnEl, hasAny) {
+    // Visual "glow" using Bootstrap primary styling when there's something to create.
+    if (!btnEl) return;
+    btnEl.classList.toggle("btn-outline-secondary", !hasAny);
+    btnEl.classList.toggle("btn-primary", Boolean(hasAny));
+  }
+
   function syncQuickBorderControls() {
     const on = Boolean(quickBorderEnabled?.checked);
     quickBorderControls?.classList.toggle("d-none", !on);
@@ -5588,43 +5650,21 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   }
 
   function ensureTrailingBlankQuickNewLabel() {
-    // Purpose: when the user types into the last "new node label" input, add another blank below.
-    if (!quickNewLabelsWrap) return;
-    const inputs = Array.from(quickNewLabelsWrap.querySelectorAll("input.tm-viz-quicklink-new-label"));
-    const last = inputs[inputs.length - 1] || null;
-    const lastHasText = Boolean(String(last?.value || "").trim());
-    if (!last || lastHasText) {
-      const inp = document.createElement("input");
-      inp.className = "form-control form-control-sm tm-viz-quicklink-new-label";
-      inp.type = "text";
-      inp.placeholder = "(optional)";
-      quickNewLabelsWrap.appendChild(inp);
-    }
+    ensureTrailingBlankLabelInput(quickNewLabelsWrap, "tm-viz-quicklink-new-label");
   }
 
   function getQuickNewLabels() {
-    if (!quickNewLabelsWrap) return [];
-    return Array.from(quickNewLabelsWrap.querySelectorAll("input.tm-viz-quicklink-new-label"))
-      .map((el) => String(el.value || "").trim())
-      .filter(Boolean);
+    return getLabelInputValues(quickNewLabelsWrap, "tm-viz-quicklink-new-label");
   }
 
   function syncQuickCreateBtn() {
     if (!quickCreateNewBtn) return;
     const hasAny = getQuickNewLabels().length > 0;
-    // Visual "glow" using Bootstrap primary styling when there's something to create.
-    quickCreateNewBtn.classList.toggle("btn-outline-secondary", !hasAny);
-    quickCreateNewBtn.classList.toggle("btn-primary", hasAny);
+    setCreateBtnActive(quickCreateNewBtn, hasAny);
   }
 
   function resetQuickNewLabels() {
-    if (!quickNewLabelsWrap) return;
-    quickNewLabelsWrap.innerHTML = "";
-    const inp = document.createElement("input");
-    inp.className = "form-control form-control-sm tm-viz-quicklink-new-label";
-    inp.type = "text";
-    inp.placeholder = "(optional)";
-    quickNewLabelsWrap.appendChild(inp);
+    resetLabelInputs(quickNewLabelsWrap, "tm-viz-quicklink-new-label");
     syncQuickCreateBtn();
   }
 
@@ -5633,6 +5673,80 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     if (!isLabel) return;
     ensureTrailingBlankQuickNewLabel();
     syncQuickCreateBtn();
+  });
+
+  // Selection drawer: Link mode "new node labels" list (same expanding UX as quick-link drawer).
+  function ensureTrailingBlankSelLinkNewLabel() {
+    ensureTrailingBlankLabelInput(selLinkNewLabelsWrap, "tm-viz-selection-link-new-label");
+  }
+
+  function getSelLinkNewLabels() {
+    return getLabelInputValues(selLinkNewLabelsWrap, "tm-viz-selection-link-new-label");
+  }
+
+  function syncSelLinkCreateBtn() {
+    if (!selLinkCreateNewBtn) return;
+    setCreateBtnActive(selLinkCreateNewBtn, getSelLinkNewLabels().length > 0);
+  }
+
+  function resetSelLinkNewLabels() {
+    resetLabelInputs(selLinkNewLabelsWrap, "tm-viz-selection-link-new-label");
+    syncSelLinkCreateBtn();
+  }
+
+  selLinkNewLabelsWrap?.addEventListener?.("input", (e) => {
+    const isLabel = e?.target?.classList?.contains?.("tm-viz-selection-link-new-label");
+    if (!isLabel) return;
+    ensureTrailingBlankSelLinkNewLabel();
+    syncSelLinkCreateBtn();
+  });
+
+  // Ensure link mode has at least one blank input from the start.
+  resetSelLinkNewLabels();
+
+  selLinkCreateNewBtn?.addEventListener?.("click", () => {
+    if (!Boolean(selLinkModeChk?.checked)) return;
+    if (selectedNodes.size === 0) return setVizStatus("Select at least one node first");
+    const labels = getSelLinkNewLabels();
+    if (!labels.length) return setVizStatus("Enter at least one new node label");
+
+    const dir = Boolean(selLinkDirIn?.checked) ? "in" : "out";
+    const linkLabel = String(selLinkLabelInput?.value || "").trim();
+    const bracket = linkLabel ? ` [${linkLabel}]` : "";
+
+    const lines = editor.getValue().split(/\r?\n/);
+    const existingIds = new Set(getExplicitNodeIdsFromLines(lines));
+
+    const newNodeLines = [];
+    const edgeLines = [];
+    for (const label of labels) {
+      const newId = makeUniqueNodeIdFromLabel(label, existingIds);
+      existingIds.add(newId);
+      newNodeLines.push(`${newId}:: ${label}`);
+      for (const s of selectedNodes) {
+        if (!s) continue;
+        const fromId = dir === "out" ? s : newId;
+        const toId = dir === "out" ? newId : s;
+        if (fromId === toId) continue;
+        edgeLines.push(`${fromId} -> ${toId}${bracket}`);
+      }
+    }
+
+    if (!edgeLines.length) return setVizStatus("Nothing to link");
+
+    // Clear selection BEFORE rerender so it doesn't persist visually.
+    selectedNodes.clear();
+    updateDeleteSelectedButton();
+    applyMultiSelectVisuals();
+
+    // Keep recommended structure: insert new node defs above the trailing links block; append edges at end.
+    const insertAt = findTrailingLinksBlockStart(lines);
+    lines.splice(insertAt, 0, ...newNodeLines);
+    lines.push(...edgeLines);
+    applyEditorLines(lines);
+
+    resetSelLinkNewLabels();
+    setVizStatus(`Added ${edgeLines.length} link${edgeLines.length === 1 ? "" : "s"}`);
   });
 
   function clearSourceGlow() {
@@ -6158,6 +6272,20 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
         return;
       }
 
+      // Selection drawer: if nodes are selected and Link mode is OFF, clicking background moves them out of groups.
+      // (We do this before opening the diagram-wide style drawer.)
+      if (!pendingLinkSourceId && selectedNodes.size > 0 && !Boolean(selLinkModeChk?.checked)) {
+        const lines = editor.getValue().split(/\r?\n/);
+        const res = moveExplicitNodeDefsOutToTopLevel(lines, Array.from(selectedNodes));
+        if (!res.ok) return setVizStatus(res.message || "Move failed");
+        applyEditorLines(lines);
+        setVizStatus(res.message || "Moved");
+        selectedNodes.clear();
+        updateDeleteSelectedButton();
+        applyMultiSelectVisuals();
+        return;
+      }
+
       // Diagram background click: open diagram-wide style modal (background + title settings).
       clearVizSelection();
       document.getElementById("tm-editor-style")?.click();
@@ -6170,6 +6298,41 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     if (nodeG) {
       const nodeId = getGraphvizTitleText(nodeG);
       if (!nodeId) return;
+
+      // Selection drawer "Link mode": click a target node to create link(s) and clear selection.
+      // This is intentionally click-based (not drag-based) to avoid conflicts with pan and shift+drag grouping.
+      const linkModeOn = Boolean(selLinkModeChk?.checked) && selectedNodes.size > 0;
+      if (!pendingLinkSourceId && linkModeOn) {
+        const dir = Boolean(selLinkDirIn?.checked) ? "in" : "out";
+        const label = String(selLinkLabelInput?.value || "").trim();
+        const bracket = label ? ` [${label}]` : "";
+
+        // Create links for each selected node, skipping self-loops.
+        const pairs = [];
+        for (const s of selectedNodes) {
+          if (!s || s === nodeId) continue;
+          const fromId = dir === "out" ? s : nodeId;
+          const toId = dir === "out" ? nodeId : s;
+          pairs.push({ fromId, toId });
+        }
+        if (!pairs.length) return setVizStatus("Pick a different target");
+
+        // Append all link lines in one editor update + one rerender.
+        const text = editor.getValue().trimEnd();
+        const edgeLines = pairs.map((p) => `${p.fromId} -> ${p.toId}${bracket}`);
+        const next = text ? `${text}\n${edgeLines.join("\n")}\n` : `${edgeLines.join("\n")}\n`;
+        editor.setValue(next, -1);
+        setMapScriptInUrl(editor.getValue());
+        renderNow(graphviz, editor);
+
+        // Clear selection after action (consistent with other selection actions).
+        selectedNodes.clear();
+        updateDeleteSelectedButton();
+        applyMultiSelectVisuals();
+
+        setVizStatus(`Added ${edgeLines.length} link${edgeLines.length === 1 ? "" : "s"}`);
+        return;
+      }
 
       // Quick add link: Source -> Target (without opening the modal).
       if (pendingLinkSourceId) {
@@ -6202,6 +6365,22 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     if (clusterG) {
       const clusterId = getGraphvizTitleText(clusterG);
       if (!clusterId || !String(clusterId).startsWith("cluster_")) return;
+
+      // Selection drawer: if nodes are selected and Link mode is OFF, clicking a group box
+      // moves the selection into that group (then clears selection).
+      // This avoids needing Shift+drag for the common "move selection into a different box" action.
+      if (!pendingLinkSourceId && selectedNodes.size > 0 && !Boolean(selLinkModeChk?.checked)) {
+        const lines = editor.getValue().split(/\r?\n/);
+        const res = moveExplicitNodeDefsIntoCluster(lines, Array.from(selectedNodes), clusterId);
+        if (!res.ok) return setVizStatus(res.message || "Move failed");
+        applyEditorLines(lines);
+        setVizStatus(res.message || "Moved");
+        selectedNodes.clear();
+        updateDeleteSelectedButton();
+        applyMultiSelectVisuals();
+        return;
+      }
+
       selection = { type: "cluster", clusterId };
       refreshFormFromEditor();
       openModal();
