@@ -311,91 +311,15 @@
 
                 <div class="vr mx-2 align-self-stretch"></div>
 
-
-
-                <span id="tm-viz-status" class="tm-viz-status small text-muted ms-auto" aria-live="polite"></span>
+                <div class="tm-viz-hint-wrap ms-auto me-2 text-end">
+                  <span id="tm-viz-hint" class="tm-viz-hint small text-muted"></span>
+                  <span id="tm-viz-status" class="tm-viz-status small text-muted" aria-live="polite"></span>
+                </div>
               </div>
 
               <div id="tm-viz" class="tm-viz"></div>
               <!-- MapScript: Description: ... (rendered below the diagram) -->
               <div id="tm-viz-legend" class="tm-viz-legend small text-muted d-none"></div>
-
-              <!-- Quick link drawer: hidden behind the diagram, then revealed as the diagram shifts right -->
-              <div id="tm-viz-quicklink-drawer" class="tm-viz-drawer" aria-labelledby="tm-viz-quicklink-drawer-title">
-                <div class="border-bottom bg-white px-3 py-2 d-flex align-items-start justify-content-between gap-3">
-                  <div>
-                    <div class="fw-semibold" id="tm-viz-quicklink-drawer-title">Add link</div>
-                    <div id="tm-viz-quicklink-meta" class="small text-muted"></div>
-                  </div>
-                  <button id="tm-viz-quicklink-close" type="button" class="btn-close" aria-label="Close"></button>
-                </div>
-
-                <div class="p-3">
-                  <div class="alert alert-primary py-2 px-2 mb-3" role="status">
-                    <div class="fw-semibold">Now click another node in the diagram to create a link</div>
-                    <div class="small mb-0">Or below you can create new nodes to link to, and/or add styling to the new link.</div>
-                  </div>
-
-                  <div>
-                    <div class="form-label mb-1">Direction</div>
-                    <div class="btn-group" role="group" aria-label="Link direction">
-                      <input type="radio" class="btn-check" name="tm-viz-quicklink-dir" id="tm-viz-quicklink-dir-out" autocomplete="off" checked />
-                      <label class="btn btn-sm btn-outline-primary" for="tm-viz-quicklink-dir-out">Source → target</label>
-
-                      <input type="radio" class="btn-check" name="tm-viz-quicklink-dir" id="tm-viz-quicklink-dir-in" autocomplete="off" />
-                      <label class="btn btn-sm btn-outline-primary" for="tm-viz-quicklink-dir-in">Target → source</label>
-                    </div>
-                  </div>
-
-                  <hr class="my-3" />
-
-                  <div>
-                    <div class="d-flex align-items-center justify-content-between">
-                      <div class="form-label mb-1">New target node label(s)</div>
-                      <button id="tm-viz-quicklink-create-new-btn" type="button" class="btn btn-sm btn-outline-secondary py-0 px-2">
-                        Create
-                      </button>
-                    </div>
-                    <div id="tm-viz-quicklink-new-labels" class="d-grid gap-2">
-                      <input class="form-control form-control-sm tm-viz-quicklink-new-label" type="text" placeholder="(optional)" />
-                    </div>
-                  </div>
-
-                  <hr class="my-3" />
-
-                  <label class="form-label mb-1" for="tm-viz-quicklink-edge-label">Link label</label>
-                  <input id="tm-viz-quicklink-edge-label" class="form-control form-control-sm" type="text" placeholder="(optional)" />
-
-                  <div class="form-check form-switch mt-3">
-                    <input id="tm-viz-quicklink-border-enabled" class="form-check-input" type="checkbox" />
-                    <label class="form-check-label" for="tm-viz-quicklink-border-enabled">Override link style</label>
-                  </div>
-
-                  <div id="tm-viz-quicklink-border-controls" class="row g-2 mt-2 d-none">
-                    <div class="col-4">
-                      <label class="form-label mb-1" for="tm-viz-quicklink-border-width">Border width</label>
-                      <input id="tm-viz-quicklink-border-width" class="form-range tm-range-compact" type="range" min="0" max="12" step="1" value="1" />
-                    </div>
-                    <div class="col-4">
-                      <label class="form-label mb-1" for="tm-viz-quicklink-border-style">Border style</label>
-                      <select id="tm-viz-quicklink-border-style" class="form-select form-select-sm">
-                        <option value="solid">solid</option>
-                        <option value="dotted">dotted</option>
-                        <option value="dashed">dashed</option>
-                      </select>
-                    </div>
-                    <div class="col-4">
-                      <label class="form-label mb-1" for="tm-viz-quicklink-border-color">Border colour</label>
-                      <input id="tm-viz-quicklink-border-color" class="form-control form-control-sm form-control-color" type="color" value="#6c757d" />
-                    </div>
-                  </div>
-
-                  <div class="d-flex gap-2 mt-3 align-items-center">
-                    <div id="tm-viz-quicklink-status" class="small text-muted me-auto"></div>
-                    <button id="tm-viz-quicklink-cancel" type="button" class="btn btn-sm btn-outline-secondary">Clear source</button>
-                  </div>
-                </div>
-              </div>
 
               <!-- Selection drawer: shown when nodes are multi-selected (checkboxes) -->
               <div id="tm-viz-selection-drawer" class="tm-viz-drawer" aria-labelledby="tm-viz-selection-drawer-title">
@@ -419,66 +343,82 @@
                     </button>
                   </div>
 
-                  <hr class="my-3" />
-                  <div class="d-grid gap-2">
-                    <button id="tm-group-selected" type="button" class="btn btn-sm btn-outline-secondary">
-                      <i class="bi bi-bounding-box me-1" aria-hidden="true"></i>
-                      Group selected
-                    </button>
-                  </div>
-                  <label class="form-label mb-1" for="tm-viz-selection-group-label">Group label</label>
-                  <input
-                    id="tm-viz-selection-group-label"
-                    class="form-control form-control-sm mb-3"
-                    type="text"
-                    placeholder="Group"
-                    autocomplete="off"
-                  />
-
-                  <hr class="my-3" />
-                  <div class="form-check form-switch mb-2">
-                    <input class="form-check-input" type="checkbox" role="switch" id="tm-viz-selection-link-mode" />
-                    <label class="form-check-label" for="tm-viz-selection-link-mode">Link mode</label>
-                  </div>
-                  <div id="tm-viz-selection-link-controls" class="d-none">
-                    <label class="form-label mb-1" for="tm-viz-selection-link-dir">Direction</label>
-                    <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Link direction">
-                      <input type="radio" class="btn-check" name="tm-viz-selection-link-dir" id="tm-viz-selection-link-dir-out" autocomplete="off" checked />
-                      <label class="btn btn-outline-secondary" for="tm-viz-selection-link-dir-out">Selected → clicked</label>
-
-                      <input type="radio" class="btn-check" name="tm-viz-selection-link-dir" id="tm-viz-selection-link-dir-in" autocomplete="off" />
-                      <label class="btn btn-outline-secondary" for="tm-viz-selection-link-dir-in">Clicked → selected</label>
-                    </div>
-
-                    <label class="form-label mb-1" for="tm-viz-selection-link-label">Link label</label>
-                    <input
-                      id="tm-viz-selection-link-label"
-                      class="form-control form-control-sm mb-2"
-                      type="text"
-                      placeholder="(optional)"
-                      autocomplete="off"
-                    />
-                    <div class="small text-muted mb-2">
-                      With Link mode on: click a target node to create link(s).
-                    </div>
-
-                    <hr class="my-3" />
-                    <label class="form-label mb-1">New node labels</label>
-                    <div id="tm-viz-selection-link-new-labels" class="d-grid gap-2"></div>
-                    <button id="tm-viz-selection-link-create-new-btn" type="button" class="btn btn-sm btn-outline-secondary mt-2">
-                      <i class="bi bi-plus-square me-1" aria-hidden="true"></i>
-                      Create new + link
-                    </button>
-                    <div class="small text-muted mt-2">
-                      Tip: each new label creates a node and links it to all selected nodes (using the direction above).
+                  <div class="mb-3 p-3 border rounded bg-light">
+                    <div class="fw-semibold mb-1">Create group box</div>
+                    <div class="small text-muted mb-2">Creates a new grouping box around the selected nodes.</div>
+                    <label class="form-label mb-1" for="tm-viz-selection-group-label">Group label</label>
+                    <input id="tm-viz-selection-group-label" class="form-control form-control-sm mb-2" type="text" placeholder="Group" autocomplete="off" />
+                    <div class="d-grid gap-2">
+                      <button id="tm-group-selected" type="button" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-bounding-box me-1" aria-hidden="true"></i>
+                        Group selected
+                      </button>
                     </div>
                   </div>
 
-                  <div class="small text-muted">
-                    Tips:
-                    <div>• Click a group box to move the selection into it (Link mode off)</div>
-                    <div>• Click the diagram background to move the selection out of groups (Link mode off)</div>
-                    <div>• Shift+drag also moves the selection into/out of grouping boxes</div>
+                  <div class="mb-3 p-3 border rounded bg-light">
+                    <div class="fw-semibold mb-1">Move selected nodes</div>
+                    <div class="small text-muted mb-0">
+                      Click a <span class="fw-semibold">group box</span> to move the selection into it.
+                      Click the <span class="fw-semibold">diagram background</span> to move the selection out of groups.
+                    </div>
+                  </div>
+
+                  <div class="mb-0 p-3 border rounded bg-light">
+                    <div class="fw-semibold mb-1">Create links</div>
+                    <div class="small text-muted mb-2">Click a node to create link(s) between it and the selected node(s).</div>
+
+                    <div id="tm-viz-selection-link-controls">
+                      <label class="form-label mb-1" for="tm-viz-selection-link-dir">Direction</label>
+                      <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Link direction">
+                        <input type="radio" class="btn-check" name="tm-viz-selection-link-dir" id="tm-viz-selection-link-dir-out" autocomplete="off" checked />
+                        <label class="btn btn-outline-secondary" for="tm-viz-selection-link-dir-out">Selected → clicked</label>
+
+                        <input type="radio" class="btn-check" name="tm-viz-selection-link-dir" id="tm-viz-selection-link-dir-in" autocomplete="off" />
+                        <label class="btn btn-outline-secondary" for="tm-viz-selection-link-dir-in">Clicked → selected</label>
+                      </div>
+
+                      <label class="form-label mb-1" for="tm-viz-selection-link-label">Link label</label>
+                      <input
+                        id="tm-viz-selection-link-label"
+                        class="form-control form-control-sm mb-2"
+                        type="text"
+                        placeholder="(optional)"
+                        autocomplete="off"
+                      />
+
+                      <div class="form-check form-switch mt-2">
+                        <input id="tm-viz-selection-link-border-enabled" class="form-check-input" type="checkbox" />
+                        <label class="form-check-label" for="tm-viz-selection-link-border-enabled">Custom link style</label>
+                      </div>
+                      <div id="tm-viz-selection-link-border-controls" class="row g-2 mt-2 d-none">
+                        <div class="col-4">
+                          <label class="form-label mb-1" for="tm-viz-selection-link-border-width">Border width</label>
+                          <input id="tm-viz-selection-link-border-width" class="form-range tm-range-compact" type="range" min="0" max="12" step="1" value="1" />
+                        </div>
+                        <div class="col-4">
+                          <label class="form-label mb-1" for="tm-viz-selection-link-border-style">Border style</label>
+                          <select id="tm-viz-selection-link-border-style" class="form-select form-select-sm">
+                            <option value="solid">solid</option>
+                            <option value="dotted">dotted</option>
+                            <option value="dashed">dashed</option>
+                          </select>
+                        </div>
+                        <div class="col-4">
+                          <label class="form-label mb-1" for="tm-viz-selection-link-border-color">Border colour</label>
+                          <input id="tm-viz-selection-link-border-color" class="form-control form-control-sm form-control-color" type="color" value="#6c757d" />
+                        </div>
+                      </div>
+
+                      <hr class="my-3" />
+                      <label class="form-label mb-1">New node labels</label>
+                      <div id="tm-viz-selection-link-new-labels" class="d-grid gap-2"></div>
+                      <button id="tm-viz-selection-link-create-new-btn" type="button" class="btn btn-sm btn-outline-secondary mt-2">
+                        <i class="bi bi-plus-square me-1" aria-hidden="true"></i>
+                        Create new + link
+                      </button>
+                      <div class="small text-muted mt-2">Each label creates a node and links it to all selected nodes.</div>
+                    </div>
                   </div>
 
                 </div>
@@ -1086,68 +1026,6 @@ A -> B [increases | 1px]</code></pre>
                   <input id="tm-viz-node-text-size" class="form-range tm-range-compact" type="range" min="0.5" max="2.5" step="0.1" value="1" />
                 </div>
               </div>
-
-              <hr class="my-3" />
-
-              <details id="tm-viz-add-link-details">
-                <summary class="fw-semibold">Add link</summary>
-                <div class="small text-muted mt-1">Adds a new line to the editor and re-renders.</div>
-
-                <div class="row g-2 mt-2">
-                  <div class="col-12 col-md-4">
-                    <label class="form-label mb-1" for="tm-viz-add-edge-dir">Direction</label>
-                    <select id="tm-viz-add-edge-dir" class="form-select form-select-sm">
-                      <option value="out">From this node → target</option>
-                      <option value="in">Source → to this node</option>
-                    </select>
-                  </div>
-                  <div class="col-12 col-md-8">
-                    <div class="d-flex align-items-center justify-content-between">
-                      <label class="form-label mb-1" for="tm-viz-add-edge-other">Other node</label>
-                      <button id="tm-viz-add-edge-new-node-btn" type="button" class="btn btn-sm btn-outline-secondary py-0 px-2">
-                        New node
-                      </button>
-                    </div>
-                    <select id="tm-viz-add-edge-other" class="form-select form-select-sm"></select>
-                    <input
-                      id="tm-viz-add-edge-new-label"
-                      class="form-control form-control-sm mt-2 d-none"
-                      type="text"
-                      placeholder="New node label"
-                    />
-                    <div id="tm-viz-add-edge-new-hint" class="small text-muted mt-1 d-none">
-                      A new explicit node line will be created.
-                    </div>
-                  </div>
-                </div>
-
-                <label class="form-label mb-1 mt-2" for="tm-viz-add-edge-label">Link label</label>
-                <input id="tm-viz-add-edge-label" class="form-control form-control-sm" type="text" />
-
-                <div class="row g-2 mt-2">
-                  <div class="col-4">
-                    <label class="form-label mb-1" for="tm-viz-add-edge-border-width">Border width</label>
-                    <input id="tm-viz-add-edge-border-width" class="form-range tm-range-compact" type="range" min="0" max="12" step="1" value="1" />
-                  </div>
-                  <div class="col-4">
-                    <label class="form-label mb-1" for="tm-viz-add-edge-border-style">Border style</label>
-                    <select id="tm-viz-add-edge-border-style" class="form-select form-select-sm">
-                      <option value="solid">solid</option>
-                      <option value="dotted">dotted</option>
-                      <option value="dashed">dashed</option>
-                    </select>
-                  </div>
-                  <div class="col-4">
-                    <label class="form-label mb-1" for="tm-viz-add-edge-border-color">Border colour</label>
-                    <input id="tm-viz-add-edge-border-color" class="form-control form-control-sm form-control-color" type="color" value="#6c757d" />
-                  </div>
-                </div>
-
-                <div class="d-flex gap-2 mt-3 align-items-center">
-                  <div id="tm-viz-add-edge-status" class="small text-muted me-auto"></div>
-                  <button id="tm-viz-add-edge-btn" type="button" class="btn btn-sm btn-outline-primary">Add link</button>
-                </div>
-              </details>
             </div>
 
             <!-- Grouping box (cluster) fields -->
@@ -1181,6 +1059,7 @@ A -> B [increases | 1px]</code></pre>
               </div>
 
               <div class="mt-2">
+                <label class="form-label mb-1" for="tm-viz-cluster-text-colour">Title text colour</label>
                 <input id="tm-viz-cluster-text-colour" class="form-control form-control-sm form-control-color mt-1" type="color" value="#111827" />
               </div>
 

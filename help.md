@@ -4,11 +4,6 @@
 
 Theorymaker is for creating Theories of Change and similar diagrams. 
 
-🔥💥⛔**Use another tool** if:
-- If you want a different kind of diagram, which does not simply involve multiple nodes, links and grouping boxes
-- If you want custom positions for your diagram components. Theorymaker is opinionated about positioning (auto layout). It is not freeform drag-and-drop positioning.
-- If you want fully-featured ToC software with indicators, monitoring ...
-
 😀😇🎖️**Theormaker is great because**:
 - it is good at laying out even complicated diagrams easily, finding good positions for nodes and links. 
 - it is based on a simple text “map language” called **MapScript**. 
@@ -18,7 +13,12 @@ Theorymaker is for creating Theories of Change and similar diagrams.
   - editing the underlying text in the editor
   - or any combination of these.
 
-This help is split into tabs:
+🔥💥⛔**Use another tool** if:
+- If you want a different kind of diagram, which does not simply involve multiple nodes, links and grouping boxes
+- If you want custom positions for your diagram components. Theorymaker is opinionated about positioning (auto layout). It is not freeform drag-and-drop positioning.
+- If you want fully-featured ToC software with indicators, monitoring, etc.
+
+**This help** is split into tabs:
 
 - **intro**: the basics (start here)
 - **usage**: how the app works (URL, templates, editing the diagram)
@@ -52,20 +52,6 @@ This help is split into tabs:
 
 Tip: there’s also a **Tour** button (magic wand) in the navbar.
 
-### Editor keyboard shortcuts (Ace)
-
-Most useful (Windows):
-
-- **Find**: `Ctrl+F`
-- **Replace**: `Ctrl+H`
-- **Go to line**: `Ctrl+L`
-- **Add next instance of current selection**: `Alt+Ctrl+Right`
-- **Duplicate line/selection**: `Ctrl+Shift+D`
-- **Multi-cursor (add above/below)**: `Ctrl+Alt+Up` / `Ctrl+Alt+Down`
-- **Multi-cursor (add at click)**: `Alt+Click`
-- **Toggle comment**: `Ctrl+/`
-- **Indent / outdent**: `Tab` / `Shift+Tab`
-
 ### Diagram controls (Diagram tab)
 
 Across the top of the diagram you have controls:
@@ -95,15 +81,40 @@ Tips:
 - Saved maps appear in **Templates → Saved in this browser**.
 - Saved maps can be deleted from Templates (browser-only).
 
-### Editing the diagram with clicks
+### Editing the diagram by clicking
 
 - Click a **node** to change its label/styling or delete it.
 - Click a **link** to change its endpoints/label/styling or delete it.
 - Click a **group box** to edit its title/styling.
-- **Shift+drag** a node onto a **group box** to move that node (or your current multi-selection) into that group. Drop on empty space to move it out of groups.
-  - Note: this only works for nodes that have an explicit `ID:: ...` line (implicit nodes can’t be moved into groups).
+- Click a **node** to change its label/styling or delete it.
+- Click a **link** to change its endpoints/label/styling or delete it.
+- Click a **group box** to edit its title/styling.
 
-### Styling quickly from the Editor
+### Adding and moving nodes and links with the checkboxes
+
+- To make structural changes (grouping/moving/linking), use the **checkbox selection** UI on nodes:
+  - With 1+ nodes selected: click a **node** to create link(s) (using the Selection drawer settings).
+  - With 1+ nodes selected: click a **group box** to move the selection into that group.
+  - With 1+ nodes selected: click the **diagram background** to move the selection out of groups.
+
+
+### Using the Editor
+
+#### Editor keyboard shortcuts (Ace)
+
+Most useful (Windows):
+
+- **Find**: `Ctrl+F`
+- **Replace**: `Ctrl+H`
+- **Go to line**: `Ctrl+L`
+- **Add next instance of current selection**: `Alt+Ctrl+Right`
+- **Duplicate line/selection**: `Ctrl+Shift+D`
+- **Multi-cursor (add above/below)**: `Ctrl+Alt+Up` / `Ctrl+Alt+Down`
+- **Multi-cursor (add at click)**: `Alt+Click`
+- **Toggle comment**: `Ctrl+/`
+- **Indent / outdent**: `Tab` / `Shift+Tab`
+
+#### Styling quickly from the Editor
 
 In the Editor, when your cursor is on a styleable line, a small **Style** button appears near the cursor:
 
@@ -403,11 +414,11 @@ Because `#` starts a comment in MapScript. Use named colours (e.g. `red`) or `rg
 
 Groups only contain nodes that are explicitly defined with `ID:: ...` while the group is open; links don’t “pull” nodes into groups.
 
-### Can I drag nodes into/out of groups?
+### Can I move nodes into/out of groups?
 
-Yes (pseudo drag/drop): **Shift+drag** a node onto a group box to move it into that group (if you have multiple nodes selected via the checkbox UI, dragging a selected node moves the whole selection). Drop on empty space to move the node(s) back out to top-level.
+Yes: use the **checkbox selection** UI on nodes. With 1+ nodes selected, click a group box to move them into that group; click the diagram background to move them out to top-level.
 
 Limitations:
 
 - This only works for nodes with an explicit `ID:: ...` line.
-- The target group must have a closing line (`--` / `----`) for the drop to work.
+- The target group must have a closing line (`--` / `----`) for the move to work.

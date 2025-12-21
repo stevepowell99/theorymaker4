@@ -19,6 +19,14 @@ This repo is designed to be **no-build** and easy to host as static files (Netli
 - `help/`: standalone help pages (they load `help.md`)
 - `netlify/functions/chat.js`: Netlify Function proxy for AI chat (keeps API key server-side)
 
+## Interaction model (quick)
+
+- **Styling**: click nodes / links / group boxes in the diagram to open the drawer and edit styling.
+- **Structure** (grouping / moving / linking): use the **checkbox selection** UI on nodes:
+  - With 1+ nodes selected: click a **node** to create link(s) (direction + label/style are set in the Selection drawer).
+  - With 1+ nodes selected: click a **group box** to move the selection into that group.
+  - With 1+ nodes selected: click the **diagram background** to move the selection out of groups.
+
 ## MapScript (very short)
 
 MapScript is “mostly free text” with a few key line types:
