@@ -4719,7 +4719,9 @@ function dslToDot(dslText) {
     const titleDot = dotLabelWithManualBreaks(settings.title) ?? settings.title;
     dot.push(`  label="${String(titleDot).replaceAll('"', '\\"')}\\n"; labelloc="${tp.labelloc}"; labeljust="${tp.labeljust}"; fontsize="${String(fs)}";${fc}`);
   }
-  if (settings.direction) dot.push(`  rankdir="${settings.direction}";`);
+  // Always emit a direction so Graphviz layout is consistent even when the user didn't specify Direction: ...
+  // App default is LR (left→right).
+  dot.push(`  rankdir="${settings.direction || "LR"}";`);
   // Graphviz ranksep/nodesep are in inches; MapScript values are treated as "px-ish", so scale down.
   if (Number.isFinite(settings.spacingAlong)) dot.push(`  ranksep="${settings.spacingAlong * 0.1}";`);
   if (Number.isFinite(settings.spacingAcross)) dot.push(`  nodesep="${settings.spacingAcross * 0.1}";`);
@@ -6445,6 +6447,21 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     if (e.target === hoverDeleteBtn || hoverDeleteBtn.contains(e.target)) return;
     if (e.target === hoverCheckbox || hoverCheckbox?.contains?.(e.target)) return;
 
+    // Prevent a common UX glitch: there can be a tiny "dead" gap between a node and the overlay
+    // controls (checkbox / delete X). While the pointer is moving toward the overlay, we don't
+    // want to treat that as "background" and hide everything.
+    const isPointerNearEl = (el, padPx = 10) => {
+      if (!el) return false;
+      if (!el.classList?.contains?.("tm-show")) return false;
+      const r = el.getBoundingClientRect?.();
+      if (!r) return false;
+      const x = Number(e.clientX);
+      const y = Number(e.clientY);
+      const pad = Number(padPx) || 0;
+      return x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad;
+    };
+    if (isPointerNearEl(hoverCheckbox, 14) || isPointerNearEl(hoverDeleteBtn, 14)) return;
+
     const nodeG = getClosestGraphvizGroup(e.target, "node");
     const edgeG = getClosestGraphvizGroup(e.target, "edge");
     const clusterG = getClosestGraphvizGroup(e.target, "cluster");
@@ -8031,8 +8048,8 @@ async function main() {
   const fromUrl = getMapScriptFromUrl();
   const isMobile = Boolean(globalThis.matchMedia?.("(max-width: 991.98px)")?.matches);
   const suppressAutoTour = isMobile && !fromUrl; // per request: on mobile with empty URL, don't auto-run Intro.js
-  // Default starter (when no URL): use the "Trade-offs" example from the gallery.
-  const starter = (GALLERY_EXAMPLES.find((it) => it.id === "ex-07") || GALLERY_EXAMPLES[0]).dsl;
+  // Default starter (when no URL): use example ex-03 from the gallery.
+  const starter = (GALLERY_EXAMPLES.find((it) => it.id === "ex-03") || GALLERY_EXAMPLES[0]).dsl;
 
   editor.setValue(fromUrl ?? starter, -1);
 

@@ -93,7 +93,7 @@ A -> "Side effect risk" [increases | firebrick]
 "Side effect risk" -> B [harms | firebrick]`,
   },
   {
-    id: "ex-04",
+    id: "ex-21",
     title: "Two drivers, one outcome",
       dsl: `Background: whitesmoke
 Default node colour: gainsboro
@@ -178,7 +178,7 @@ Default node shape: rounded
 # Contents
 Title: Trade-offs
 Description: One driver pushes outcomes in opposite directions (trade-off).
-
+Direction: top-bottom
 A:: Strict policy
 B:: Compliance
 C:: Flexibility
