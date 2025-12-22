@@ -280,7 +280,8 @@ A -> B
 
 Notes:
 
-- If you link to an ID that you never defined with `ID:: ...`, it still appears as a node (implicit node). Its label will just be the ID.
+- If you link to an ID that you never defined with `ID:: ...`, it still appears as a node (**implicit node**). Its label will just be the ID.
+- You can also use **free-label tokens** (with spaces) in links; they become implicit nodes too. Example: `Training quality -> Adoption` (no `::` needed).
 - **Implicit nodes are never put inside grouping boxes**. To put a node in a box (or style it, or reuse it reliably), define it explicitly with `ID:: Label`.
 
 You can create multiple links in one line using `|`:
@@ -370,6 +371,8 @@ a -> A
 ```
 Important rule (by design): **groups only contain nodes that appear as explicit alias lines (`ID:: ...`) while the box is open**. Links don’t “pull” nodes into groups.
 
+Note: when you create links to/from group boxes using the **UI**, Theorymaker can auto-create a free alias for a group that doesn’t have one yet (it writes something like `-- g3:: My group` into the MapScript). In plain MapScript text, you still need an alias to write group links like `g3 -> A`.
+
 ### 6b) Styling groups (optional)
 
 You can add a style list to a group title line:
@@ -422,6 +425,90 @@ Examples:
 2px dotted gray
 ```
 
+### 9) Advanced notes (implicit nodes, group links)
+
+Implicit nodes (created from links):
+
+- If you write `A -> B` without defining `A:: ...` and `B:: ...`, those nodes still exist (implicit).
+- If you write a **free label** like `Training quality -> Adoption`, the app creates an internal ID for it (a “slug”).
+- **Editing/deleting implicit nodes via the UI**: if you click an implicit node to edit it (or click the red delete X), Theorymaker will automatically “promote” it by inserting an explicit `ID:: Label` line near the top of the script and rewriting relevant link endpoints to use that ID. (This keeps editing and deleting consistent.)
+
+Group links (clusters):
+
+- To link to/from a group in text, give it an alias: `-- g:: My group`, then link with `g -> A` or `A -> g`.
+- The renderer draws group links using Graphviz’s cluster/compound edge routing so the arrow appears to touch the box.
+
+### 10) Rank constraints (more control over layout)
+
+Theorymaker uses auto-layout (Graphviz `dot`). You can *nudge* positioning by adding **rank constraints**.
+
+Syntax:
+
+- `rank=same: A | B | C` puts nodes on the same rank (same row/column depending on `Direction:`).
+- `rank=min: A | B` tries to pull nodes toward the “start” of the diagram.
+- `rank=max: A | B` tries to push nodes toward the “end” of the diagram.
+- `rank=source: A | B` prefers nodes as sources (few/no incoming edges).
+- `rank=sink: A | B` prefers nodes as sinks (few/no outgoing edges).
+- `rank=0: ...`, `rank=1: ...` etc create explicit “layers”:
+  - nodes within the same number share a rank
+  - lower numbers are forced to appear earlier than higher numbers
+
+Important rule (to keep groups working):
+
+- A single `rank=...:` line must refer to nodes that are **all in the same group** (or **all ungrouped**).
+- If you want to rank nodes in different groups, write **separate** `rank=...:` lines (one per group) and rely on numeric rank ordering for coarse ordering across the whole diagram.
+
+Examples:
+
+```
+Direction: left-right
+
+rank=same: Inputs | Activities | Outputs
+
+Inputs:: Inputs
+Activities:: Activities
+Outputs:: Outputs
+Inputs -> Activities -> Outputs
+```
+
+Numeric layering (explicit stages):
+
+```
+Direction: left-right
+
+rank=0: Context | Baseline
+rank=1: Inputs | Activities
+rank=2: Outputs | Outcomes
+rank=3: Impact
+
+Context:: Context
+Baseline:: Baseline
+Inputs:: Inputs
+Activities:: Activities
+Outputs:: Outputs
+Outcomes:: Outcomes
+Impact:: Impact
+
+Context | Baseline -> Inputs
+Inputs -> Activities -> Outputs -> Outcomes -> Impact
+```
+
+You can also reference a **group alias** in ranks (it resolves to the first node inside that group):
+
+```
+Direction: left-right
+
+-- a:: Drivers
+A:: Training quality
+--
+-- b:: Outcomes
+B:: Adoption
+--
+
+rank=same: a | b
+a -> b
+```
+
 ## FAQ
 
 ### How do I force a line break in a label?
@@ -448,3 +535,16 @@ Limitations:
 
 - This only works for nodes with an explicit `ID:: ...` line.
 - The target group must have a closing line (`--` / `----`) for the move to work.
+
+### How do I link to/from a group box?
+
+- In MapScript: give the group an alias with `-- g:: Group title`, then use it like a node in links: `g -> A` or `A -> g`.
+- In the UI: you can click group boxes as link targets. If a box has no alias yet, Theorymaker may auto-create one (you’ll see a `g1`, `g2`, … alias added to the group line).
+
+### How do I clear selection / close drawers quickly?
+
+Press **Esc**. It clears all selections and closes the selection/group drawers.
+
+### When I delete a node, why are some links still there?
+
+If your links use the multi-link `|` syntax (e.g. `A | X -> B | C`), deleting `X` removes it from inside that line (resulting in `A -> B | C`). If removing the node would leave a link with no sources or no targets, the whole link line is removed.
