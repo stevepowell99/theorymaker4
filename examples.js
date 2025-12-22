@@ -86,13 +86,11 @@ Spacing across: 3
 Title: Implicit nodes
 Description: Implicit nodes created from quoted labels; mixed positive/negative links.
 
-A:: Intervention A
-B:: Measured outcome
 
-A -> "Better compliance"
-"Better compliance" -> B [improves | dashed peru]
-A -> "Side effect risk" [increases | firebrick]
-"Side effect risk" -> B [harms | firebrick]`,
+Intervention -> Compliance [improves | dashed peru]
+Intervention -> SideEffectRisk [increases | firebrick]
+Compliance -> Outcome [improves | dashed peru]
+SideEffectRisk -> Outcome [harms | firebrick]`,
   },
   {
     id: "ex-04",
@@ -151,29 +149,83 @@ team -> C [supports | dotted seagreen]`,
   },
   {
     id: "ex-06",
-    title: "Feedback loop (conceptual)",
-    dsl: `# Styles
-Background: rgb(11, 16, 32)
-Default node colour: rgb(31, 242, 168)
+    title: "School Attendance",
+      dsl: `Background: rgb(255,255,255)
+Text colour: rgb(17,24,39)
+Default node text colour: rgb(17,24,39)
+Default group text colour: rgb(17,24,39)
+Title size: 18
+Title position: bottom-right
+Default node colour: rgb(231,245,255)
 Default node shape: rounded
-Default node border: 1px solid rgb(158, 197, 254)
-Default node shadow: medium
-Direction: left-right
-Label wrap: 18
+
+Default node border: 1px solid rgb(30,144,255)
+Default link colour: rgb(105,105,105)
+Direction: TB
+Label wrap: 31
 Spacing along: 4
 Spacing across: 3
 
-# Contents
-Title: Reinforcing loop
-Description: A small cycle (feedback loop) with a dark theme.
+Title: Systemic Strategy for Student Attendance
 
-A:: Motivation
-B:: Practice time
-C:: Skill
+--Root Causes (The Iceberg) [colour=snow | border=1px dashed gray]
+MM:: 🧠 Parental Worldview: Schooling perceived as low-value
+GN:: ⚖️ Rigid Gender Norms: Boys to work, Girls for domestic labor
+EC:: 💰 Economic Stress: Immediate need for family contribution
+--
 
-A -> B [increases | rgb(158, 197, 254)]
-B -> C [builds | rgb(158, 197, 254)]
-C -> A [reinforces | rgb(158, 197, 254)]`,
+# Root Cause Feedback Loops
+EC -> GN [poverty forces traditional labor roles | dotted rgb(225,14,14)]
+GN -> MM [normalizes exclusion from school | dotted rgb(225,14,14)]
+MM -> EC [lowers perceived ROI of education vs labor | dotted rgb(225,14,14)]
+
+Attendance:: 🎓 Student Attendance & Participation [colour=aliceblue | border=2px solid seagreen | text size=1.2]
+
+--Stakeholders
+PA:: 👥 Parents' Association
+TR:: 🍎 Supportive Teachers
+HT:: 👔 Conservative Head Teacher
+--
+
+--Interventions (The Searchframe) [colour=rgb(240,248,255)]
+Coalition:: 🤝 Action Group (👥 + 🍎)
+CoDesign:: 🎨 Participatory Co-Design: Parents, Head and Teachers create solutions
+MutualAid:: 🤝 Community Mutual Aid: Buffering economic shocks
+SmallBets:: 🛠️ Iterative Pilots (Vocational, Clubs, Support)
+Feedback:: 🔄 Real-time Learning: Weekly reflection on what works
+--
+
+--Systemic Shifts
+Authority:: 👔 Head Teacher Buy-in [colour=honeydew]
+Agency:: ✊ Community Deciding Authority: PA has discretion over solutions
+Engagement:: 🏫 Inclusive Classroom Environment
+Support:: 🏠 Community-led Childcare/Work-study balance
+co_create_improvement_strategy:: Co-create improvement strategy
+--
+
+# Negative Feedback
+MM | GN | EC -> Attendance [decreases | rgb(225,14,14)]
+
+# Systemic Intervention Logic
+PA | TR -> Coalition
+Coalition -> CoDesign [Moving beyond data to shared creation]
+CoDesign -> SmallBets [Testing multiple promising activities]
+SmallBets -> Feedback [Rapid cycles of action/reflection]
+Feedback -> CoDesign [Iterative adjustment]
+
+# Shifting the Iceberg
+CoDesign -> Agency [Building local power]
+Agency -> Authority [Collective power moves the HT]
+Feedback -> MM [Proof of value shifts worldviews | 3px dashed rgb(30,144,255)]
+MutualAid -> EC [Addressing root economic drivers]
+
+# Impact Path
+Authority -> Engagement
+MutualAid -> Support
+Support | Engagement -> Attendance [increases | 2px solid seagreen]
+Authority -> co_create_improvement_strategy
+co_create_improvement_strategy -> Engagement
+CoDesign -> Authority`,
 },
 {
     id: "ex-07",

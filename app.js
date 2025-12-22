@@ -9394,7 +9394,7 @@ async function main() {
   const isMobile = Boolean(globalThis.matchMedia?.("(max-width: 991.98px)")?.matches);
   const suppressAutoTour = isMobile && !fromUrl; // per request: on mobile with empty URL, don't auto-run Intro.js
   // Default starter (when no URL): use example ex-03 from the gallery.
-  const starter = (GALLERY_EXAMPLES.find((it) => it.id === "ex-03") || GALLERY_EXAMPLES[0]).dsl;
+  const starter = (GALLERY_EXAMPLES.find((it) => it.id === "ex-06") || GALLERY_EXAMPLES[0]).dsl;
 
   editor.setValue(fromUrl ?? starter, -1);
 
