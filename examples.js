@@ -23,9 +23,9 @@ Description: Groups + multi-source/multi-target links, plus per-node styling.
 
 ## Nodes (and groups)
 A:: New policy rollout[colour=red | border=1px solid blue]
---Outcomes
+-- out:: Outcomes
 B:: Customer adoption
-----Operational load
+---- ops:: Operational load
 C:: Support tickets
 --
 F:: Budget constraint
@@ -39,7 +39,9 @@ E:: Delivery speed
 A -> B | C
 Q -> D | E
 P -> D 
-P -> E [improves]`,
+P -> E [improves]
+out -> F
+ops -> F [may increase | dashed seagreen]`,
   },
   {
     id: "ex-02",
@@ -93,7 +95,7 @@ A -> "Side effect risk" [increases | firebrick]
 "Side effect risk" -> B [harms | firebrick]`,
   },
   {
-    id: "ex-21",
+    id: "ex-04",
     title: "Two drivers, one outcome",
       dsl: `Background: whitesmoke
 Default node colour: gainsboro
@@ -103,16 +105,18 @@ Default node shape: rounded
 Title: Drivers → outcomes
 Description: Shows how to create multiple links: Cross-product using | on sources and targets, with simple clusters.
 
---Drivers
+-- drv:: Drivers
 A:: Training quality
 B:: Tool usability
 --
---Outcomes
+-- out:: Outcomes
 C:: Adoption
 D:: Error rate
 --
 
-A | B -> C | D`,
+A | B -> C | D
+drv -> out
+drv -> C`,
   },
   {
     id: "ex-05",
@@ -132,16 +136,18 @@ Spacing across: 3
 Title: Nested groups
 Description: Two-level nesting with explicit group closing markers.
 
---Organisation
+-- org:: Organisation
 A:: Policy
-----Team
+---- team:: Team
 B:: Habits
 ----  # end inner
 --    # end outer
 C:: Result
 
 A -> B
-B -> C [supports | dashed seagreen]`,
+B -> C [supports | dashed seagreen]
+org -> C
+team -> C [supports | dotted seagreen]`,
   },
   {
     id: "ex-06",
@@ -338,11 +344,11 @@ Spacing across: 4
 Title: Overview vs detail
 Description: Separate overview vs detail using clusters; multiple paths between them.
 
---Overview
+-- ov:: Overview
 A:: Strategy
 B:: Delivery
 --
---Detail
+-- det:: Detail
 C:: Planning
 D:: Execution
 --
@@ -350,7 +356,9 @@ D:: Execution
 A -> B
 A -> C
 C -> D
-D -> B`,
+D -> B
+ov -> det
+det -> B`,
   },
   {
     id: "ex-14",
@@ -448,20 +456,20 @@ Spacing across: 3
 Title: CHWs → maternal & newborn health
 Description: Realistic ToC with clusters and explicit constraints (health system + transport).
 
---Intervention
+-- int:: Intervention
 A:: Train & equip community health workers
 B:: Home visits + counselling
 --
---Mechanisms
+-- mech:: Mechanisms
 C:: Knowledge of danger signs
 D:: Birth preparedness
 E:: Referral & care-seeking
 --
---Health system constraints
+-- sys:: Health system constraints
 F:: Facility readiness (staff, supplies)
 G:: Transport access
 --
---Outcomes
+-- out:: Outcomes
 H:: Antenatal care attendance
 I:: Skilled birth attendance
 J:: Maternal & neonatal complications
@@ -473,7 +481,9 @@ C | D -> E [increases | dodgerblue]
 E -> H | I [increases | dodgerblue]
 H | I -> J [reduces | seagreen]
 F -> H | I [limits | dashed tomato]
-G -> E [limits | dashed tomato]`,
+G -> E [limits | dashed tomato]
+int -> out
+sys -> out [limits | dashed tomato]`,
   },
   {
     id: "ex-18",
@@ -676,6 +686,56 @@ K -> L [improves | seagreen]
 H -> E [reduces | dashed tomato]
 I -> C [reduces use | dashed tomato]
 J -> K [limits | dashed tomato]`,
+  },
+  {
+    id: "ex-22",
+    title: "Group links (minimal)",
+    dsl: `# Styles
+Background: white
+Default node shape: rounded
+Direction: left-right
+
+# Contents
+Title: Group links (minimal)
+Description: Link group-to-group and group-to-node using group aliases.
+
+-- a:: Drivers
+A:: Training quality
+B:: Tool usability
+--
+-- c:: Outcomes
+C:: Adoption
+--
+
+a -> c
+a -> C`,
+  },
+  {
+    id: "ex-23",
+    title: "Group links + styling",
+    dsl: `# Styles
+Background: whitesmoke
+Default node colour: white
+Default node shape: rounded
+Default node border: 1px solid dimgray
+Default link colour: dimgray
+Default link style: dashed
+Direction: left-right
+
+# Contents
+Title: Group links + styling
+Description: Group→group and node→group links, styled like normal links.
+
+-- src:: Sources [colour=aliceblue | border=2px solid dodgerblue | text colour=midnightblue]
+S1:: Intervention
+S2:: Constraint
+--
+-- tgt:: Targets [colour=honeydew | border=2px solid seagreen | text colour=darkgreen]
+T1:: Outcome
+--
+
+src -> tgt [supports | solid seagreen]
+S2 -> tgt [limits | dashed tomato]`,
   },
 ];
 

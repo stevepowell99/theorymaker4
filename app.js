@@ -177,7 +177,9 @@ function positionVizDrawerAgainstDiagram(drawerEl, { topOffsetPx = 100 } = {}) {
 
   const w = el.offsetWidth || 360;
   const vizRect = vizWrap.getBoundingClientRect();
-  const openX = Math.max(0, Math.round(vizRect.left - w));
+  // Don't clamp to 0: when drawers are wider than the space to the diagram,
+  // it's better to overflow off-screen to the left than overlap the diagram.
+  const openX = Math.round(vizRect.left - w);
 
   el.style.setProperty("--tm-viz-drawer-open-x", `${openX}px`);
   el.style.setProperty("--tm-viz-drawer-top", `${Math.round(vizRect.top + Number(topOffsetPx || 0))}px`);
@@ -1230,6 +1232,7 @@ function initAceLineStylePopover({ editor, graphviz }) {
 
       setClusterDefLineAt(lines, parsed.idx, {
         dashes: parsed.dashes,
+        alias: parsed.alias,
         label: parsed.label,
         styleInner: nextInner,
         comment: parsed.comment,
@@ -3027,6 +3030,29 @@ function slugId(s) {
     .slice(0, 40) || "node";
 }
 
+function parseClusterAliasTitle(labelText) {
+  // Purpose: support optional group alias syntax: "-- a:: Group title"
+  // If present, returns { alias: "a", title: "Group title" }.
+  // Otherwise returns { alias: "", title: <labelText> }.
+  const s = String(labelText || "").trim();
+  const m = s.match(/^([A-Za-z]\w*)\s*::\s*(.*)$/);
+  if (!m) return { alias: "", title: s };
+  return { alias: String(m[1] || "").trim(), title: String(m[2] || "").trim() };
+}
+
+function isInternalClusterAnchorNodeId(nodeId) {
+  return String(nodeId || "").startsWith("__cluster_anchor_");
+}
+
+function clusterAliasFromAnchorNodeId(nodeId) {
+  // Purpose: map internal invisible anchor node ids back to the user-facing group alias token.
+  // "__cluster_anchor_a" -> "a"
+  const s = String(nodeId || "").trim();
+  const prefix = "__cluster_anchor_";
+  if (!s.startsWith(prefix)) return s;
+  return s.slice(prefix.length).trim();
+}
+
 function domSafeToken(s) {
   // Used only for DOM ids embedded into Graphviz SVG output.
   // Keep it simple and deterministic: alnum only, other chars -> "_".
@@ -3933,7 +3959,7 @@ function normalizeDslRemoveRedundantSpecs(dsl, settings) {
 
       const nextInner = kept.join(" | ").trim();
       if (nextInner !== cl.styleInner) {
-        setClusterDefLineAt(lines, cl.idx, { dashes: cl.dashes, label: cl.label, styleInner: nextInner, comment: cl.comment });
+        setClusterDefLineAt(lines, cl.idx, { dashes: cl.dashes, alias: cl.alias, label: cl.label, styleInner: nextInner, comment: cl.comment });
         changed = true;
       }
       continue;
@@ -4352,9 +4378,25 @@ function dslToDot(dslText) {
 
   const nodes = new Map(); // id -> { label, attrs }
   const autoLabelNodes = new Map(); // id -> label (from edges)
-  const edges = []; // { fromId, toId, attrs, srcLineNo }
-  const clusters = []; // { id, label, depth, styleInner, srcLineNo, nodeIds: [], children: [] }
+  const rawEdges = []; // { fromToken, toToken, attrs, srcLineNo }
+  const clusters = []; // { id, alias, label, depth, styleInner, srcLineNo, nodeIds: [], children: [], anchorId }
   const clusterStack = []; // stack of clusters (nested)
+  const clusterByAlias = new Map(); // alias -> cluster
+  const explicitNodeIds = new Set(); // ids defined via "ID:: Label" (used to detect alias collisions)
+
+  function clusterFirstNodeId(c) {
+    // Purpose: pick a stable "attachment node" inside a cluster so group->* edges don't need a synthetic anchor.
+    // Preference: first direct node; else first descendant node; else "".
+    if (!c) return "";
+    const direct = Array.isArray(c.nodeIds) ? c.nodeIds.find(Boolean) : "";
+    if (direct) return direct;
+    const kids = Array.isArray(c.children) ? c.children : [];
+    for (const child of kids) {
+      const got = clusterFirstNodeId(child);
+      if (got) return got;
+    }
+    return "";
+  }
 
   function ensureNode(token) {
     const raw = token.trim();
@@ -4455,19 +4497,32 @@ function dslToDot(dslText) {
         clusterStack.pop();
       }
 
+    const { alias, title } = parseClusterAliasTitle(rest);
+    if (alias) {
+      if (clusterByAlias.has(alias)) {
+        errors.push(`Line ${i + 1}: group alias "${alias}" is already used by another group`);
+      }
+      if (explicitNodeIds.has(alias) || nodes.has(alias)) {
+        errors.push(`Line ${i + 1}: group alias "${alias}" conflicts with an existing node id; please rename one of them`);
+      }
+    }
+
       const c = {
         id: `cluster_${clusters.length}`,
-        label: rest,
+      alias,
+      label: title,
         depth,
         styleInner: bracket ? bracket.slice(1, -1).trim() : "",
         srcLineNo: i + 1,
         nodeIds: [],
         children: [],
+      anchorId: alias ? `__cluster_anchor_${alias}` : "",
       };
 
       const parent = clusterStack[clusterStack.length - 1] || null;
       if (parent) parent.children.push(c);
       clusters.push(c);
+    if (alias && !clusterByAlias.has(alias)) clusterByAlias.set(alias, c);
       clusterStack.push(c);
       continue;
     }
@@ -4520,6 +4575,10 @@ function dslToDot(dslText) {
       if (!id) {
         errors.push(`Line ${i + 1}: could not parse node id`);
         continue;
+      }
+      explicitNodeIds.add(id);
+      if (clusterByAlias.has(id)) {
+        errors.push(`Line ${i + 1}: node id "${id}" conflicts with an existing group alias; please rename one of them`);
       }
 
       const n = nodes.get(id);
@@ -4658,13 +4717,9 @@ function dslToDot(dslText) {
       }
 
       for (const s of sources) {
-        const fromId = ensureNode(s);
-        if (!fromId) continue;
         for (const t of targets) {
-          const toId = ensureNode(t);
-          if (!toId) continue;
           // IMPORTANT: clone attrs so per-edge ids or later changes don't mutate other edges from the same line.
-          edges.push({ fromId, toId, attrs: { ...edgeAttrs }, srcLineNo: i + 1 });
+          rawEdges.push({ fromToken: s, toToken: t, attrs: { ...edgeAttrs }, srcLineNo: i + 1 });
         }
       }
 
@@ -4680,7 +4735,13 @@ function dslToDot(dslText) {
   // Keep a little breathing room so the graph title doesn't visually "sit inside" an outer cluster box,
   // especially when the first/top cluster has an empty label.
   // (Graphviz pad is inches; keep this subtle to avoid layout shifts.)
-  dot.push(`  graph${toDotAttrs({ fontname: "Arial", ...(settings.title && clusters.length ? { pad: "0.20" } : {}) })};`);
+  dot.push(
+    `  graph${toDotAttrs({
+      fontname: "Arial",
+      ...(settings.title && clusters.length ? { pad: "0.20" } : {}),
+      ...(clusters.length ? { compound: "true" } : {}),
+    })};`
+  );
   const nodeDefaults = { fontname: "Arial", shape: "box" };
   if (settings.defaultNodeTextColour) nodeDefaults.fontcolor = settings.defaultNodeTextColour;
   dot.push(`  node${toDotAttrs(nodeDefaults)};`);
@@ -4838,6 +4899,21 @@ function dslToDot(dslText) {
     if (clusterAttrs.fontcolor) dot.push(`${indent}  fontcolor="${String(clusterAttrs.fontcolor).replaceAll('"', '\\"')}";`);
     if (clusterAttrs.fontsize) dot.push(`${indent}  fontsize="${String(clusterAttrs.fontsize).replaceAll('"', '\\"')}";`);
 
+    // If this group has an alias but contains no nodes at all (even nested), emit an invisible anchor node.
+    // Purpose: allow edges to/from the group border using Graphviz compound edges (lhead/ltail) for empty groups.
+    if (c.anchorId && !clusterFirstNodeId(c)) {
+      dot.push(
+        `${indent}  "${c.anchorId}"${toDotAttrs({
+          label: "",
+          shape: "point",
+          fixedsize: "true",
+          width: "0",
+          height: "0",
+          style: "invis",
+        })};`
+      );
+    }
+
     for (const id of c.nodeIds) {
       clustered.add(id);
       const n = nodes.get(id);
@@ -4871,6 +4947,31 @@ function dslToDot(dslText) {
     attrs.label = wrapLabelToDot(n.label, settings.labelWrap);
     attrs.id = makeNodeDomId(id);
     dot.push(`  "${id}"${toDotAttrs(attrs)};`);
+  }
+
+  // Resolve edges (support group aliases via lhead/ltail + anchor nodes)
+  const edges = []; // { fromId, toId, attrs, srcLineNo }
+  for (const e of rawEdges) {
+    const fromTok = String(e.fromToken || "").trim();
+    const toTok = String(e.toToken || "").trim();
+    if (!fromTok || !toTok) continue;
+
+    const fromCluster = clusterByAlias.get(fromTok) || null;
+    const toCluster = clusterByAlias.get(toTok) || null;
+
+    const fromAttach = fromCluster ? (clusterFirstNodeId(fromCluster) || fromCluster.anchorId) : "";
+    const toAttach = toCluster ? (clusterFirstNodeId(toCluster) || toCluster.anchorId) : "";
+    const fromId = fromCluster ? fromAttach : ensureNode(fromTok);
+    const toId = toCluster ? toAttach : ensureNode(toTok);
+    if (!fromId || !toId) continue;
+
+    const attrs = { ...e.attrs };
+    if (fromCluster) attrs.ltail = fromCluster.id;
+    if (toCluster) attrs.lhead = toCluster.id;
+    // Keep layout sane: don't overweight cluster edges in ranking, but don't disable constraints entirely.
+    if (fromCluster || toCluster) attrs.weight = "0";
+
+    edges.push({ fromId, toId, attrs, srcLineNo: e.srcLineNo });
   }
 
   // Emit edges
@@ -5002,13 +5103,15 @@ function parseClusterDefLineAt(lines, idx) {
   const rest = String(m[2] || "").trim();
   const hasBracket = hasTrailingBracket(rest);
   const { before: labelPart, inner: styleInner } = parseTrailingBracket(rest);
-  const label = String(labelPart || "").trim();
+  const { alias, title } = parseClusterAliasTitle(String(labelPart || "").trim());
+  const label = title;
   // Close marker is *only* "--" / "----" with nothing else. Untitled opener must be "--[]"/"--[...]" etc.
   if (!label && !hasBracket) return null;
   return {
     idx,
     comment,
     dashes,
+    alias,
     label,
     styleInner: String(styleInner || "").trim(),
   };
@@ -5043,7 +5146,9 @@ function scanClusterOpenersFromLines(lines) {
     const rest = String(m[2] || "").trim();
     const hasBracket = hasTrailingBracket(rest);
     const { before: labelPart, inner: styleInnerRaw } = parseTrailingBracket(rest);
-    const label = String(labelPart || "").trim();
+    const parsed = parseClusterAliasTitle(String(labelPart || "").trim());
+    const alias = parsed.alias;
+    const label = parsed.title;
     const styleInner = String(styleInnerRaw || "").trim();
     const isClose = !label && !hasBracket;
     if (isClose) {
@@ -5055,16 +5160,17 @@ function scanClusterOpenersFromLines(lines) {
     const parentDepth = depth - 2;
     while (stack.length && stack[stack.length - 1].depth > parentDepth) stack.pop();
 
-    openers.push({ idx: i, comment, dashes, label, styleInner, depth });
+    openers.push({ idx: i, comment, dashes, alias, label, styleInner, depth });
     stack.push({ depth });
   }
 
   return openers;
 }
 
-function setClusterDefLineAt(lines, idx, { dashes, label, styleInner, comment }) {
+function setClusterDefLineAt(lines, idx, { dashes, alias, label, styleInner, comment }) {
   const c = String(comment || "").trim();
   const commentSuffix = c ? ` ${c}` : "";
+  const a = String(alias || "").trim();
   const lbl = String(label ?? "").trim();
   const inner = String(styleInner ?? "").trim();
   // If the user clears the label AND has no style attrs, force an explicit empty bracket ("[]")
@@ -5073,7 +5179,8 @@ function setClusterDefLineAt(lines, idx, { dashes, label, styleInner, comment })
   const bracket = inner || needEmptyBracket ? `[${inner}]` : "";
   const sep = bracket ? (lbl ? " " : "") : "";
   // Note: MapScript group opener is "--Label" (no space). Untitled opener is "--[]".
-  lines[idx] = `${String(dashes || "").trim()}${lbl}${sep}${bracket}${commentSuffix}`.trimEnd();
+  const aliasPrefix = a ? `${a}:: ` : "";
+  lines[idx] = `${String(dashes || "").trim()}${aliasPrefix}${lbl}${sep}${bracket}${commentSuffix}`.trimEnd();
   return true;
 }
 
@@ -5434,8 +5541,9 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   const vizWrapEl = vizEl.closest(".tm-viz-wrap");
   const openTitleModal = typeof opts?.openTitleModal === "function" ? opts.openTitleModal : null;
 
-  // Track selected nodes for multi-select
+  // Track selected nodes/groups for multi-select
   const selectedNodes = new Set();
+  const selectedClusters = new Set(); // clusterId ("cluster_0", ...)
 
   // Hover glow (subtle highlight) for clickable-to-edit diagram elements.
   let hoverGlowEl = null; // SVG element with .tm-viz-hover-glow applied
@@ -5478,6 +5586,19 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   }
   const checkboxInput = hoverCheckbox.querySelector("input");
 
+  // Hover-only checkbox for multi-select of groups (clusters)
+  let hoverClusterCheckbox = document.getElementById("tm-viz-hover-cluster-checkbox");
+  if (!hoverClusterCheckbox) {
+    hoverClusterCheckbox = document.createElement("label");
+    hoverClusterCheckbox.id = "tm-viz-hover-cluster-checkbox";
+    hoverClusterCheckbox.className = "btn btn-sm btn-outline-success tm-viz-hover-cluster-checkbox";
+    hoverClusterCheckbox.innerHTML = '<input type="checkbox" />';
+    hoverClusterCheckbox.setAttribute("aria-label", "Click to select group box for linking/styling");
+    hoverClusterCheckbox.title = "Click to select group box for linking/styling";
+    vizEl.appendChild(hoverClusterCheckbox);
+  }
+  const clusterCheckboxInput = hoverClusterCheckbox.querySelector("input");
+
   const DEFAULT_VIZ_HINT = "Hover over the diagram to edit it";
 
   function setVizHint(msg) {
@@ -5503,6 +5624,11 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     setVizHint("Click checkbox to select nodes (then add links/nodes or move into/out of groups)");
   });
   hoverCheckbox?.addEventListener?.("mouseleave", clearVizHint);
+
+  hoverClusterCheckbox?.addEventListener?.("mouseenter", () => {
+    setVizHint("Click checkbox to select group box(es) (then link to nodes or other groups)");
+  });
+  hoverClusterCheckbox?.addEventListener?.("mouseleave", clearVizHint);
 
   // Initial (idle) hint.
   clearVizHint();
@@ -5531,6 +5657,18 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   const clusterBcInput = document.getElementById("tm-viz-cluster-border-color");
   const clusterTextColourInput = document.getElementById("tm-viz-cluster-text-colour");
   const clusterTextSizeInput = document.getElementById("tm-viz-cluster-text-size");
+  // Cluster link controls (inside the cluster drawer)
+  const clusterLinkControls = document.getElementById("tm-viz-cluster-link-controls");
+  const clusterLinkDirOut = document.getElementById("tm-viz-cluster-link-dir-out");
+  const clusterLinkDirIn = document.getElementById("tm-viz-cluster-link-dir-in");
+  const clusterLinkLabelInput = document.getElementById("tm-viz-cluster-link-label");
+  const clusterLinkBorderEnabled = document.getElementById("tm-viz-cluster-link-border-enabled");
+  const clusterLinkBorderControls = document.getElementById("tm-viz-cluster-link-border-controls");
+  const clusterLinkBwInput = document.getElementById("tm-viz-cluster-link-border-width");
+  const clusterLinkBsSel = document.getElementById("tm-viz-cluster-link-border-style");
+  const clusterLinkBcInput = document.getElementById("tm-viz-cluster-link-border-color");
+  const clusterLinkNewLabelsWrap = document.getElementById("tm-viz-cluster-link-new-labels");
+  const clusterLinkCreateNewBtn = document.getElementById("tm-viz-cluster-link-create-new-btn");
   const edgeLabelInput = document.getElementById("tm-viz-edge-label");
   const edgeFromSel = document.getElementById("tm-viz-edge-from");
   const edgeToSel = document.getElementById("tm-viz-edge-to");
@@ -5550,10 +5688,108 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     modalEl?.classList?.remove?.("tm-open");
   }
 
+  // -----------------------------
+  // Group selection drawer behavior (uses the existing tm-viz-edit-modal)
+  // -----------------------------
+  let bulkClusterDirty = { fill: false, border: false, textColour: false, textSize: false };
+  function resetBulkClusterDirty() {
+    bulkClusterDirty = { fill: false, border: false, textColour: false, textSize: false };
+  }
+
+  // Cluster drawer accordion panels (match node drawer behavior)
+  const clusterAccStylePanel = document.getElementById("tm-viz-cluster-acc-style");
+  const clusterAccLinksPanel = document.getElementById("tm-viz-cluster-acc-links");
+  function openClusterAccordionPanel(which) {
+    const bsC = globalThis.bootstrap?.Collapse || null;
+    if (!bsC) return;
+    if (!clusterAccStylePanel || !clusterAccLinksPanel) return;
+    const w = String(which || "").trim().toLowerCase();
+    if (w === "links") {
+      bsC.getOrCreateInstance(clusterAccLinksPanel).show();
+      bsC.getOrCreateInstance(clusterAccStylePanel).hide();
+      return;
+    }
+    bsC.getOrCreateInstance(clusterAccStylePanel).show();
+    bsC.getOrCreateInstance(clusterAccLinksPanel).hide();
+  }
+
+  function clearNodeSelection() {
+    if (selectedNodes.size === 0) return;
+    selectedNodes.clear();
+    updateDeleteSelectedButton();
+    syncSelectionNodeEditor();
+    applyMultiSelectVisuals();
+  }
+
+  function clearClusterSelection() {
+    if (selectedClusters.size === 0) return;
+    selectedClusters.clear();
+    resetBulkClusterDirty();
+    closeEditDrawer();
+    applyMultiSelectVisuals();
+  }
+
+  function openClusterSelectionDrawer(openPanel = "style") {
+    // Purpose: open the cluster drawer when one or more groups are selected.
+    if (selectedClusters.size === 0) return;
+    clearNodeSelection(); // keep modes separate to avoid confusing interactions
+
+    openEditDrawer();
+    if (modalTitle) modalTitle.textContent = selectedClusters.size === 1 ? "Edit group box" : "Edit group boxes";
+    if (modalMeta) modalMeta.textContent = `${selectedClusters.size} selected`;
+    nodeFields?.classList.add("d-none");
+    edgeFields?.classList.add("d-none");
+    clusterFields?.classList.remove("d-none");
+
+    const lines = editor.getValue().split(/\r?\n/);
+    const clustersById = buildClustersByIdFromLines(lines);
+
+    // Populate widgets from the first selected cluster (as a starting point).
+    const firstId = Array.from(selectedClusters)[0] || "";
+    const c = firstId ? clustersById.get(firstId) : null;
+    if (!c) return;
+
+    suppressLiveApply = true;
+    try {
+      resetBulkClusterDirty();
+      if (clusterLabelInput) {
+        clusterLabelInput.value = c.label || "";
+        clusterLabelInput.disabled = selectedClusters.size !== 1;
+      }
+
+      const fromAttrs = styleInnerToClusterUi(c.styleInner || "") || {};
+      const baselineFillHex = (fromAttrs.fillHex || getDiagramBackgroundHexFromEditor(editor.getValue()) || "#ffffff").toLowerCase();
+      if (clusterFillInput) clusterFillInput.value = baselineFillHex;
+      const baselineBorderUi = fromAttrs.borderUi || { width: 1, style: "solid", colorHex: "#cccccc" };
+      if (clusterBwInput) clusterBwInput.value = String(baselineBorderUi.width ?? 1);
+      if (clusterBsSel) clusterBsSel.value = String(baselineBorderUi.style || "solid");
+      if (clusterBcInput) clusterBcInput.value = String(baselineBorderUi.colorHex || "#cccccc");
+      const baselineTextHex = (fromAttrs.textColourHex || getDefaultGroupTextHexFromEditor(editor.getValue()) || "#111827").toLowerCase();
+      if (clusterTextColourInput) clusterTextColourInput.value = baselineTextHex;
+      const baselineTextSizeScale = Number.isFinite(fromAttrs.textSizeScale) ? Number(fromAttrs.textSizeScale) : 1;
+      if (clusterTextSizeInput) clusterTextSizeInput.value = String(baselineTextSizeScale);
+    } finally {
+      suppressLiveApply = false;
+    }
+
+    selection =
+      selectedClusters.size === 1
+        ? { type: "cluster", clusterId: firstId }
+        : { type: "cluster_bulk", clusterIds: Array.from(selectedClusters) };
+    baseline = null;
+    setActions({ save: true, del: false, message: selectedClusters.size === 1 ? "" : "Bulk edit: styling changes apply to all selected group boxes (title disabled)." });
+    openClusterAccordionPanel(openPanel);
+  }
+
   // Selection drawer (opens when nodes are multi-selected via checkboxes)
   const selDrawerEl = document.getElementById("tm-viz-selection-drawer");
   const selDrawerMeta = document.getElementById("tm-viz-selection-meta");
   const selDrawerCloseBtn = document.getElementById("tm-viz-selection-close");
+  const selNodeEditHint = document.getElementById("tm-viz-selection-node-edit-hint");
+  const selNodeEditDisabled = document.getElementById("tm-viz-selection-node-edit-disabled");
+  const selAccNodePanel = document.getElementById("tm-viz-selection-acc-node");
+  const selAccSelPanel = document.getElementById("tm-viz-selection-acc-sel");
+  const bsCollapse = globalThis.bootstrap?.Collapse || null;
   const selLinkControls = document.getElementById("tm-viz-selection-link-controls");
   const selLinkDirOut = document.getElementById("tm-viz-selection-link-dir-out");
   const selLinkDirIn = document.getElementById("tm-viz-selection-link-dir-in");
@@ -5575,6 +5811,12 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
   // Baseline values captured when the modal opens; used to write ONLY changed attrs (and remove duplicates/redundant overrides).
   let baseline = null;
+
+  // Bulk node styling: track which controls the user actually changed (so we don't overwrite other styling by accident).
+  let bulkNodeDirty = { fill: false, border: false, rounded: false, textSize: false };
+  function resetBulkNodeDirty() {
+    bulkNodeDirty = { fill: false, border: false, rounded: false, textSize: false };
+  }
 
   // Keep checkbox sizing/placement consistent (hover checkbox + per-node selection checkboxes).
   const TM_NODE_CHECKBOX_BOX_PX = 20;
@@ -5644,11 +5886,16 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     if (hoverCheckbox?.dataset) delete hoverCheckbox.dataset.tmNodeId;
   }
 
+  function hideHoverClusterCheckbox() {
+    hoverClusterCheckbox?.classList?.remove("tm-show");
+    if (hoverClusterCheckbox?.dataset) delete hoverClusterCheckbox.dataset.tmClusterId;
+  }
+
   function showHoverCheckboxAtSvgGroup(gEl, nodeId) {
     if (!hoverCheckbox || !gEl) return;
     // Purpose: once we are in multi-select mode (per-node checkboxes are shown),
     // the hover-only checkbox becomes redundant and visually noisy.
-    if (selectedNodes.size > 0) {
+    if (selectedNodes.size > 0 || selectedClusters.size > 0) {
       hideHoverCheckbox();
       return;
     }
@@ -5676,6 +5923,30 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     hoverCheckbox.classList.add("tm-show");
   }
 
+  function showHoverClusterCheckboxAtSvgGroup(gEl, clusterId) {
+    if (!hoverClusterCheckbox || !gEl) return;
+    // If any selection exists, hover-only checkbox becomes redundant/noisy.
+    if (selectedNodes.size > 0 || selectedClusters.size > 0) {
+      hideHoverClusterCheckbox();
+      return;
+    }
+    const vizRect = vizEl.getBoundingClientRect();
+    const r = gEl.getBoundingClientRect();
+    const x = r.left - vizRect.left + vizEl.scrollLeft + 2;
+    hoverClusterCheckbox.style.visibility = "hidden";
+    hoverClusterCheckbox.classList.add("tm-show");
+    const bh = hoverClusterCheckbox.offsetHeight || TM_NODE_CHECKBOX_BOX_PX;
+    hoverClusterCheckbox.style.visibility = "";
+    const y = r.top - vizRect.top + vizEl.scrollTop + r.height * 0.5 - bh / 2;
+
+    hoverClusterCheckbox.style.left = `${Math.max(0, x)}px`;
+    hoverClusterCheckbox.style.top = `${Math.max(0, y)}px`;
+
+    if (clusterCheckboxInput) clusterCheckboxInput.checked = selectedClusters.has(clusterId);
+    if (hoverClusterCheckbox?.dataset) hoverClusterCheckbox.dataset.tmClusterId = clusterId;
+    hoverClusterCheckbox.classList.add("tm-show");
+  }
+
   function updateDeleteSelectedButton() {
     // Purpose: show multi-select actions via a sliding drawer (not toolbar icons).
     const n = selectedNodes.size;
@@ -5695,6 +5966,76 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     positionVizDrawerAgainstDiagram(selDrawerEl, { topOffsetPx: 100 });
   }
 
+  function openSelectionAccordionPanel(which) {
+    // Purpose: when selection starts via checkbox, open "Selection" panel;
+    // when selection starts via node click, open "Styling and renaming" panel.
+    if (!bsCollapse) return;
+    const nodePanel = selAccNodePanel || null;
+    const selPanel = selAccSelPanel || null;
+    if (!nodePanel || !selPanel) return;
+    const w = String(which || "").trim().toLowerCase();
+    if (w === "selection") {
+      bsCollapse.getOrCreateInstance(selPanel).show();
+      bsCollapse.getOrCreateInstance(nodePanel).hide();
+      return;
+    }
+    bsCollapse.getOrCreateInstance(nodePanel).show();
+    bsCollapse.getOrCreateInstance(selPanel).hide();
+  }
+
+  function syncSelectionNodeEditor() {
+    // Purpose: unify "edit node" UI into the Selection drawer.
+    // Rule: only show the node editor when EXACTLY 1 node is selected.
+    const n = selectedNodes.size;
+    resetBulkNodeDirty();
+    if (n !== 1) {
+      if (n === 0) {
+        selection = null;
+        baseline = null;
+        setActions({ save: false, del: false, message: "" });
+        nodeFields?.classList.add("d-none");
+        if (selNodeEditHint) selNodeEditHint.classList.remove("d-none");
+        if (selNodeEditDisabled) selNodeEditDisabled.classList.add("d-none");
+        if (nodeLabelInput) nodeLabelInput.disabled = false;
+        return;
+      }
+
+      // Multi-select: show styling controls, but disable label editing.
+      nodeFields?.classList.remove("d-none");
+      if (selNodeEditHint) selNodeEditHint.classList.add("d-none");
+      if (nodeLabelInput) {
+        nodeLabelInput.value = "";
+        nodeLabelInput.disabled = true;
+      }
+
+      // Populate the styling controls from the first explicit node (if any), purely as a starting point.
+      suppressLiveApply = true;
+      try {
+        const lines = editor.getValue().split(/\r?\n/);
+        const firstExplicit = Array.from(selectedNodes).find((id) => Boolean(parseNodeDefLine(lines, id))) || "";
+        if (firstExplicit) {
+          selection = { type: "node", nodeId: firstExplicit };
+          refreshFormFromEditor();
+        }
+      } finally {
+        suppressLiveApply = false;
+      }
+
+      selection = { type: "node_bulk", nodeIds: Array.from(selectedNodes) };
+      baseline = null;
+      setActions({ save: true, del: false, message: "Bulk edit: styling changes apply to all selected nodes" });
+      return;
+    }
+
+    const onlyId = Array.from(selectedNodes)[0] || "";
+    if (!onlyId) return;
+    if (selNodeEditHint) selNodeEditHint.classList.add("d-none");
+    // refreshFormFromEditor() will setActions() and show disabled message if needed.
+    selection = { type: "node", nodeId: onlyId };
+    if (nodeLabelInput) nodeLabelInput.disabled = false;
+    refreshFormFromEditor();
+  }
+
   function syncSelectionLinkControls() {
     // Purpose: keep the link controls usable (they are always visible once selection exists).
     if (!selLinkControls) return;
@@ -5709,11 +6050,60 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     const svg = getVizSvgEl();
     if (!svg) return;
 
-    // Remove any previous per-node checkbox overlays (we re-create them to stay simple).
+    // Remove any previous per-node/per-cluster checkbox overlays (we re-create them to stay simple).
     svg.querySelectorAll(".tm-node-checkbox").forEach((el) => el.remove());
+    svg.querySelectorAll(".tm-cluster-checkbox").forEach((el) => el.remove());
 
-    if (selectedNodes.size === 0) return;
+    if (selectedNodes.size === 0 && selectedClusters.size === 0) return;
 
+    // Group selection: show checkboxes on ALL clusters.
+    if (selectedClusters.size > 0) {
+      for (const clusterG of svg.querySelectorAll("g.cluster")) {
+        const clusterId = getGraphvizTitleText(clusterG);
+        if (!clusterId || !clusterId.startsWith("cluster_")) continue;
+        // Place a checkbox at the left side, vertically centered (matches hover checkbox positioning).
+        const bbox = clusterG.getBBox();
+        const fo = document.createElementNS("http://www.w3.org/2000/svg", "foreignObject");
+        fo.setAttribute("class", "tm-cluster-checkbox");
+        fo.setAttribute("x", String(bbox.x));
+        fo.setAttribute("y", String(bbox.y + bbox.height * 0.5 - TM_NODE_CHECKBOX_BOX_PX / 2));
+        fo.setAttribute("width", String(TM_NODE_CHECKBOX_BOX_PX));
+        fo.setAttribute("height", String(TM_NODE_CHECKBOX_BOX_PX));
+
+        const wrap = document.createElement("div");
+        wrap.style.width = `${TM_NODE_CHECKBOX_BOX_PX}px`;
+        wrap.style.height = `${TM_NODE_CHECKBOX_BOX_PX}px`;
+        wrap.style.display = "flex";
+        wrap.style.alignItems = "center";
+        wrap.style.justifyContent = "center";
+        wrap.style.pointerEvents = "auto";
+
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = selectedClusters.has(clusterId);
+        cb.style.width = `${TM_NODE_CHECKBOX_INNER_PX}px`;
+        cb.style.height = `${TM_NODE_CHECKBOX_INNER_PX}px`;
+        cb.style.margin = "0";
+        cb.style.cursor = "pointer";
+
+        cb.addEventListener("click", (e) => e.stopPropagation());
+        cb.addEventListener("change", (e) => {
+          e.stopPropagation();
+          if (cb.checked) selectedClusters.add(clusterId);
+          else selectedClusters.delete(clusterId);
+          // Keep the group drawer open/updated
+          openClusterSelectionDrawer();
+          applyMultiSelectVisuals();
+        });
+
+        wrap.appendChild(cb);
+        fo.appendChild(wrap);
+        clusterG.appendChild(fo);
+      }
+    }
+
+    // Node selection: show checkboxes on ALL nodes.
+    if (selectedNodes.size === 0) return; // IMPORTANT: group selection should NOT reveal node checkboxes
     for (const nodeG of svg.querySelectorAll("g.node")) {
       const nodeId = getGraphvizTitleText(nodeG);
       if (!nodeId) continue;
@@ -5744,16 +6134,14 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       cb.style.margin = "0";
       cb.style.cursor = "pointer";
 
-      cb.addEventListener("click", (e) => {
-        // Prevent opening the node modal
-        e.stopPropagation();
-      });
+      cb.addEventListener("click", (e) => e.stopPropagation());
 
       cb.addEventListener("change", (e) => {
         e.stopPropagation();
         if (cb.checked) selectedNodes.add(nodeId);
         else selectedNodes.delete(nodeId);
         updateDeleteSelectedButton();
+        syncSelectionNodeEditor();
         applyMultiSelectVisuals(); // refresh checks + remove overlays if selection empties
       });
 
@@ -5825,7 +6213,11 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
   function syncSelLinkCreateBtn() {
     if (!selLinkCreateNewBtn) return;
-    setCreateBtnActive(selLinkCreateNewBtn, getSelLinkNewLabels().length > 0);
+    const hasAny = getSelLinkNewLabels().length > 0;
+    setCreateBtnActive(selLinkCreateNewBtn, hasAny);
+    // UX: only show the button once the user has typed at least one label.
+    selLinkCreateNewBtn.classList.toggle("d-none", !hasAny);
+    selLinkCreateNewBtn.disabled = !hasAny;
   }
 
   function resetSelLinkNewLabels() {
@@ -5840,8 +6232,128 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     syncSelLinkCreateBtn();
   });
 
+  selLinkNewLabelsWrap?.addEventListener?.("keydown", (e) => {
+    const isLabel = e?.target?.classList?.contains?.("tm-viz-selection-link-new-label");
+    if (!isLabel) return;
+    if (e.key !== "Enter") return;
+    const hasAny = getSelLinkNewLabels().length > 0;
+    if (!hasAny) return;
+    e.preventDefault();
+    e.stopPropagation();
+    selLinkCreateNewBtn?.click?.();
+  });
+
   // Ensure link mode has at least one blank input from the start.
   resetSelLinkNewLabels();
+
+  // Cluster drawer: Link mode "new node labels" list
+  function ensureTrailingBlankClusterLinkNewLabel() {
+    ensureTrailingBlankLabelInput(clusterLinkNewLabelsWrap, "tm-viz-cluster-link-new-label");
+  }
+
+  function getClusterLinkNewLabels() {
+    return getLabelInputValues(clusterLinkNewLabelsWrap, "tm-viz-cluster-link-new-label");
+  }
+
+  function syncClusterLinkCreateBtn() {
+    if (!clusterLinkCreateNewBtn) return;
+    const hasAny = getClusterLinkNewLabels().length > 0;
+    setCreateBtnActive(clusterLinkCreateNewBtn, hasAny);
+    clusterLinkCreateNewBtn.classList.toggle("d-none", !hasAny);
+    clusterLinkCreateNewBtn.disabled = !hasAny;
+  }
+
+  function resetClusterLinkNewLabels() {
+    resetLabelInputs(clusterLinkNewLabelsWrap, "tm-viz-cluster-link-new-label");
+    syncClusterLinkCreateBtn();
+  }
+
+  clusterLinkNewLabelsWrap?.addEventListener?.("input", (e) => {
+    const isLabel = e?.target?.classList?.contains?.("tm-viz-cluster-link-new-label");
+    if (!isLabel) return;
+    ensureTrailingBlankClusterLinkNewLabel();
+    syncClusterLinkCreateBtn();
+  });
+
+  clusterLinkNewLabelsWrap?.addEventListener?.("keydown", (e) => {
+    const isLabel = e?.target?.classList?.contains?.("tm-viz-cluster-link-new-label");
+    if (!isLabel) return;
+    if (e.key !== "Enter") return;
+    const hasAny = getClusterLinkNewLabels().length > 0;
+    if (!hasAny) return;
+    e.preventDefault();
+    e.stopPropagation();
+    clusterLinkCreateNewBtn?.click?.();
+  });
+
+  resetClusterLinkNewLabels();
+
+  function syncClusterLinkBorderControls() {
+    const on = Boolean(clusterLinkBorderEnabled?.checked);
+    clusterLinkBorderControls?.classList.toggle("d-none", !on);
+  }
+  clusterLinkBorderEnabled?.addEventListener?.("change", syncClusterLinkBorderControls);
+  syncClusterLinkBorderControls();
+
+  function buildClusterLinkBracket() {
+    const lbl = String(clusterLinkLabelInput?.value || "").trim();
+    const wantsBorder = Boolean(clusterLinkBorderEnabled?.checked);
+    const border = wantsBorder
+      ? uiToBorderText({
+          width: clusterLinkBwInput?.value ?? 0,
+          style: clusterLinkBsSel?.value ?? "solid",
+          colorHex: clusterLinkBcInput?.value ?? "#6c757d",
+        })
+      : "";
+    if (lbl && border) return ` [${lbl} | ${border}]`;
+    if (lbl) return ` [${lbl}]`;
+    if (border) return ` [${border}]`;
+    return "";
+  }
+
+  clusterLinkCreateNewBtn?.addEventListener?.("click", () => {
+    if (selectedClusters.size === 0) return setVizStatus("Select at least one group box first");
+    const labels = getClusterLinkNewLabels();
+    if (!labels.length) return setVizStatus("Enter at least one new node label");
+
+    const lines = editor.getValue().split(/\r?\n/);
+    const clustersById = buildClustersByIdFromLines(lines);
+    const aliases = [];
+    for (const cid of selectedClusters) {
+      const c = clustersById.get(cid) || null;
+      const a = String(c?.alias || "").trim();
+      if (a) aliases.push(a);
+    }
+    if (!aliases.length) return setVizStatus('Selected group box(es) need aliases like: -- a:: Title');
+
+    const dir = Boolean(clusterLinkDirIn?.checked) ? "in" : "out";
+    const bracket = buildClusterLinkBracket();
+    const existingIds = new Set(getExplicitNodeIdsFromLines(lines));
+
+    const newNodeLines = [];
+    const edgeLines = [];
+    for (const label of labels) {
+      const newId = makeUniqueNodeIdFromLabel(label, existingIds);
+      existingIds.add(newId);
+      newNodeLines.push(`${newId}:: ${label}`);
+      for (const a of aliases) {
+        const fromId = dir === "out" ? a : newId;
+        const toId = dir === "out" ? newId : a;
+        if (fromId === toId) continue;
+        edgeLines.push(`${fromId} -> ${toId}${bracket}`);
+      }
+    }
+    if (!edgeLines.length) return setVizStatus("Nothing to link");
+
+    const insertAt = findTrailingLinksBlockStart(lines);
+    lines.splice(insertAt, 0, ...newNodeLines);
+    lines.push(...edgeLines);
+    applyEditorLines(lines);
+
+    resetClusterLinkNewLabels();
+    clearClusterSelection();
+    setVizStatus(`Added ${edgeLines.length} link${edgeLines.length === 1 ? "" : "s"}`);
+  });
 
   function syncSelLinkBorderControls() {
     const on = Boolean(selLinkBorderEnabled?.checked);
@@ -5936,10 +6448,15 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   function setActions({ save, del, message }) {
     canSave = Boolean(save);
     canDelete = Boolean(del);
+    const msg = String(message || "").trim();
     if (modalDisabled) {
-      const msg = String(message || "").trim();
       modalDisabled.classList.toggle("d-none", !msg);
       modalDisabled.textContent = msg;
+    }
+    // When editing a selected node via the Selection drawer, show the same message there too.
+    if (selNodeEditDisabled) {
+      selNodeEditDisabled.classList.toggle("d-none", !msg);
+      selNodeEditDisabled.textContent = msg;
     }
     if (btnSave) btnSave.disabled = !canSave;
     if (btnDelete) btnDelete.disabled = !canDelete;
@@ -6026,7 +6543,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     for (let n = 0; n < openers.length; n++) {
       const o = openers[n];
       const id = `cluster_${n}`;
-      out.set(id, { id, idx: o.idx, comment: o.comment, dashes: o.dashes, label: o.label, styleInner: o.styleInner });
+      out.set(id, { id, idx: o.idx, comment: o.comment, dashes: o.dashes, alias: o.alias, label: o.label, styleInner: o.styleInner });
     }
     return out;
   }
@@ -6190,6 +6707,66 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     const lines = editor.getValue().split(/\r?\n/);
     let changedIdx = -1;
 
+    if (selection.type === "node_bulk") {
+      const ids = Array.isArray(selection.nodeIds) ? selection.nodeIds.map((x) => String(x || "").trim()).filter(Boolean) : [];
+      if (!ids.length) return;
+
+      const curFillHex = String(nodeFillInput?.value || "#ffffff").toLowerCase();
+      const curBorderUi = {
+        width: Number(nodeBwInput?.value ?? 0),
+        style: String(nodeBsSel?.value ?? "solid"),
+        colorHex: String(nodeBcInput?.value ?? "#999999"),
+      };
+      const curRounded = Boolean(nodeRoundedChk?.checked);
+      const curTextSizeScale = Number(nodeTextSizeInput?.value ?? 1);
+      if (!(Number.isFinite(curTextSizeScale) && curTextSizeScale > 0)) return;
+
+      const newBorderText = uiToBorderText({ width: curBorderUi.width, style: curBorderUi.style, colorHex: curBorderUi.colorHex });
+
+      let changed = 0;
+      const skipped = [];
+
+      for (const id of ids) {
+        const parsed = parseNodeDefLine(lines, id);
+        if (!parsed) {
+          skipped.push(id);
+          continue;
+        }
+
+        // Preserve existing styling for any fields the user DIDN'T change in bulk mode.
+        const ui = styleInnerToNodeUi(parsed.styleInner || "") || {};
+        const existingFillHex = ui.fillHex || null;
+        const existingBorderText = ui.borderUi ? uiToBorderText(ui.borderUi) : "";
+        const existingRounded = Boolean(ui.rounded);
+        const existingTextSizeScale = Number.isFinite(ui.textSizeScale) ? Number(ui.textSizeScale) : null;
+
+        const fillHex = bulkNodeDirty.fill ? curFillHex : existingFillHex;
+        const borderText = bulkNodeDirty.border ? newBorderText : existingBorderText;
+        const rounded = bulkNodeDirty.rounded ? curRounded : existingRounded;
+        const textSizeScale = bulkNodeDirty.textSize ? curTextSizeScale : existingTextSizeScale;
+
+        const nextInner = upsertNodeStyleInner(parsed.styleInner || "", {
+          fillHex,
+          borderText,
+          rounded,
+          textSizeScale,
+        });
+
+        if (nextInner !== parsed.styleInner) {
+          const ok = setNodeDefLine(lines, id, { label: parsed.label || id, styleInner: nextInner });
+          if (ok) changed++;
+        }
+      }
+
+      if (changed > 0) {
+        applyEditorLines(lines);
+        if (skipped.length) setVizStatus(`Styled ${changed} node(s). Skipped (implicit): ${skipped.slice(0, 6).join(", ")}${skipped.length > 6 ? "…" : ""}`);
+        else setVizStatus(`Styled ${changed} node(s)`);
+      }
+
+      return;
+    }
+
     if (selection.type === "node") {
       const parsed = parseNodeDefLine(lines, selection.nodeId);
       if (!parsed) return;
@@ -6264,11 +6841,66 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
       setClusterDefLineAt(lines, c.idx, {
         dashes: c.dashes,
+        alias: c.alias,
         // Allow empty cluster titles (valid): an empty label is written as "-- []" (see setClusterDefLineAt).
         label: String(clusterLabelInput?.value ?? "").trim(),
         styleInner: nextInner,
         comment: c.comment,
       });
+    }
+
+    if (selection.type === "cluster_bulk") {
+      const ids = Array.isArray(selection.clusterIds) ? selection.clusterIds.map((x) => String(x || "").trim()).filter(Boolean) : [];
+      if (!ids.length) return;
+
+      const curFillHex = String(clusterFillInput?.value || "#ffffff").toLowerCase();
+      const curBorderUi = {
+        width: Number(clusterBwInput?.value ?? 1),
+        style: String(clusterBsSel?.value ?? "solid"),
+        colorHex: String(clusterBcInput?.value ?? "#cccccc"),
+      };
+      const curTextHex = String(clusterTextColourInput?.value || "#111827").toLowerCase();
+      const curTextSizeScale = Number(clusterTextSizeInput?.value ?? 1);
+      if (!(Number.isFinite(curTextSizeScale) && curTextSizeScale > 0)) return;
+
+      const newBorderText = uiToBorderText({ width: curBorderUi.width, style: curBorderUi.style, colorHex: curBorderUi.colorHex });
+
+      const clustersById = buildClustersByIdFromLines(lines);
+      let changed = 0;
+
+      for (const cid of ids) {
+        const c = clustersById.get(cid);
+        if (!c) continue;
+
+        const ui = styleInnerToClusterUi(c.styleInner || "") || {};
+        const existingFillHex = ui.fillHex || null;
+        const existingBorderText = ui.borderUi ? uiToBorderText(ui.borderUi) : "";
+        const existingTextHex = ui.textColourHex || null;
+        const existingTextSizeScale = Number.isFinite(ui.textSizeScale) ? Number(ui.textSizeScale) : null;
+
+        const fillHex = bulkClusterDirty.fill ? curFillHex : existingFillHex;
+        const borderText = bulkClusterDirty.border ? newBorderText : existingBorderText;
+        const textColourHex = bulkClusterDirty.textColour ? curTextHex : existingTextHex;
+        const textSizeScale = bulkClusterDirty.textSize ? curTextSizeScale : existingTextSizeScale;
+
+        const nextInner = upsertClusterStyleInner(c.styleInner || "", { fillHex, borderText, textColourHex, textSizeScale });
+        if (nextInner !== c.styleInner) {
+          setClusterDefLineAt(lines, c.idx, {
+            dashes: c.dashes,
+            alias: c.alias,
+            label: c.label,
+            styleInner: nextInner,
+            comment: c.comment,
+          });
+          changed++;
+        }
+      }
+
+      if (changed > 0) {
+        applyEditorLines(lines);
+        setVizStatus(`Styled ${changed} group box${changed === 1 ? "" : "es"}`);
+      }
+      return;
     }
 
     if (selection.type === "edge") {
@@ -6318,8 +6950,17 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       return;
     }
 
-    // Ignore clicks on any selection checkbox UI (hover checkbox or per-node checkboxes)
-    if (e.target === hoverCheckbox || hoverCheckbox?.contains?.(e.target) || e.target.closest?.(".tm-node-checkbox")) {
+    const isShift = Boolean(e.shiftKey);
+
+    // Ignore clicks on any selection checkbox UI (hover checkboxes or per-node/per-cluster checkboxes)
+    if (
+      e.target === hoverCheckbox ||
+      hoverCheckbox?.contains?.(e.target) ||
+      e.target === hoverClusterCheckbox ||
+      hoverClusterCheckbox?.contains?.(e.target) ||
+      e.target.closest?.(".tm-node-checkbox") ||
+      e.target.closest?.(".tm-cluster-checkbox")
+    ) {
       return;
     }
 
@@ -6339,9 +6980,11 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
         return;
       }
 
-      // Selection drawer: if nodes are selected, clicking background moves them out of groups.
-      // (We do this before opening the diagram-wide style drawer.)
+      // Selection drawer:
+      // - Click background: do NOT move selection (click is for linking targets).
+      // - Shift+click background: move selection out of groups.
       if (selectedNodes.size > 0) {
+        if (!isShift) return setVizStatus("Shift+click background to move selection out of groups");
         const lines = editor.getValue().split(/\r?\n/);
         const res = moveExplicitNodeDefsOutToTopLevel(lines, Array.from(selectedNodes));
         if (!res.ok) return setVizStatus(res.message || "Move failed");
@@ -6365,6 +7008,61 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     if (nodeG) {
       const nodeId = getGraphvizTitleText(nodeG);
       if (!nodeId) return;
+      // Internal: cluster alias anchor nodes should not be directly interactive.
+      if (isInternalClusterAnchorNodeId(nodeId)) {
+        clearVizSelection();
+        hideHoverDelete();
+        hideHoverCheckbox();
+        return;
+      }
+
+      // If groups are selected, clicking a node creates links to/from those groups.
+      if (selectedClusters.size > 0) {
+        const lines = editor.getValue().split(/\r?\n/);
+        const clustersById = buildClustersByIdFromLines(lines);
+        const selected = Array.from(selectedClusters);
+        const aliases = [];
+        const missing = [];
+        for (const cid of selected) {
+          const c = clustersById.get(cid) || null;
+          const a = String(c?.alias || "").trim();
+          if (a) aliases.push(a);
+          else missing.push(cid);
+        }
+        if (!aliases.length) return setVizStatus('Selected group box(es) need aliases like: -- a:: Title');
+        if (missing.length) return setVizStatus('Some selected group box(es) have no alias. Use: -- a:: Title');
+
+        const dir = Boolean(clusterLinkDirIn?.checked) ? "in" : "out";
+        const bracket = buildClusterLinkBracket();
+        const edgeLines = [];
+        for (const a of aliases) {
+          const fromId = dir === "out" ? a : nodeId;
+          const toId = dir === "out" ? nodeId : a;
+          if (fromId === toId) continue;
+          edgeLines.push(`${fromId} -> ${toId}${bracket}`);
+        }
+        if (!edgeLines.length) return setVizStatus("Nothing to link");
+        const text = editor.getValue().trimEnd();
+        const next = text ? `${text}\n${edgeLines.join("\n")}\n` : `${edgeLines.join("\n")}\n`;
+        editor.setValue(next, -1);
+        setMapScriptInUrl(editor.getValue());
+        renderNow(graphviz, editor);
+        clearClusterSelection();
+        setVizStatus(`Added ${edgeLines.length} link${edgeLines.length === 1 ? "" : "s"}`);
+        return;
+      }
+
+      // Unified selection behavior:
+      // - If no selection yet, first click selects this node (shows checkboxes + opens the unified Selection drawer).
+      // - If selection exists, clicking a node is a "target click" for creating links (existing behavior).
+      if (selectedNodes.size === 0) {
+        selectedNodes.add(nodeId);
+        updateDeleteSelectedButton();
+        openSelectionAccordionPanel("node");
+        syncSelectionNodeEditor();
+        applyMultiSelectVisuals();
+        return;
+      }
 
       // Selection drawer: click a target node to create link(s) and clear selection.
       if (selectedNodes.size > 0) {
@@ -6398,9 +7096,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
         return;
       }
 
-      selection = { type: "node", nodeId };
-      refreshFormFromEditor();
-      openModal();
+      // Note: single-node editing happens inside the Selection drawer now.
       return;
     }
 
@@ -6408,30 +7104,106 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       const clusterId = getGraphvizTitleText(clusterG);
       if (!clusterId || !String(clusterId).startsWith("cluster_")) return;
 
-      // Selection drawer: if nodes are selected, clicking a group box moves the selection into that group (then clears selection).
-      if (selectedNodes.size > 0) {
+      // If groups are selected, clicking another group creates links between group aliases.
+      if (selectedClusters.size > 0) {
         const lines = editor.getValue().split(/\r?\n/);
-        const res = moveExplicitNodeDefsIntoCluster(lines, Array.from(selectedNodes), clusterId);
-        if (!res.ok) return setVizStatus(res.message || "Move failed");
-        applyEditorLines(lines);
-        setVizStatus(res.message || "Moved");
-        selectedNodes.clear();
-        updateDeleteSelectedButton();
-        applyMultiSelectVisuals();
+        const clustersById = buildClustersByIdFromLines(lines);
+        const target = clustersById.get(clusterId) || null;
+        const targetAlias = String(target?.alias || "").trim();
+        if (!targetAlias) return setVizStatus('Target group has no alias. Use: -- a:: Title');
+
+        const selected = Array.from(selectedClusters);
+        const aliases = [];
+        for (const cid of selected) {
+          const c = clustersById.get(cid) || null;
+          const a = String(c?.alias || "").trim();
+          if (a) aliases.push(a);
+        }
+        if (!aliases.length) return setVizStatus('Selected group box(es) need aliases like: -- a:: Title');
+
+        const dir = Boolean(clusterLinkDirIn?.checked) ? "in" : "out";
+        const bracket = buildClusterLinkBracket();
+        const edgeLines = [];
+        for (const a of aliases) {
+          if (a === targetAlias) continue;
+          const fromId = dir === "out" ? a : targetAlias;
+          const toId = dir === "out" ? targetAlias : a;
+          edgeLines.push(`${fromId} -> ${toId}${bracket}`);
+        }
+        if (!edgeLines.length) return setVizStatus("Nothing to link");
+        const text = editor.getValue().trimEnd();
+        const next = text ? `${text}\n${edgeLines.join("\n")}\n` : `${edgeLines.join("\n")}\n`;
+        editor.setValue(next, -1);
+        setMapScriptInUrl(editor.getValue());
+        renderNow(graphviz, editor);
+        clearClusterSelection();
+        setVizStatus(`Added ${edgeLines.length} link${edgeLines.length === 1 ? "" : "s"}`);
         return;
       }
 
-      selection = { type: "cluster", clusterId };
-      refreshFormFromEditor();
-      openModal();
+      // Selection drawer:
+      // - Click group: create links to/from that group (requires group alias).
+      // - Shift+click group: move the selection into that group (existing behavior).
+      if (selectedNodes.size > 0) {
+        if (isShift) {
+          const lines = editor.getValue().split(/\r?\n/);
+          const res = moveExplicitNodeDefsIntoCluster(lines, Array.from(selectedNodes), clusterId);
+          if (!res.ok) return setVizStatus(res.message || "Move failed");
+          applyEditorLines(lines);
+          setVizStatus(res.message || "Moved");
+          selectedNodes.clear();
+          updateDeleteSelectedButton();
+          applyMultiSelectVisuals();
+          return;
+        }
+
+        // Link to/from group alias
+        const lines = editor.getValue().split(/\r?\n/);
+        const clustersById = buildClustersByIdFromLines(lines);
+        const c = clustersById.get(clusterId) || null;
+        const alias = String(c?.alias || "").trim();
+        if (!alias) return setVizStatus('This group has no alias. Use: -- a:: Group title (then link to "a")');
+
+        const dir = Boolean(selLinkDirIn?.checked) ? "in" : "out";
+        const bracket = buildSelectionLinkBracket();
+
+        const pairs = [];
+        for (const s of selectedNodes) {
+          if (!s) continue;
+          const fromId = dir === "out" ? s : alias;
+          const toId = dir === "out" ? alias : s;
+          if (fromId === toId) continue;
+          pairs.push({ fromId, toId });
+        }
+        if (!pairs.length) return setVizStatus("Nothing to link");
+
+        const text = editor.getValue().trimEnd();
+        const edgeLines = pairs.map((p) => `${p.fromId} -> ${p.toId}${bracket}`);
+        const next = text ? `${text}\n${edgeLines.join("\n")}\n` : `${edgeLines.join("\n")}\n`;
+        editor.setValue(next, -1);
+        setMapScriptInUrl(editor.getValue());
+        renderNow(graphviz, editor);
+
+        selectedNodes.clear();
+        updateDeleteSelectedButton();
+        applyMultiSelectVisuals();
+
+        setVizStatus(`Added ${edgeLines.length} link${edgeLines.length === 1 ? "" : "s"}`);
+        return;
+      }
+
+      // No selection mode active: clicking a group opens the group drawer (Styling panel open).
+      selectedClusters.clear();
+      selectedClusters.add(clusterId);
+      openClusterSelectionDrawer("style");
       return;
     }
 
     if (edgeG) {
       const title = getGraphvizTitleText(edgeG); // often "A->B"
       const m = title.match(/^(.+)->(.+)$/);
-      const fromId = m ? m[1].trim() : "";
-      const toId = m ? m[2].trim() : "";
+      const fromId = m ? clusterAliasFromAnchorNodeId(m[1].trim()) : "";
+      const toId = m ? clusterAliasFromAnchorNodeId(m[2].trim()) : "";
       const lineNo = parseTmEdgeDomIdFromEl(e.target);
       if (!fromId || !toId || !lineNo) return;
       selection = { type: "edge", fromId, toId, lineNo };
@@ -6446,6 +7218,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     // Don't flicker when moving onto the button itself.
     if (e.target === hoverDeleteBtn || hoverDeleteBtn.contains(e.target)) return;
     if (e.target === hoverCheckbox || hoverCheckbox?.contains?.(e.target)) return;
+    if (e.target === hoverClusterCheckbox || hoverClusterCheckbox?.contains?.(e.target)) return;
 
     // Prevent a common UX glitch: there can be a tiny "dead" gap between a node and the overlay
     // controls (checkbox / delete X). While the pointer is moving toward the overlay, we don't
@@ -6492,6 +7265,14 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
         hideHoverCheckbox();
         return;
       }
+      // Internal: cluster alias anchor nodes should not be directly interactive.
+      if (isInternalClusterAnchorNodeId(nodeId)) {
+        clearHoverGlow();
+        hideHoverDelete();
+        hideHoverCheckbox();
+        clearVizHint();
+        return;
+      }
       hoverDeleteTarget = { type: "node", nodeId };
       if (hoverDeleteBtn) {
         hoverDeleteBtn.title = "Click to delete this node";
@@ -6500,17 +7281,20 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       showHoverDeleteAtSvgGroup(nodeG);
       
       showHoverCheckboxAtSvgGroup(nodeG, nodeId);
+      hideHoverClusterCheckbox();
       
       return;
     }
 
     if (clusterG) {
       setHoverGlow(clusterG);
-      setVizHint("Click to style or rename this group box");
+      if (selectedNodes.size > 0) setVizHint("Click to link to this group; Shift+click to move selection into it");
+      else setVizHint("Click to style or rename this group box");
       const clusterId = getGraphvizTitleText(clusterG);
       if (!clusterId || !clusterId.startsWith("cluster_")) {
         hideHoverDelete();
         hideHoverCheckbox();
+        hideHoverClusterCheckbox();
         return;
       }
       hoverDeleteTarget = { type: "cluster", clusterId };
@@ -6521,6 +7305,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       // Position on the cluster label text if available
       const labelText = clusterG.querySelector("text");
       hideHoverCheckbox();
+      showHoverClusterCheckboxAtSvgGroup(clusterG, clusterId);
       if (labelText) return showHoverDeleteAtSvgGroup(clusterG, labelText);
       return showHoverDeleteAtSvgGroup(clusterG);
     }
@@ -6530,8 +7315,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       setVizHint("Click to style or rename this link");
       const title = getGraphvizTitleText(edgeG); // often "A->B"
       const m = title.match(/^(.+)->(.+)$/);
-      const fromId = m ? m[1].trim() : "";
-      const toId = m ? m[2].trim() : "";
+      const fromId = m ? clusterAliasFromAnchorNodeId(m[1].trim()) : "";
+      const toId = m ? clusterAliasFromAnchorNodeId(m[2].trim()) : "";
       const lineNo = parseTmEdgeDomIdFromEl(e.target);
       if (!fromId || !toId || !lineNo) {
         hideHoverDelete();
@@ -6592,6 +7377,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   vizEl.addEventListener("mouseleave", () => {
     hideHoverDelete();
     hideHoverCheckbox();
+    hideHoverClusterCheckbox();
     clearHoverGlow();
   });
 
@@ -6707,12 +7493,17 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     const nodeId = String(hoverCheckbox?.dataset?.tmNodeId || "").trim();
     if (!nodeId) return;
     
+    const wasEmpty = selectedNodes.size === 0;
     if (checkboxInput.checked) {
+      // Start node selection mode: clear group selection
+      if (selectedClusters.size > 0) selectedClusters.clear();
       selectedNodes.add(nodeId);
     } else {
       selectedNodes.delete(nodeId);
     }
     updateDeleteSelectedButton();
+    if (wasEmpty && selectedNodes.size > 0) openSelectionAccordionPanel("selection");
+    syncSelectionNodeEditor();
     applyMultiSelectVisuals();
     hideHoverCheckbox(); // keep UI clean; per-node checkboxes will take over once selection exists
   });
@@ -6721,6 +7512,28 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   hoverCheckbox?.addEventListener("click", (e) => {
     e.stopPropagation();
   });
+
+  // Checkbox for group multi-select toggle
+  clusterCheckboxInput?.addEventListener("change", (e) => {
+    e.stopPropagation();
+    const clusterId = String(hoverClusterCheckbox?.dataset?.tmClusterId || "").trim();
+    if (!clusterId || !clusterId.startsWith("cluster_")) return;
+
+    // Start group selection mode: clear node selection
+    if (selectedNodes.size > 0) clearNodeSelection();
+
+    const wasEmpty = selectedClusters.size === 0;
+    if (clusterCheckboxInput.checked) selectedClusters.add(clusterId);
+    else selectedClusters.delete(clusterId);
+
+    // If selection starts via checkbox, default open the "Create links" panel.
+    if (wasEmpty && selectedClusters.size > 0) openClusterSelectionDrawer("links");
+    else openClusterSelectionDrawer();
+    applyMultiSelectVisuals();
+    hideHoverClusterCheckbox(); // per-cluster checkboxes will take over once selection exists
+  });
+
+  hoverClusterCheckbox?.addEventListener("click", (e) => e.stopPropagation());
 
   function getClusterDepthAtLine(lines, idx) {
     // Return current open cluster depth (0 = none, 2 = level-1, 4 = level-2, etc) just BEFORE lines[idx].
@@ -6858,6 +7671,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     applyEditorLines(lines);
     selectedNodes.clear();
     updateDeleteSelectedButton();
+    syncSelectionNodeEditor();
     clearVizSelection();
   });
 
@@ -6876,6 +7690,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     // After grouping, clear selection (requested).
     selectedNodes.clear();
     updateDeleteSelectedButton();
+    syncSelectionNodeEditor();
     applyMultiSelectVisuals();
   });
 
@@ -6885,6 +7700,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     if (selectedNodes.size === 0) return;
     selectedNodes.clear();
     updateDeleteSelectedButton();
+    syncSelectionNodeEditor();
     applyMultiSelectVisuals();
   });
 
@@ -6898,6 +7714,31 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     if (suppressLiveApply) return;
     applySelectionEdits({ closeAfter: false });
   }
+
+  // Bulk styling: mark "dirty" fields when multi-select is active.
+  const markBulkDirty = (k) => {
+    if (!selection || selection.type !== "node_bulk") return;
+    if (!bulkNodeDirty) return;
+    bulkNodeDirty[k] = true;
+  };
+  nodeFillInput?.addEventListener("input", () => markBulkDirty("fill"));
+  nodeBwInput?.addEventListener("input", () => markBulkDirty("border"));
+  nodeBsSel?.addEventListener("change", () => markBulkDirty("border"));
+  nodeBcInput?.addEventListener("input", () => markBulkDirty("border"));
+  nodeRoundedChk?.addEventListener("change", () => markBulkDirty("rounded"));
+  nodeTextSizeInput?.addEventListener("input", () => markBulkDirty("textSize"));
+
+  // Bulk styling for group boxes
+  const markBulkClusterDirty = (k) => {
+    if (!selection || selection.type !== "cluster_bulk") return;
+    bulkClusterDirty[k] = true;
+  };
+  clusterFillInput?.addEventListener("input", () => markBulkClusterDirty("fill"));
+  clusterBwInput?.addEventListener("input", () => markBulkClusterDirty("border"));
+  clusterBsSel?.addEventListener("change", () => markBulkClusterDirty("border"));
+  clusterBcInput?.addEventListener("input", () => markBulkClusterDirty("border"));
+  clusterTextColourInput?.addEventListener("input", () => markBulkClusterDirty("textColour"));
+  clusterTextSizeInput?.addEventListener("input", () => markBulkClusterDirty("textSize"));
 
   const liveEls = [
     nodeLabelInput,
@@ -7684,9 +8525,11 @@ async function renderNow(graphviz, editor) {
     const viz = document.getElementById("tm-viz");
     const hoverDeleteBtn = document.getElementById("tm-viz-hover-delete"); // may be null on first render
     const hoverCheckbox = document.getElementById("tm-viz-hover-checkbox"); // may be null on first render
+    const hoverClusterCheckbox = document.getElementById("tm-viz-hover-cluster-checkbox"); // may be null on first render
     if (viz) viz.innerHTML = svg;
     if (viz && hoverDeleteBtn) viz.appendChild(hoverDeleteBtn);
     if (viz && hoverCheckbox) viz.appendChild(hoverCheckbox);
+    if (viz && hoverClusterCheckbox) viz.appendChild(hoverClusterCheckbox);
     // Re-apply multi-select visuals after rerender
     if (window.vizInteractivityApi?.applyMultiSelectVisuals) {
       window.vizInteractivityApi.applyMultiSelectVisuals();

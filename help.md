@@ -83,19 +83,29 @@ Tips:
 
 ### Editing the diagram by clicking
 
-- Click a **node** to change its label/styling or delete it.
-- Click a **link** to change its endpoints/label/styling or delete it.
-- Click a **group box** to edit its title/styling.
-- Click a **node** to change its label/styling or delete it.
-- Click a **link** to change its endpoints/label/styling or delete it.
-- Click a **group box** to edit its title/styling.
+- Click a **node** to start a node selection (this opens the node drawer where you can style/rename).
+- Click a **link** to edit its endpoints/label/styling or delete it.
+- Click a **group box** to open the group drawer (style/rename/link).
 
 ### Adding and moving nodes and links with the checkboxes
 
-- To make structural changes (grouping/moving/linking), use the **checkbox selection** UI on nodes:
-  - With 1+ nodes selected: click a **node** to create link(s) (using the Selection drawer settings).
-  - With 1+ nodes selected: click a **group box** to move the selection into that group.
-  - With 1+ nodes selected: click the **diagram background** to move the selection out of groups.
+- Use the **hover checkbox** to start selection mode:
+  - Hover a **node** and click its checkbox → selects nodes (node drawer opens).
+  - Hover a **group box** and click its checkbox → selects group boxes (group drawer opens).
+- **Node selection mode** (1+ nodes selected):
+  - Checkboxes appear on **nodes** (not groups) so you can multi-select.
+  - Click a **node** to create link(s) to/from the selection (direction + styling are set in the drawer).
+  - Click a **group box** to create link(s) to/from that group **alias** (needs `--a:: Title`).
+  - **Shift+click** a group box to move the selected nodes into that group.
+  - **Shift+click** the diagram background to move the selected nodes out of groups.
+  - You can bulk-style selected nodes (label editing is disabled when multiple nodes are selected).
+- **Group selection mode** (1+ group boxes selected):
+  - Checkboxes appear on **groups** (not nodes) so you can multi-select groups.
+  - Click a **node** to create link(s) between the selected group alias(es) and that node.
+  - Click a **group box** to create link(s) between group alias(es).
+  - You can bulk-style selected group boxes (title editing is disabled when multiple groups are selected).
+- In both drawers:
+  - The **Create new + link** button appears only after you type at least one label, and pressing **Enter** in the label input triggers it.
 
 
 ### Using the Editor
@@ -316,6 +326,7 @@ Grouping boxes are just lines starting with dashes:
 
 - `--Label` opens a group (level 1)
 - `----Label` opens a nested group (level 2)
+- `--Alias:: Label` opens a group (level 1) **and** gives it an alias you can use in links
 - `--[]` opens an **untitled** group (level 1)
 - `----[]` opens an **untitled** nested group (level 2)
 - `----` closes the most recent level-2 group
@@ -325,6 +336,7 @@ Rules / gotchas:
 
 - **Untitled opener must be explicit**: use `--[]` (or `--[border=...]`, etc). Plain `--` is always a closer.
 - Boxes only contain nodes that are explicitly defined with `ID:: ...` while the box is open.
+- If you use a group alias (`--Alias:: ...`), that alias **must not** also be used as a node ID.
 - Good style is to put boxes + aliases first, then links last. (You can mix them, but it’s harder to read.)
 
 Example:
@@ -341,6 +353,20 @@ D:: Error rate
 --
 
 A | B -> C | D
+```
+
+Example (link to/from groups using aliases):
+
+```
+-- a:: Drivers
+A:: Training quality
+--
+-- c:: Outcomes
+C:: Adoption
+--
+
+a -> c
+a -> A
 ```
 Important rule (by design): **groups only contain nodes that appear as explicit alias lines (`ID:: ...`) while the box is open**. Links don’t “pull” nodes into groups.
 
