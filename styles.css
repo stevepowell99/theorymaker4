@@ -396,6 +396,12 @@ body {
   white-space: nowrap;
 }
 
+/* Inline form rows: fixed-width label column so widgets align nicely */
+.tm-inline-label-col {
+  width: 7.5rem;
+  flex: 0 0 auto;
+}
+
 .tm-icon-btn {
   width: 34px; /* consistent square buttons for icons */
   display: inline-flex;
@@ -532,6 +538,31 @@ body {
 }
 
 /* Subtle “modern” look: apply shadow to Graphviz node shapes (SVG) */
+
+/* ------------------------------------------------------------
+   Small, icon-like buttons (used for Default node shape)
+   ------------------------------------------------------------ */
+.tm-shape-btn {
+  /* Keep the control compact + consistent across fonts */
+  width: 42px;
+  padding-left: 0;
+  padding-right: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tm-shape-preview {
+  width: 22px;
+  height: 16px;
+  border: 2px solid currentColor; /* follows btn text colour */
+  background: transparent;
+  display: inline-block;
+}
+
+.tm-shape-preview-rounded {
+  border-radius: 8px;
+}
 .tm-viz svg .node polygon,
 .tm-viz svg .node path,
 .tm-viz svg .node ellipse {

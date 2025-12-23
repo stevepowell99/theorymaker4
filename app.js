@@ -136,6 +136,33 @@ function syncRangeValueLabelExp(rangeEl, valEl, { suffix = "" } = {}) {
 }
 
 // -----------------------------
+// UI helpers: small enumerations => button groups (keep <select> as source-of-truth)
+// -----------------------------
+function setButtonsUi(btns, value) {
+  const v = String(value ?? "");
+  for (const b of btns || []) {
+    const bv = String(b?.dataset?.value ?? "");
+    const on = bv === v;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+}
+
+function wireButtonsToSelect(selectEl, btns) {
+  if (!selectEl || !btns?.length) return;
+  for (const b of btns) {
+    b.addEventListener("click", () => {
+      const v = b?.dataset?.value;
+      selectEl.value = v == null ? "" : String(v);
+      setButtonsUi(btns, selectEl.value);
+      selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
+  selectEl.addEventListener("change", () => setButtonsUi(btns, selectEl.value));
+  setButtonsUi(btns, selectEl.value);
+}
+
+// -----------------------------
 // Ace: incremental (undo-friendly) edits
 // -----------------------------
 
@@ -355,6 +382,8 @@ function initAceLineStylePopover({ editor, graphviz }) {
   const nodeBorderEnabled = document.getElementById("tm-ace-style-node-border-enabled");
   const nodeBw = document.getElementById("tm-ace-style-node-border-width");
   const nodeBs = document.getElementById("tm-ace-style-node-border-style");
+  const nodeBsBtnsWrap = document.getElementById("tm-ace-style-node-border-style-btns");
+  const nodeBsBtns = nodeBsBtnsWrap ? Array.from(nodeBsBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const nodeBc = document.getElementById("tm-ace-style-node-border-color");
   const nodeRounded = document.getElementById("tm-ace-style-node-rounded");
   const nodeTextSizeEnabled = document.getElementById("tm-ace-style-node-text-size-enabled");
@@ -366,6 +395,8 @@ function initAceLineStylePopover({ editor, graphviz }) {
   const clusterBorderEnabled = document.getElementById("tm-ace-style-cluster-border-enabled");
   const clusterBw = document.getElementById("tm-ace-style-cluster-border-width");
   const clusterBs = document.getElementById("tm-ace-style-cluster-border-style");
+  const clusterBsBtnsWrap = document.getElementById("tm-ace-style-cluster-border-style-btns");
+  const clusterBsBtns = clusterBsBtnsWrap ? Array.from(clusterBsBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const clusterBc = document.getElementById("tm-ace-style-cluster-border-color");
   const clusterTextColourEnabled = document.getElementById("tm-ace-style-cluster-text-colour-enabled");
   const clusterTextColour = document.getElementById("tm-ace-style-cluster-text-colour");
@@ -383,11 +414,18 @@ function initAceLineStylePopover({ editor, graphviz }) {
   const edgeBorderEnabled = document.getElementById("tm-ace-style-edge-border-enabled");
   const edgeBw = document.getElementById("tm-ace-style-edge-border-width");
   const edgeBs = document.getElementById("tm-ace-style-edge-border-style");
+  const edgeBsBtnsWrap = document.getElementById("tm-ace-style-edge-border-style-btns");
+  const edgeBsBtns = edgeBsBtnsWrap ? Array.from(edgeBsBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const edgeBc = document.getElementById("tm-ace-style-edge-border-color");
 
   if (!btn || !pop || !apply) return;
   const closeBtn = close || apply; // single-button UI: Apply is the close button
   let suppressLiveApply = false; // prevents feedback loops while we populate widgets
+
+  // Button groups (preferred UI) write to hidden selects (source of truth).
+  wireButtonsToSelect(nodeBs, nodeBsBtns);
+  wireButtonsToSelect(clusterBs, clusterBsBtns);
+  wireButtonsToSelect(edgeBs, edgeBsBtns);
 
   function setBtnLabelText(el, text) {
     // Cursor button has an icon + a dedicated label span; avoid overwriting the icon DOM.
@@ -628,6 +666,7 @@ function initAceLineStylePopover({ editor, graphviz }) {
         if (nodeBorderEnabled) nodeBorderEnabled.checked = Boolean(borderUi);
         if (nodeBw) nodeBw.value = String(borderUi?.width ?? 1);
         if (nodeBs) nodeBs.value = String(borderUi?.style || "solid");
+        setButtonsUi(nodeBsBtns, nodeBs?.value);
         if (nodeBc) nodeBc.value = String(borderUi?.colorHex || "#999999");
 
         if (nodeRounded) nodeRounded.checked = Boolean(fromAttrs?.rounded);
@@ -656,6 +695,7 @@ function initAceLineStylePopover({ editor, graphviz }) {
         if (clusterBorderEnabled) clusterBorderEnabled.checked = Boolean(borderUi);
         if (clusterBw) clusterBw.value = String(borderUi?.width ?? 1);
         if (clusterBs) clusterBs.value = String(borderUi?.style || "solid");
+        setButtonsUi(clusterBsBtns, clusterBs?.value);
         if (clusterBc) clusterBc.value = String(borderUi?.colorHex || "#cccccc");
 
         const tc = fromAttrs?.textColourHex || null;
@@ -713,6 +753,7 @@ function initAceLineStylePopover({ editor, graphviz }) {
         const ui = borderText ? borderTextToUi(borderText) : borderTextToUi(getDefaultEdgeBorderText());
         if (edgeBw) edgeBw.value = String(ui.width ?? 1);
         if (edgeBs) edgeBs.value = ui.style || "solid";
+        setButtonsUi(edgeBsBtns, edgeBs?.value);
         if (edgeBc) edgeBc.value = ui.colorHex || "#999999";
 
         setNodeControlsEnabled(false);
@@ -1647,30 +1688,6 @@ function initStyleModal({ editor, graphviz }) {
   setRangeUi(rankGap, rankGapVal);
   setRangeUi(nodeGap, nodeGapVal);
   setRangeUi(titleSize, titleSizeVal);
-
-  function setButtonsUi(btns, value) {
-    const v = String(value ?? "");
-    for (const b of btns || []) {
-      const bv = String(b?.dataset?.value ?? "");
-      const on = bv === v;
-      b.classList.toggle("active", on);
-      b.setAttribute("aria-pressed", on ? "true" : "false");
-    }
-  }
-
-  function wireButtonsToSelect(selectEl, btns) {
-    if (!selectEl || !btns?.length) return;
-    for (const b of btns) {
-      b.addEventListener("click", () => {
-        const v = b?.dataset?.value;
-        selectEl.value = v == null ? "" : String(v);
-        setButtonsUi(btns, selectEl.value);
-        selectEl.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-    }
-    selectEl.addEventListener("change", () => setButtonsUi(btns, selectEl.value));
-    setButtonsUi(btns, selectEl.value);
-  }
 
   function syncSpacingAxisLabels(direction) {
     // Purpose: show user-facing spacing in screen axes (horizontal/vertical), not "along/across".
@@ -5880,6 +5897,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   const nodeRoundedChk = document.getElementById("tm-viz-node-rounded");
   const nodeBwInput = document.getElementById("tm-viz-node-border-width");
   const nodeBsSel = document.getElementById("tm-viz-node-border-style");
+  const nodeBsBtnsWrap = document.getElementById("tm-viz-node-border-style-btns");
+  const nodeBsBtns = nodeBsBtnsWrap ? Array.from(nodeBsBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const nodeBcInput = document.getElementById("tm-viz-node-border-color");
   const nodeTextSizeInput = document.getElementById("tm-viz-node-text-size");
 
@@ -5888,6 +5907,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   const clusterFillInput = document.getElementById("tm-viz-cluster-fill");
   const clusterBwInput = document.getElementById("tm-viz-cluster-border-width");
   const clusterBsSel = document.getElementById("tm-viz-cluster-border-style");
+  const clusterBsBtnsWrap = document.getElementById("tm-viz-cluster-border-style-btns");
+  const clusterBsBtns = clusterBsBtnsWrap ? Array.from(clusterBsBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const clusterBcInput = document.getElementById("tm-viz-cluster-border-color");
   const clusterTextColourInput = document.getElementById("tm-viz-cluster-text-colour");
   const clusterTextSizeInput = document.getElementById("tm-viz-cluster-text-size");
@@ -5900,6 +5921,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   const clusterLinkBorderControls = document.getElementById("tm-viz-cluster-link-border-controls");
   const clusterLinkBwInput = document.getElementById("tm-viz-cluster-link-border-width");
   const clusterLinkBsSel = document.getElementById("tm-viz-cluster-link-border-style");
+  const clusterLinkBsBtnsWrap = document.getElementById("tm-viz-cluster-link-border-style-btns");
+  const clusterLinkBsBtns = clusterLinkBsBtnsWrap ? Array.from(clusterLinkBsBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const clusterLinkBcInput = document.getElementById("tm-viz-cluster-link-border-color");
   const clusterLinkNewLabelsWrap = document.getElementById("tm-viz-cluster-link-new-labels");
   const clusterLinkCreateNewBtn = document.getElementById("tm-viz-cluster-link-create-new-btn");
@@ -5908,6 +5931,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   const edgeToSel = document.getElementById("tm-viz-edge-to");
   const edgeBwInput = document.getElementById("tm-viz-edge-border-width");
   const edgeBsSel = document.getElementById("tm-viz-edge-border-style");
+  const edgeBsBtnsWrap = document.getElementById("tm-viz-edge-border-style-btns");
+  const edgeBsBtns = edgeBsBtnsWrap ? Array.from(edgeBsBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const edgeBcInput = document.getElementById("tm-viz-edge-border-color");
   const btnDelete = document.getElementById("tm-viz-edit-delete");
   const btnSave = document.getElementById("tm-viz-edit-save");
@@ -6025,6 +6050,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       const baselineBorderUi = fromAttrs.borderUi || { width: 1, style: "solid", colorHex: "#cccccc" };
       if (clusterBwInput) clusterBwInput.value = String(baselineBorderUi.width ?? 1);
       if (clusterBsSel) clusterBsSel.value = String(baselineBorderUi.style || "solid");
+      setButtonsUi(clusterBsBtns, clusterBsSel?.value);
       if (clusterBcInput) clusterBcInput.value = String(baselineBorderUi.colorHex || "#cccccc");
       const baselineTextHex = (fromAttrs.textColourHex || getDefaultGroupTextHexFromEditor(editor.getValue()) || "#111827").toLowerCase();
       if (clusterTextColourInput) clusterTextColourInput.value = baselineTextHex;
@@ -6076,6 +6102,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   const selLinkBorderControls = document.getElementById("tm-viz-selection-link-border-controls");
   const selLinkBwInput = document.getElementById("tm-viz-selection-link-border-width");
   const selLinkBsSel = document.getElementById("tm-viz-selection-link-border-style");
+  const selLinkBsBtnsWrap = document.getElementById("tm-viz-selection-link-border-style-btns");
+  const selLinkBsBtns = selLinkBsBtnsWrap ? Array.from(selLinkBsBtnsWrap.querySelectorAll('button[data-value]')) : [];
   const selLinkBcInput = document.getElementById("tm-viz-selection-link-border-color");
   const selLinkNewLabelsWrap = document.getElementById("tm-viz-selection-link-new-labels");
   const selLinkCreateNewBtn = document.getElementById("tm-viz-selection-link-create-new-btn");
@@ -6084,6 +6112,13 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   let canSave = false;
   let canDelete = false;
   let suppressLiveApply = false; // prevents feedback loops while we populate widgets
+
+  // Button groups (preferred UI) write to hidden selects (source of truth).
+  wireButtonsToSelect(nodeBsSel, nodeBsBtns);
+  wireButtonsToSelect(clusterBsSel, clusterBsBtns);
+  wireButtonsToSelect(clusterLinkBsSel, clusterLinkBsBtns);
+  wireButtonsToSelect(edgeBsSel, edgeBsBtns);
+  wireButtonsToSelect(selLinkBsSel, selLinkBsBtns);
 
   let hoverDeleteTarget = null; // { type: "node", nodeId } | { type: "edge", lineNo, fromId, toId }
 
@@ -7047,6 +7082,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
         const borderUi = fromAttrs?.borderUi || (defaults.hasBorderDefault ? defaults.borderUi : null);
         if (nodeBwInput) nodeBwInput.value = String(borderUi?.width ?? 0);
         if (nodeBsSel) nodeBsSel.value = borderUi?.style || "solid";
+        setButtonsUi(nodeBsBtns, nodeBsSel?.value);
         if (nodeBcInput) nodeBcInput.value = borderUi?.colorHex || "#999999";
 
         const rounded = fromAttrs?.rounded ?? defaults.rounded;
@@ -7094,6 +7130,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
         const baselineBorderUi = fromAttrs?.borderUi || { width: 1, style: "solid", colorHex: "#cccccc" };
         if (clusterBwInput) clusterBwInput.value = String(baselineBorderUi?.width ?? 1);
         if (clusterBsSel) clusterBsSel.value = String(baselineBorderUi?.style || "solid");
+        setButtonsUi(clusterBsBtns, clusterBsSel?.value);
         if (clusterBcInput) clusterBcInput.value = String(baselineBorderUi?.colorHex || "#cccccc");
 
         const baselineTextHex = (fromAttrs?.textColourHex || getDefaultGroupTextHexFromEditor(editor.getValue()) || "#111827").toLowerCase();
@@ -7146,6 +7183,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
         console.debug("[tm] edge modal load", { lineNo: selection.lineNo, parsed, defaultBorder: getDefaultEdgeBorderText(), ui });
         if (edgeBwInput) edgeBwInput.value = String(ui.width ?? 0);
         if (edgeBsSel) edgeBsSel.value = ui.style || "solid";
+        setButtonsUi(edgeBsBtns, edgeBsSel?.value);
         if (edgeBcInput) edgeBcInput.value = ui.colorHex || "#999999";
       }
     } finally {

@@ -386,11 +386,17 @@
                               </div>
                               <div class="col-4">
                                 <label class="form-label mb-1" for="tm-viz-node-border-style">Border style</label>
-                                <select id="tm-viz-node-border-style" class="form-select form-select-sm">
+                                <!-- UX: <6 options => buttons; keep select as source-of-truth for existing JS -->
+                                <select id="tm-viz-node-border-style" class="form-select form-select-sm visually-hidden">
                                   <option value="solid">solid</option>
                                   <option value="dotted">dotted</option>
                                   <option value="dashed">dashed</option>
                                 </select>
+                                <div id="tm-viz-node-border-style-btns" class="btn-group btn-group-sm" role="group" aria-label="Node border style">
+                                  <button type="button" class="btn btn-outline-secondary" data-value="solid">solid</button>
+                                  <button type="button" class="btn btn-outline-secondary" data-value="dotted">dotted</button>
+                                  <button type="button" class="btn btn-outline-secondary" data-value="dashed">dashed</button>
+                                </div>
                               </div>
                               <div class="col-4">
                                 <label class="form-label mb-1" for="tm-viz-node-border-color">Border colour</label>
@@ -424,17 +430,18 @@
                           <div class="mb-3 p-3 border rounded bg-light">
                             
                             
-                            <input id="tm-viz-selection-group-label" class="form-control form-control-sm mb-2" type="text" placeholder="Group Label" autocomplete="off" />
-                            <div class="d-grid gap-2">
-                              <button id="tm-group-selected" type="button" class="btn btn-sm btn-outline-secondary">
+                            <div class="fw-semibold mb-1"><i class="bi bi-bounding-box me-2" aria-hidden="true"></i>Group selected nodes</div>
+                            <div class="input-group input-group-sm">
+                              <input id="tm-viz-selection-group-label" class="form-control" type="text" placeholder="Group Label" autocomplete="off" />
+                              <button id="tm-group-selected" type="button" class="btn btn-outline-secondary text-nowrap">
                                 <i class="bi bi-bounding-box me-1" aria-hidden="true"></i>
-                                Create new group box around selected nodes
+                                Group
                               </button>
                             </div>
                           </div>
 
                           <div class="mb-3 p-3 border rounded bg-light">
-                            <div class="fw-semibold mb-1">Move selected nodes into/out of grouping boxes</div>
+                            <div class="fw-semibold mb-1"><i class="bi bi-box-arrow-up me-2" aria-hidden="true"></i>Move selected nodes into/out of grouping boxes</div>
                             <div class="small text-muted mb-0">
                               Shift+click a <span class="fw-semibold">group box</span> to move the selection into it.
                               Shift+click the <span class="fw-semibold">diagram background</span> to move the selection out of all groups.
@@ -442,8 +449,17 @@
                           </div>
 
                           <div class="mb-0 p-3 border rounded bg-light">
-                            <div class="fw-semibold mb-1">Create links</div>
-                            <div class="small text-muted mb-2">Click a node (or group box) to create link(s).</div>
+                            <div class="fw-semibold mb-2"><i class="bi bi-link-45deg me-2" aria-hidden="true"></i>Create Links...</div>
+
+                            <div class="mb-3">
+                              <div class="fw-semibold">... by clicking a node (or group box) in the diagram.</div>
+                            </div>
+
+                            <hr class="my-3" />
+
+                            <div class="mb-0">
+                              <div class="fw-semibold">... to new nodes</div>
+                              <div class="small text-muted mb-2">Each label creates a node which will be linked to all selected nodes</div>
 
                             <div id="tm-viz-selection-link-controls">
                               <div id="tm-viz-selection-link-new-labels" class="d-grid gap-2"></div>
@@ -451,27 +467,32 @@
                                 <i class="bi bi-plus-square me-1" aria-hidden="true"></i>
                                 Create new + link
                               </button>
-                              <div class="small text-muted mt-2">Each label creates a node and links it to all selected nodes.</div>
 
                               <hr class="my-3" />
 
-                              <label class="form-label mb-1 d-block" for="tm-viz-selection-link-dir">Direction</label>
-                              <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Link direction">
-                                <input type="radio" class="btn-check" name="tm-viz-selection-link-dir" id="tm-viz-selection-link-dir-out" autocomplete="off" checked />
-                                <label class="btn btn-outline-secondary" for="tm-viz-selection-link-dir-out">Selected → clicked</label>
+                              <div class="row g-3 align-items-center mb-2">
+                                <div class="col-auto tm-inline-label-col text-end">
+                                  <label class="form-label mb-0" for="tm-viz-selection-link-dir">Direction</label>
+                                </div>
+                                <div class="col">
+                                  <div class="btn-group btn-group-sm" role="group" aria-label="Link direction">
+                                    <input type="radio" class="btn-check" name="tm-viz-selection-link-dir" id="tm-viz-selection-link-dir-out" autocomplete="off" checked />
+                                    <label class="btn btn-outline-secondary" for="tm-viz-selection-link-dir-out">Selected → clicked</label>
 
-                                <input type="radio" class="btn-check" name="tm-viz-selection-link-dir" id="tm-viz-selection-link-dir-in" autocomplete="off" />
-                                <label class="btn btn-outline-secondary" for="tm-viz-selection-link-dir-in">Clicked → selected</label>
+                                    <input type="radio" class="btn-check" name="tm-viz-selection-link-dir" id="tm-viz-selection-link-dir-in" autocomplete="off" />
+                                    <label class="btn btn-outline-secondary" for="tm-viz-selection-link-dir-in">Clicked → selected</label>
+                                  </div>
+                                </div>
                               </div>
 
-                              <label class="form-label mb-1 d-block" for="tm-viz-selection-link-label">Link label</label>
-                              <input
-                                id="tm-viz-selection-link-label"
-                                class="form-control form-control-sm mb-2"
-                                type="text"
-                                placeholder="(optional)"
-                                autocomplete="off"
-                              />
+                              <div class="row g-3 align-items-center mb-2">
+                                <div class="col-auto tm-inline-label-col text-end">
+                                  <label class="form-label mb-0" for="tm-viz-selection-link-label">Link label</label>
+                                </div>
+                                <div class="col">
+                                  <input id="tm-viz-selection-link-label" class="form-control form-control-sm" type="text" placeholder="(optional)" autocomplete="off" />
+                                </div>
+                              </div>
 
                               <div class="form-check form-switch mt-2">
                                 <input id="tm-viz-selection-link-border-enabled" class="form-check-input" type="checkbox" />
@@ -484,17 +505,24 @@
                                 </div>
                                 <div class="col-4">
                                   <label class="form-label mb-1" for="tm-viz-selection-link-border-style">Link style</label>
-                                  <select id="tm-viz-selection-link-border-style" class="form-select form-select-sm">
+                                  <!-- UX: <6 options => buttons; keep select as source-of-truth for existing JS -->
+                                  <select id="tm-viz-selection-link-border-style" class="form-select form-select-sm visually-hidden">
                                     <option value="solid">solid</option>
                                     <option value="dotted">dotted</option>
                                     <option value="dashed">dashed</option>
                                   </select>
+                                  <div id="tm-viz-selection-link-border-style-btns" class="btn-group btn-group-sm" role="group" aria-label="Selection link style">
+                                    <button type="button" class="btn btn-outline-secondary" data-value="solid">solid</button>
+                                    <button type="button" class="btn btn-outline-secondary" data-value="dotted">dotted</button>
+                                    <button type="button" class="btn btn-outline-secondary" data-value="dashed">dashed</button>
+                                  </div>
                                 </div>
                                 <div class="col-4">
                                   <label class="form-label mb-1" for="tm-viz-selection-link-border-color">Link colour</label>
                                   <input id="tm-viz-selection-link-border-color" class="form-control form-control-sm form-control-color" type="color" value="#6c757d" />
                                 </div>
                               </div>
+                            </div>
                             </div>
                           </div>
                         </div>
@@ -681,7 +709,7 @@ A -> B [increases | 1px]</code></pre>
     <div id="tm-style-modal" class="tm-viz-drawer" aria-labelledby="tm-style-drawer-title">
       <div class="border-bottom bg-white px-3 py-2 d-flex align-items-start justify-content-between gap-3">
         <div>
-          <div class="fw-semibold" id="tm-style-drawer-title">Styles</div>
+          <h2 class="fw-bold fs-4 mb-0" id="tm-style-drawer-title">Diagram Styles</h2>
           <div class="small text-muted">Diagram-wide defaults</div>
         </div>
         <button id="tm-style-close-x" type="button" class="btn-close" aria-label="Close"></button>
@@ -845,9 +873,14 @@ A -> B [increases | 1px]</code></pre>
                             <option value="">square</option>
                             <option value="rounded">rounded</option>
                           </select>
+                          <!-- UX: grouped pair of box icons (not a dropdown) -->
                           <div id="tm-style-node-shape-btns" class="btn-group btn-group-sm" role="group" aria-label="Default node shape">
-                            <button type="button" class="btn btn-outline-secondary" data-value="">square</button>
-                            <button type="button" class="btn btn-outline-secondary" data-value="rounded">rounded</button>
+                            <button type="button" class="btn btn-outline-secondary tm-shape-btn" data-value="" aria-label="square" title="square">
+                              <span class="tm-shape-preview" aria-hidden="true"></span>
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary tm-shape-btn" data-value="rounded" aria-label="rounded" title="rounded">
+                              <span class="tm-shape-preview tm-shape-preview-rounded" aria-hidden="true"></span>
+                            </button>
                           </div>
                         </div>
                         <div class="col-12 col-md-6">
@@ -1089,11 +1122,17 @@ A -> B [increases | 1px]</code></pre>
                         </div>
                         <div class="col-4">
                           <label class="form-label mb-1" for="tm-viz-cluster-border-style">Border style</label>
-                          <select id="tm-viz-cluster-border-style" class="form-select form-select-sm">
+                          <!-- UX: <6 options => buttons; keep select as source-of-truth for existing JS -->
+                          <select id="tm-viz-cluster-border-style" class="form-select form-select-sm visually-hidden">
                             <option value="solid">solid</option>
                             <option value="dotted">dotted</option>
                             <option value="dashed">dashed</option>
                           </select>
+                          <div id="tm-viz-cluster-border-style-btns" class="btn-group btn-group-sm" role="group" aria-label="Group box border style">
+                            <button type="button" class="btn btn-outline-secondary" data-value="solid">solid</button>
+                            <button type="button" class="btn btn-outline-secondary" data-value="dotted">dotted</button>
+                            <button type="button" class="btn btn-outline-secondary" data-value="dashed">dashed</button>
+                          </div>
                         </div>
                         <div class="col-4">
                           <label class="form-label mb-1" for="tm-viz-cluster-border-color">Border colour</label>
@@ -1164,11 +1203,17 @@ A -> B [increases | 1px]</code></pre>
                           </div>
                           <div class="col-4">
                             <label class="form-label mb-1" for="tm-viz-cluster-link-border-style">Link style</label>
-                            <select id="tm-viz-cluster-link-border-style" class="form-select form-select-sm">
+                            <!-- UX: <6 options => buttons; keep select as source-of-truth for existing JS -->
+                            <select id="tm-viz-cluster-link-border-style" class="form-select form-select-sm visually-hidden">
                               <option value="solid">solid</option>
                               <option value="dotted">dotted</option>
                               <option value="dashed">dashed</option>
                             </select>
+                            <div id="tm-viz-cluster-link-border-style-btns" class="btn-group btn-group-sm" role="group" aria-label="Group link style">
+                              <button type="button" class="btn btn-outline-secondary" data-value="solid">solid</button>
+                              <button type="button" class="btn btn-outline-secondary" data-value="dotted">dotted</button>
+                              <button type="button" class="btn btn-outline-secondary" data-value="dashed">dashed</button>
+                            </div>
                           </div>
                           <div class="col-4">
                             <label class="form-label mb-1" for="tm-viz-cluster-link-border-color">Link colour</label>
@@ -1205,11 +1250,17 @@ A -> B [increases | 1px]</code></pre>
                 </div>
                 <div class="col-4">
                   <label class="form-label mb-1" for="tm-viz-edge-border-style">Link style</label>
-                  <select id="tm-viz-edge-border-style" class="form-select form-select-sm">
+                  <!-- UX: <6 options => buttons; keep select as source-of-truth for existing JS -->
+                  <select id="tm-viz-edge-border-style" class="form-select form-select-sm visually-hidden">
                     <option value="solid">solid</option>
                     <option value="dotted">dotted</option>
                     <option value="dashed">dashed</option>
                   </select>
+                  <div id="tm-viz-edge-border-style-btns" class="btn-group btn-group-sm" role="group" aria-label="Link style">
+                    <button type="button" class="btn btn-outline-secondary" data-value="solid">solid</button>
+                    <button type="button" class="btn btn-outline-secondary" data-value="dotted">dotted</button>
+                    <button type="button" class="btn btn-outline-secondary" data-value="dashed">dashed</button>
+                  </div>
                 </div>
                 <div class="col-4">
                   <label class="form-label mb-1" for="tm-viz-edge-border-color">Link colour</label>
@@ -1261,11 +1312,17 @@ A -> B [increases | 1px]</code></pre>
               </div>
               <div class="col-4">
                 <label class="form-label mb-1" for="tm-ace-style-node-border-style">Style</label>
-                <select id="tm-ace-style-node-border-style" class="form-select form-select-sm">
+                <!-- UX: <6 options => buttons; keep select as source-of-truth for existing JS -->
+                <select id="tm-ace-style-node-border-style" class="form-select form-select-sm visually-hidden">
                   <option value="solid">solid</option>
                   <option value="dotted">dotted</option>
                   <option value="dashed">dashed</option>
                 </select>
+                <div id="tm-ace-style-node-border-style-btns" class="btn-group btn-group-sm" role="group" aria-label="Node border style">
+                  <button type="button" class="btn btn-outline-secondary" data-value="solid">solid</button>
+                  <button type="button" class="btn btn-outline-secondary" data-value="dotted">dotted</button>
+                  <button type="button" class="btn btn-outline-secondary" data-value="dashed">dashed</button>
+                </div>
               </div>
               <div class="col-4">
                 <label class="form-label mb-1" for="tm-ace-style-node-border-color">Colour</label>
@@ -1319,11 +1376,17 @@ A -> B [increases | 1px]</code></pre>
               </div>
               <div class="col-4">
                 <label class="form-label mb-1" for="tm-ace-style-cluster-border-style">Style</label>
-                <select id="tm-ace-style-cluster-border-style" class="form-select form-select-sm">
+                <!-- UX: <6 options => buttons; keep select as source-of-truth for existing JS -->
+                <select id="tm-ace-style-cluster-border-style" class="form-select form-select-sm visually-hidden">
                   <option value="solid">solid</option>
                   <option value="dotted">dotted</option>
                   <option value="dashed">dashed</option>
                 </select>
+                <div id="tm-ace-style-cluster-border-style-btns" class="btn-group btn-group-sm" role="group" aria-label="Group box border style">
+                  <button type="button" class="btn btn-outline-secondary" data-value="solid">solid</button>
+                  <button type="button" class="btn btn-outline-secondary" data-value="dotted">dotted</button>
+                  <button type="button" class="btn btn-outline-secondary" data-value="dashed">dashed</button>
+                </div>
               </div>
               <div class="col-4">
                 <label class="form-label mb-1" for="tm-ace-style-cluster-border-color">Colour</label>
@@ -1401,11 +1464,17 @@ A -> B [increases | 1px]</code></pre>
               </div>
               <div class="col-4">
                 <label class="form-label mb-1" for="tm-ace-style-edge-border-style">Link style</label>
-                <select id="tm-ace-style-edge-border-style" class="form-select form-select-sm">
+                <!-- UX: <6 options => buttons; keep select as source-of-truth for existing JS -->
+                <select id="tm-ace-style-edge-border-style" class="form-select form-select-sm visually-hidden">
                   <option value="solid">solid</option>
                   <option value="dotted">dotted</option>
                   <option value="dashed">dashed</option>
                 </select>
+                <div id="tm-ace-style-edge-border-style-btns" class="btn-group btn-group-sm" role="group" aria-label="Link style">
+                  <button type="button" class="btn btn-outline-secondary" data-value="solid">solid</button>
+                  <button type="button" class="btn btn-outline-secondary" data-value="dotted">dotted</button>
+                  <button type="button" class="btn btn-outline-secondary" data-value="dashed">dashed</button>
+                </div>
               </div>
               <div class="col-4">
                 <label class="form-label mb-1" for="tm-ace-style-edge-border-color">Link colour</label>

@@ -4,7 +4,7 @@
 
 Theorymaker is for creating Theories of Change and similar diagrams. 
 
-😀😇🎖️**Theormaker is great because**:
+😀😇🎖️**Theorymaker is great because**:
 - it is good at laying out even complicated diagrams easily, finding good positions for nodes and links. 
 - it is based on a simple text “map language” called **MapScript**. 
 - you can create and improve your diagram by:
