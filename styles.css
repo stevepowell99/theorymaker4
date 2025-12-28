@@ -103,20 +103,14 @@ body {
 /* Left editor panel (resizable) */
 .tm-left {
   flex-shrink: 0; /* don't let Templates/Help content squeeze the editor panel */
-  /* Default width: match the Styles drawer (so the left panel feels consistent). */
-  width: 520px;
+  /* Default width: ~25% of viewport, with a sensible min/max (splitter can still override inline). */
+  width: clamp(320px, 25vw, 600px);
   min-width: 240px;
   max-width: 75%;
   display: flex;
   flex-direction: column;
   min-height: 0;
   border: 1px dotted gray;
-}
-
-@media (min-width: 992px) {
-  .tm-left {
-    width: 600px; /* match #tm-style-modal desktop width */
-  }
 }
 
 .tm-panel-header {
@@ -912,37 +906,63 @@ body {
   background: #fff;
 }
 
-.tm-chat-details {
-  /* Chat details lives inside the chat header area */
-  padding: 8px 10px;
+/* -----------------------------
+   Chat UI: standard "thread + composer"
+   - Starts as just the input (thread hidden)
+   - Grows upward until ~40% of viewport height, then thread scrolls
+   ----------------------------- */
+
+#tm-chat-panel {
+  /* Purpose: behave like a normal chat container (thread above, input below) */
+  display: flex;
+  flex-direction: column;
+  max-height: 40vh;
+  overflow: hidden; /* thread provides the scroll */
 }
 
-.tm-chat-history {
-  max-height: 240px;
-  overflow: auto;
+.tm-chat-thread {
+  /* Purpose: message history area above the composer */
+  flex: 1 1 auto;
+  min-height: 0; /* required for flex scroll areas */
+  overflow-y: auto;
   border: 1px solid #e9ecef;
-  border-radius: 6px;
+  border-radius: 10px;
   background: #f8f9fa;
-  padding: 8px;
-  white-space: pre-wrap;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.tm-chat-msg {
-  padding: 6px 8px;
-  border-radius: 8px;
-  margin: 6px 0;
+.tm-chat-bubble {
+  /* Purpose: single chat bubble */
+  max-width: 92%;
+  padding: 8px 10px;
+  border-radius: 14px;
   border: 1px solid #e9ecef;
   background: #ffffff;
+  white-space: pre-wrap; /* keep newlines (AI comments often have line breaks) */
 }
 
-.tm-chat-msg-user {
+.tm-chat-bubble-user {
+  align-self: flex-end;
   border-color: #cfe2ff;
   background: #e7f1ff;
 }
 
-.tm-chat-msg-assistant {
+.tm-chat-bubble-assistant {
+  align-self: flex-start;
   border-color: #d1e7dd;
   background: #eaf7ef;
+}
+
+.tm-chat-bubble-clickable {
+  /* Purpose: indicate the bubble is interactive (restore state) */
+  cursor: pointer;
+}
+
+.tm-chat-bubble-clickable:hover {
+  border-color: #0d6efd; /* Bootstrap primary */
 }
 
 .tm-editor-details {

@@ -115,6 +115,9 @@
           <div class="d-flex align-items-center justify-content-between gap-2">
           </div>
 
+          <!-- Chat thread: hidden until first message; grows up to ~40% viewport height then scrolls -->
+          <div id="tm-chat-thread" class="tm-chat-thread d-none" aria-label="Chat history"></div>
+
           <div class="input-group input-group-sm mt-2">
             <textarea
               id="tm-chat-input"
@@ -146,15 +149,6 @@
               <span id="tm-chat-send-spinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
             </button>
           </div>
-
-          <!-- History hidden behind a chevron (per request) -->
-          <details id="tm-chat-history-details" class="tm-details tm-chat-details mt-2 d-none">
-            <summary class="tm-details-summary">
-              <i class="bi bi-chevron-right tm-chevron" aria-hidden="true"></i>
-              <span class="fw-semibold">chat history</span>
-            </summary>
-            <div id="tm-chat-history" class="tm-chat-history mt-2" aria-label="Chat history"></div>
-          </details>
         </div>
 
         <!-- Editor hidden behind a chevron (per request) -->
@@ -1501,6 +1495,31 @@ A -> B [increases | 1px]</code></pre>
       <i class="bi bi-brush" aria-hidden="true"></i>
       <span data-tm-label>Style</span>
     </button>
+        <!-- GoatCounter: track only the initial (landing) URL path; NEVER include the hash because it contains the map content (#m=...) -->
+        <script>
+          window.goatcounter = {
+            // Purpose: ensure we only ever send a stable, non-sensitive page path (no #hash).
+            // This still counts only on page load unless we explicitly call goatcounter.count() elsewhere (we don't).
+            path: function () {
+              // WARNING: location.hash contains full map content (#m=...), so we must not send it.
+              // Instead we send a short non-reversible fingerprint so you can see "returns to same map" patterns.
+              function fnv1a32hex(str) {
+                let h = 0x811c9dc5; // FNV-1a 32-bit offset basis
+                for (let i = 0; i < str.length; i++) {
+                  h ^= str.charCodeAt(i);
+                  // h *= 16777619 (as shifts to keep it fast + deterministic in JS)
+                  h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+                }
+                return h.toString(16).padStart(8, "0");
+              }
+
+              const base = location.pathname + location.search;
+              if (!location.hash) return base;
+              const sep = base.includes("?") ? "&" : "?";
+              return `${base}${sep}gc_map=${fnv1a32hex(location.hash)}`;
+            },
+          };
+        </script>
         <script data-goatcounter="https://theorymaker.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
   </body>
 </html>

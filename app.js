@@ -9098,12 +9098,11 @@ function initChatUi({ editor, graphviz }) {
   const btnStop = document.getElementById("tm-chat-stop");
   const sendLabel = document.getElementById("tm-chat-send-label");
   const sendSpinner = document.getElementById("tm-chat-send-spinner");
-  const historyEl = document.getElementById("tm-chat-history");
-  const historyDetails = document.getElementById("tm-chat-history-details");
+  const threadEl = document.getElementById("tm-chat-thread");
 
   const editorDetails = document.getElementById("tm-editor-details");
 
-  if (!input || !btnSend || !btnClear || !btnStop || !historyEl) return;
+  if (!input || !btnSend || !btnClear || !btnStop || !threadEl) return;
 
   // Auto-grow chat input on focus/input, up to a maximum height.
   // Purpose: keep the default compact (1 line) but allow long prompts without manual resizing.
@@ -9143,67 +9142,63 @@ function initChatUi({ editor, graphviz }) {
     updateClearVisibility();
   });
 
-  // Briefly open history when the AI posts a comment (so you notice it) if it's currently closed.
-  let historyAutoOpened = false;
-  let historyAutoCloseTimer = null;
-  let suppressNextHistoryToggle = false;
-  function brieflyRevealHistory() {
-    if (!historyDetails) return;
-    if (historyDetails.open) return;
-    historyAutoOpened = true;
-    suppressNextHistoryToggle = true; // opening programmatically triggers 'toggle'
-    historyDetails.open = true;
-    if (historyAutoCloseTimer) clearTimeout(historyAutoCloseTimer);
-    historyAutoCloseTimer = setTimeout(() => {
-      if (!historyDetails.open) return;
-      if (!historyAutoOpened) return; // user interacted; don't fight them
-      suppressNextHistoryToggle = true; // closing programmatically triggers 'toggle'
-      historyDetails.open = false;
-      historyAutoOpened = false;
-    }, 2500);
-  }
-  if (historyDetails) {
-    historyDetails.addEventListener("toggle", () => {
-      if (suppressNextHistoryToggle) {
-        suppressNextHistoryToggle = false;
-        return;
-      }
-      // If the user toggles it, cancel any pending auto-close.
-      historyAutoOpened = false;
-      if (historyAutoCloseTimer) clearTimeout(historyAutoCloseTimer);
-      historyAutoCloseTimer = null;
-    });
-  }
-
   const messages = [];
   let conversationId = "";
   let activeChatAbortController = null; // AbortController for the current request (for Stop button)
 
-  function renderHistory() {
-    historyEl.innerHTML = "";
-    
-    // Show/hide the entire history details element based on whether there are messages
-    if (messages.length === 0) {
-      historyDetails.classList.add("d-none");
-      return;
-    } else {
-      historyDetails.classList.remove("d-none");
+  // Purpose: click assistant bubbles to restore the diagram to that point.
+  threadEl.addEventListener("click", (e) => {
+    const bubble = e.target?.closest?.(".tm-chat-bubble");
+    if (!bubble) return;
+    const idx = Number(bubble.getAttribute("data-tm-msg-idx") || "");
+    if (!Number.isFinite(idx) || idx < 0 || idx >= messages.length) return;
+    const m = messages[idx];
+    if (!m?.clickable || !m?.mapScript) return;
+
+    const ok = confirm("Restore the diagram to this point in the chat?\n\nThis will replace the current editor contents.");
+    if (!ok) return;
+
+    // Use the same URL mechanism as undo/redo (History API + #m=...).
+    pushMapScriptInUrl(m.mapScript);
+    suppressHistorySync = true;
+    try {
+      editor.setValue(m.mapScript, -1);
+    } finally {
+      suppressHistorySync = false;
     }
-    
-    for (const m of messages) {
+    renderNow(graphviz, editor);
+  });
+
+  function renderThread() {
+    threadEl.innerHTML = "";
+
+    // Purpose: start as just the input; show the thread only once we have messages.
+    threadEl.classList.toggle("d-none", messages.length === 0);
+    if (messages.length === 0) return;
+
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
       const div = document.createElement("div");
-      div.className = `tm-chat-msg ${m.role === "user" ? "tm-chat-msg-user" : "tm-chat-msg-assistant"}`;
+      const isUser = m.role === "user";
+      div.className = `tm-chat-bubble ${isUser ? "tm-chat-bubble-user" : "tm-chat-bubble-assistant"}${m.clickable ? " tm-chat-bubble-clickable" : ""}`;
       div.textContent = m.text;
-      historyEl.appendChild(div);
+      div.setAttribute("data-tm-msg-idx", String(i));
+      if (m.clickable) div.title = "Click to restore the diagram to this point";
+      threadEl.appendChild(div);
     }
-    historyEl.scrollTop = historyEl.scrollHeight;
+    threadEl.scrollTop = threadEl.scrollHeight;
   }
 
   function push(role, text) {
     const t = String(text || "").trim();
     if (!t) return;
-    messages.push({ role, text: t });
-    renderHistory();
+    messages.push({
+      role,
+      text: t,
+      mapScript: editor.getValue(), // snapshot the diagram state at the time this bubble was created
+      clickable: role === "assistant", // only assistant bubbles correspond to applied diagram states
+    });
+    renderThread();
   }
 
   function getOrCreateStableId(key) {
@@ -9322,7 +9317,6 @@ function initChatUi({ editor, graphviz }) {
 
       if (comments) {
         push("assistant", comments);
-        brieflyRevealHistory();
       } else {
         push("assistant", "Applied update.");
       }
