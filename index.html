@@ -123,7 +123,7 @@
               id="tm-chat-input"
               class="form-control tm-chat-input"
               rows="2"
-              placeholder="Chat with AI to create a new diagram or update the existing diagram: contents and/or styles. Or click on the diagram to edito manually, or use the manual editor below."
+              placeholder="Chat with AI to create a new diagram or update the existing diagram: contents and/or styles. Or click on the diagram to edit it, or use the manual editor below."
               aria-label="Chat input"
             ></textarea>
             <button
@@ -304,7 +304,14 @@
                 </div>
 
 
-                <div class="tm-viz-hint-wrap ms-auto me-2 text-end">
+                <div id="tm-viz-hint-wrap" class="tm-viz-hint-wrap ms-2">
+                  <button
+                    id="tm-viz-hint-dismiss"
+                    type="button"
+                    class="btn-close tm-viz-hint-dismiss"
+                    aria-label="Dismiss"
+                    title="Dismiss"
+                  ></button>
                   <span id="tm-viz-hint" class="tm-viz-hint small text-muted"></span>
                   <span id="tm-viz-status" class="tm-viz-status small text-muted" aria-live="polite"></span>
                 </div>
@@ -318,7 +325,7 @@
               <div id="tm-viz-selection-drawer" class="tm-viz-drawer" aria-labelledby="tm-viz-selection-drawer-title">
                 <div class="border-bottom bg-white px-3 py-2 d-flex align-items-start justify-content-between gap-3">
                   <div>
-                    <div class="fw-semibold" id="tm-viz-selection-drawer-title">Selection</div>
+                    <div class="fw-semibold" id="tm-viz-selection-drawer-title">Edit nodes</div>
                     <div id="tm-viz-selection-meta" class="small text-muted"></div>
                   </div>
                   <button id="tm-viz-selection-close" type="button" class="btn-close" aria-label="Close"></button>
@@ -674,6 +681,18 @@ A -> B [increases | 1px]</code></pre>
               <i class="bi bi-cc-by" aria-hidden="true"></i>
               <i class="bi bi-cc-nc" aria-hidden="true"></i>
             </a>
+          </div>
+
+          <span class="px-2">·</span>
+
+          <!-- Footer message carousel (subtle, rotates every ~10s) -->
+          <div id="tm-footer-carousel" class="tm-footer-carousel d-inline-flex align-items-center gap-2">
+            <span id="tm-footer-carousel-icon" class="tm-footer-carousel-icon" aria-hidden="true"></span>
+            <span class="tm-footer-carousel-text">
+              <span id="tm-footer-carousel-prefix"></span>
+              <a id="tm-footer-carousel-site" class="tm-footer-carousel-site" href="#" target="_blank" rel="noopener"></a>
+              <span id="tm-footer-carousel-suffix"></span>
+            </span>
           </div>
         </div>
       </div>

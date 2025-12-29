@@ -5823,14 +5823,58 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
   const DEFAULT_VIZ_HINT = "Hover over the diagram to edit it";
 
+  // Cursor-adjacent hint bubble (shown while pointer is over the diagram).
+  const hintFloatEl = document.createElement("div");
+  hintFloatEl.className = "tm-viz-hint-float d-none";
+  hintFloatEl.setAttribute("aria-hidden", "true");
+  document.body.appendChild(hintFloatEl);
+
   function setVizHint(msg) {
-    if (!hintEl) return;
-    hintEl.textContent = String(msg || "");
+    // Support simple multi-line hints without using innerHTML (keeps this XSS-safe).
+    const t = String(msg || "")
+      // Accept <br>, <br/>, <br />, </br> with any whitespace/case.
+      .replace(/<\s*br\s*\/?\s*>/gi, "\n")
+      .replace(/<\s*\/\s*br\s*>/gi, "\n");
+    hintFloatEl.textContent = t;
   }
 
   function clearVizHint() {
     setVizHint(DEFAULT_VIZ_HINT);
   }
+
+  // Toolbar callout (above the map): keep it as a simple rotating tip ticker (not hover/selection sensitive).
+  const VIZ_TICKER_HINTS = [
+    "Tip: Use checkboxes to select multiple nodes (then click another node or group box to create links)",
+    "Tip: Shift+click a group box to move selected nodes into it",
+    "Tip: Shift+click the background to move selected nodes out of groups",
+    "Tip: Click the title to style or rename it",
+    "Tip: Click the background to style the whole diagram",
+  ];
+  let tickerIdx = 0;
+  let tickerTimer = null;
+  function setVizTickerText(text) {
+    if (!hintEl) return;
+    hintEl.textContent = String(text || "");
+  }
+  function startVizTicker() {
+    if (!hintEl) return;
+    if (tickerTimer) return;
+    tickerTimer = window.setInterval(() => {
+      tickerIdx = (tickerIdx + 1) % VIZ_TICKER_HINTS.length;
+      setVizTickerText(VIZ_TICKER_HINTS[tickerIdx]);
+    }, 10000);
+  }
+  function stopVizTicker() {
+    if (!tickerTimer) return;
+    window.clearInterval(tickerTimer);
+    tickerTimer = null;
+  }
+  if (hintEl) {
+    setVizTickerText(VIZ_TICKER_HINTS[0]);
+    startVizTicker();
+  }
+
+  let isPointerOverViz = false;
 
   function getSelLinkDir() {
     return Boolean(selLinkDirIn?.checked) ? "in" : "out";
@@ -5846,6 +5890,62 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     return dir === "out" ? "to" : "from";
   }
 
+  function plural(n, one, many) {
+    return n === 1 ? one : many;
+  }
+
+  function bullets(title, items) {
+    // Purpose: keep hints readable with consistent "\n•" formatting (rendered via CSS white-space: pre-line).
+    const t = String(title || "").trim();
+    const xs = (items || []).map((s) => String(s || "").trim()).filter(Boolean);
+    if (!t && !xs.length) return "";
+    if (!xs.length) return t;
+    return `${t ? `${t}\n` : ""}${xs.map((x) => `• ${x}`).join("\n")}`;
+  }
+
+  function selectedNodesLabel() {
+    const n = selectedNodes.size;
+    return `the selected ${plural(n, "node", "nodes")}`;
+  }
+
+  function selectedGroupBoxesLabel() {
+    const n = selectedClusters.size;
+    return `the selected ${plural(n, "group box", "group boxes")}`;
+  }
+
+  function linkHintForSelectionTarget({ dir, targetWhat, selectedWhat }) {
+    const a = toOrFromForTargetClick(dir); // "to" | "from" relative to the target
+    const b = a === "to" ? "from" : "to";
+    return bullets("Now:", [`Click ${targetWhat} to add links ${a} it ${b} ${selectedWhat}`]);
+  }
+
+  function selectionBackgroundHintForNodes() {
+    // UX: after the *first* checkbox selection, encourage selecting more (before talking about targets).
+    if (selectedNodes.size === 1)
+      return bullets("Now:", [
+        "Click another node or group box to create a link",
+        "Select more nodes using their checkboxes",
+        "Use the styling panel on the left",
+      ]);
+    const dir = getSelLinkDir();
+    const a = toOrFromForTargetClick(dir);
+    const b = a === "to" ? "from" : "to";
+    const selectedWhat = selectedNodesLabel();
+    return bullets("Now:", [
+      `Click a node or group box to add links ${a} it ${b} ${selectedWhat}`,
+      `Shift+click a group box to move selected ${plural(selectedNodes.size, "node", "nodes")} into it`,
+      "Shift+click the background to move out of groups",
+    ]);
+  }
+
+  function selectionBackgroundHintForGroupBoxes() {
+    const dir = getClusterLinkDir();
+    const a = toOrFromForTargetClick(dir);
+    const b = a === "to" ? "from" : "to";
+    const selectedWhat = selectedGroupBoxesLabel();
+    return bullets("Now:", [`Click a node or group box to add links ${a} it ${b} ${selectedWhat}`]);
+  }
+
   function linkHintToFromSelected({ dir, targetWhat, selectedWhat }) {
     // Example:
     // - dir=out, targetWhat="this node", selectedWhat="the selected node(s)"
@@ -5858,27 +5958,72 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   }
 
   function setNodeSelectionStartHint() {
-    setVizHint("Select more nodes, or click another node or group box to create a link");
+    setVizHint(selectionBackgroundHintForNodes());
   }
 
   // Hovering over overlay UI should show a specific hint (and clear on mouse out).
   hoverDeleteBtn?.addEventListener?.("mouseenter", () => {
     const t = hoverDeleteTarget?.type || "";
-    if (t === "node") return setVizHint("Click to delete this node");
-    if (t === "edge") return setVizHint("Click to delete this link");
-    if (t === "cluster") return setVizHint("Click to delete this group box");
+    if (t === "node") return setVizHint("Click to delete a node");
+    if (t === "edge") return setVizHint("Click to delete a link");
+    if (t === "cluster") return setVizHint("Click to delete a group box");
     return setVizHint("Click to delete");
   });
   hoverDeleteBtn?.addEventListener?.("mouseleave", clearVizHint);
 
   hoverCheckbox?.addEventListener?.("mouseenter", () => {
-    setVizHint("Click checkbox to select nodes (then add links/nodes or move into/out of groups)");
+    // If a selection is already active, this checkbox adds the hovered node to the current selection.
+    if (selectedNodes.size > 0) {
+      setVizHint("Click checkbox to add this node to the selection");
+      return;
+    }
+    setVizHint("Click this checkbox to style or rename this node, or to add links to/from it or move it into/out of groups");
   });
-  hoverCheckbox?.addEventListener?.("mouseleave", clearVizHint);
+  hoverCheckbox?.addEventListener?.("mouseleave", () => {
+    // IMPORTANT: hiding the hover checkbox can trigger mouseleave; don't wipe selection hints.
+    if (selectedNodes.size > 0) return setVizHint(selectionBackgroundHintForNodes());
+    if (selectedClusters.size > 0) return setVizHint(selectionBackgroundHintForGroupBoxes());
+    clearVizHint();
+  });
 
   hoverClusterCheckbox?.addEventListener?.("mouseenter", () => {
+    // If a selection is already active, this checkbox adds the hovered group box to the current selection.
+    if (selectedClusters.size > 0) {
+      setVizHint("Click checkbox to add this group box to the selection");
+      return;
+    }
     setVizHint("Click checkbox to select group box(es) (then link to nodes or other groups)");
   });
+  hoverClusterCheckbox?.addEventListener?.("mouseleave", () => {
+    if (selectedClusters.size > 0) return setVizHint(selectionBackgroundHintForGroupBoxes());
+    if (selectedNodes.size > 0) return setVizHint(selectionBackgroundHintForNodes());
+    clearVizHint();
+  });
+
+  // Pointer over/out: pause/resume idle hint cycling.
+  vizEl.addEventListener("pointerenter", () => {
+    isPointerOverViz = true;
+    stopVizTicker(); // freeze the top ticker while cursor is on the map
+    hintFloatEl.classList.remove("d-none");
+  });
+  vizEl.addEventListener("pointerleave", () => {
+    isPointerOverViz = false;
+    startVizTicker(); // resume ticker when leaving the map
+    hintFloatEl.classList.add("d-none");
+  });
+
+  // Follow cursor while over diagram.
+  vizEl.addEventListener("pointermove", (e) => {
+    if (!isPointerOverViz) return;
+    const x = Number(e.clientX || 0);
+    const y = Number(e.clientY || 0);
+    // Place top-left of the cursor (native browser tooltip is typically bottom-right).
+    hintFloatEl.style.left = `${x - 10}px`;
+    hintFloatEl.style.top = `${y - 10}px`;
+  });
+
+  // Seed the floating hint (only visible while pointer is over the diagram).
+  clearVizHint();
   hoverClusterCheckbox?.addEventListener?.("mouseleave", clearVizHint);
 
   // Initial (idle) hint.
@@ -7729,12 +7874,44 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     const clusterG = getClosestGraphvizGroup(e.target, "cluster");
     const hasNodeSelection = selectedNodes.size > 0;
     const hasClusterSelection = selectedClusters.size > 0;
+    const selectionActive = hasNodeSelection || hasClusterSelection;
+
+    // If the pointer is on a selection checkbox (SVG foreignObject overlay),
+    // show checkbox-specific instructions (do not treat it like hovering the whole node/cluster).
+    const isOnNodeCheckbox = Boolean(e.target?.closest?.(".tm-node-checkbox"));
+    const isOnClusterCheckbox = Boolean(e.target?.closest?.(".tm-cluster-checkbox"));
+    if (selectionActive && (isOnNodeCheckbox || isOnClusterCheckbox)) {
+      if (isOnNodeCheckbox && hasNodeSelection) setVizHint("Click checkbox to add this node to the selection");
+      else if (isOnClusterCheckbox && hasClusterSelection) setVizHint("Click checkbox to add this group box to the selection");
+      // Keep hover overlays stable while on the checkbox.
+      hideHoverDelete();
+      hideHoverCheckbox();
+      hideHoverClusterCheckbox();
+      return;
+    }
+
+    // Selection mode UX:
+    // - Keep the selection instruction "sticky" by default (do NOT swap to random hover hints).
+    // - Only change the hint when hovering a valid target (node/group box).
+    const hoveredNodeId = nodeG ? getGraphvizTitleText(nodeG) : "";
+    const hoveredClusterId = clusterG ? getGraphvizTitleText(clusterG) : "";
+    const hoveredNodeIsTarget = Boolean(hoveredNodeId) && !isInternalClusterAnchorNodeId(hoveredNodeId);
+    const hoveredClusterIsTarget = Boolean(hoveredClusterId && hoveredClusterId.startsWith("cluster_"));
+
+    if (selectionActive && !hoveredNodeIsTarget && !hoveredClusterIsTarget) {
+      clearHoverGlow();
+      setVizHint(hasNodeSelection ? selectionBackgroundHintForNodes() : selectionBackgroundHintForGroupBoxes());
+      hideHoverDelete();
+      hideHoverCheckbox();
+      hideHoverClusterCheckbox();
+      return;
+    }
     
     if (!nodeG && !edgeG && !clusterG) {
       // If a selection is active, background hover should describe the selection actions (not global styling).
       if (hasNodeSelection) {
         clearHoverGlow();
-        setVizHint("Click a node or group box to add link(s). Shift+click a group box to move selected node(s) into it. Shift+click background to move out of groups.");
+        setVizHint(selectionBackgroundHintForNodes());
         hideHoverDelete();
         hideHoverCheckbox();
         hideHoverClusterCheckbox();
@@ -7742,7 +7919,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       }
       if (hasClusterSelection) {
         clearHoverGlow();
-        setVizHint("Click a node or group box to add link(s) to/from the selected group box(es).");
+        setVizHint(selectionBackgroundHintForGroupBoxes());
         hideHoverDelete();
         hideHoverCheckbox();
         hideHoverClusterCheckbox();
@@ -7758,7 +7935,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
         setVizHint("Click to style or rename the diagram title");
       } else {
         clearHoverGlow();
-        setVizHint("Click background to style the whole diagram");
+        setVizHint("Click the background to style the whole diagram");
       }
       hideHoverDelete();
       hideHoverCheckbox();
@@ -7768,11 +7945,18 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     if (nodeG) {
       setHoverGlow(nodeG);
       if (hasNodeSelection) {
-        setVizHint(linkHintToFromSelected({ dir: getSelLinkDir(), targetWhat: "this node", selectedWhat: "the selected node(s)" }));
+        setVizHint(linkHintForSelectionTarget({ dir: getSelLinkDir(), targetWhat: "this node", selectedWhat: selectedNodesLabel() }));
       } else if (hasClusterSelection) {
-        setVizHint(linkHintToFromSelected({ dir: getClusterLinkDir(), targetWhat: "this node", selectedWhat: "the selected group box(es)" }));
+        setVizHint(linkHintForSelectionTarget({ dir: getClusterLinkDir(), targetWhat: "this node", selectedWhat: selectedGroupBoxesLabel() }));
       }
-      else setVizHint("Click to style or rename this node");
+      else
+        setVizHint(
+          bullets("Click this node to:", [
+            "Style or rename it",
+            "Add links to/from it",
+            "Move it into/out of groups",
+          ])
+        );
       const nodeId = getGraphvizTitleText(nodeG);
       if (!nodeId) {
         hideHoverDelete();
@@ -7806,18 +7990,21 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       setHoverGlow(clusterG);
       if (hasNodeSelection) {
         setVizHint(
-          `${linkHintToFromSelected({ dir: getSelLinkDir(), targetWhat: "this group box", selectedWhat: "the selected node(s)" })}. Shift+click to move selected node(s) into this group.`
+          bullets("Now:", [
+            `Click this group box to add links ${toOrFromForTargetClick(getSelLinkDir())} it ${toOrFromForTargetClick(getSelLinkDir()) === "to" ? "from" : "to"} ${selectedNodesLabel()}`,
+            `Shift+click to move selected ${plural(selectedNodes.size, "node", "nodes")} into this group`,
+          ])
         );
       } else if (hasClusterSelection) {
         setVizHint(
-          `${linkHintToFromSelected({
+          `${linkHintForSelectionTarget({
             dir: getClusterLinkDir(),
             targetWhat: "this group box",
-            selectedWhat: "the selected group box(es)",
-          })} (between group box selections).`
+            selectedWhat: selectedGroupBoxesLabel(),
+          })}.`
         );
       } else {
-        setVizHint("Click to style or rename this group box");
+        setVizHint(bullets("Click this group box to:", ["Style or rename it", "Add links to/from it"]));
       }
       const clusterId = getGraphvizTitleText(clusterG);
       if (!clusterId || !clusterId.startsWith("cluster_")) {
@@ -8041,6 +8228,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     syncSelectionNodeEditor();
     applyMultiSelectVisuals();
     hideHoverCheckbox(); // keep UI clean; per-node checkboxes will take over once selection exists
+    if (selectedNodes.size > 0) setVizHint(selectionBackgroundHintForNodes());
+    else clearVizHint();
   });
 
   // Also stop propagation on the checkbox label click
@@ -8369,16 +8558,100 @@ let vizScale = 1;
 let lastVizSettings = null; // populated by renderNow
 let vizHasUserZoomed = false; // once user zooms manually, preserve their chosen scale across rerenders/resizes
 
+function pulseVizHintCallout() {
+  const wrap = document.getElementById("tm-viz-hint-wrap");
+  if (!wrap) return;
+  // Re-trigger CSS animation reliably.
+  wrap.classList.remove("tm-callout-pulse");
+  // Force reflow so removing+adding restarts the animation.
+  void wrap.offsetWidth;
+  wrap.classList.add("tm-callout-pulse");
+}
+
 function setVizStatus(msg) {
   const el = document.getElementById("tm-viz-status");
   if (!el) return;
   el.textContent = msg || "";
   if (!msg) return;
+  pulseVizHintCallout(); // draw attention to new status
   // Clear after a short delay so the toolbar stays clean.
   window.clearTimeout(setVizStatus._t);
   setVizStatus._t = window.setTimeout(() => {
     el.textContent = "";
   }, 1800);
+}
+
+function initFooterCarousel() {
+  const wrap = document.getElementById("tm-footer-carousel");
+  const iconEl = document.getElementById("tm-footer-carousel-icon");
+  const prefixEl = document.getElementById("tm-footer-carousel-prefix");
+  const siteEl = document.getElementById("tm-footer-carousel-site");
+  const suffixEl = document.getElementById("tm-footer-carousel-suffix");
+  if (!wrap || !iconEl || !prefixEl || !siteEl || !suffixEl) return;
+
+  const items = [
+    {
+      prefix: "Try the ",
+      site: "Causal Map app",
+      suffix: ": visualise and make sense of stakeholder stories at scale",
+      href: "https://causalmap.app/",
+      icon: { type: "img", src: "https://app.causalmap.app/favicon.png", alt: "Causal Map" },
+    },
+    {
+      prefix: "You can use ",
+      site: "Causal Map",
+      suffix: " for free: make evidence-based causal maps from data",
+      href: "https://causalmap.app/",
+      icon: { type: "img", src: "https://app.causalmap.app/favicon.png", alt: "Causal Map" },
+    },
+    {
+      prefix: "Read more about causal mapping at the ",
+      site: "Causal Map garden",
+      suffix: "",
+      href: "https://garden.causalmap.app/",
+      icon: { type: "emoji", text: "🌻" },
+    },
+    {
+      prefix: "Try conversational research for free: ",
+      site: "Qualia",
+      suffix: " is your AI interviewer",
+      href: "https://qualiainterviews.com/",
+      icon: { type: "img", src: "./assets/qualia-favicon.png", alt: "Qualia" },
+    },
+  ];
+
+  wrap.classList.add("tm-fade-swap");
+
+  let idx = 0;
+  function renderItem(it) {
+    prefixEl.textContent = String(it.prefix || "");
+    siteEl.href = it.href;
+    siteEl.textContent = String(it.site || "");
+    suffixEl.textContent = String(it.suffix || "");
+
+    // Icon slot: image or emoji.
+    iconEl.innerHTML = "";
+    if (it.icon?.type === "img") {
+      const img = document.createElement("img");
+      img.src = it.icon.src;
+      img.alt = it.icon.alt || "";
+      iconEl.appendChild(img);
+    } else {
+      iconEl.textContent = String(it.icon?.text || "");
+    }
+  }
+
+  function swapToNext() {
+    wrap.classList.add("tm-fade-out");
+    window.setTimeout(() => {
+      idx = (idx + 1) % items.length;
+      renderItem(items[idx]);
+      wrap.classList.remove("tm-fade-out");
+    }, 260);
+  }
+
+  renderItem(items[idx]);
+  window.setInterval(swapToNext, 10000);
 }
 
 function getVizSvgEl() {
@@ -9142,9 +9415,56 @@ function initChatUi({ editor, graphviz }) {
     updateClearVisibility();
   });
 
+  // Persist chat history across reloads (browser-only).
+  const CHAT_STORAGE_KEY = "tm_chat_history_v1";
+  const CHAT_STORAGE_MAX_MESSAGES = 40; // keep LocalStorage small; MapScript snapshots can be large
+
   const messages = [];
   let conversationId = "";
   let activeChatAbortController = null; // AbortController for the current request (for Stop button)
+
+  function loadChatFromStorage() {
+    try {
+      const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (!raw) return;
+      const obj = JSON.parse(raw);
+      const savedConv = String(obj?.conversationId || "").trim();
+      const savedMsgs = Array.isArray(obj?.messages) ? obj.messages : [];
+      if (savedConv) conversationId = savedConv;
+
+      for (const m of savedMsgs.slice(-CHAT_STORAGE_MAX_MESSAGES)) {
+        const role = m?.role === "user" ? "user" : "assistant";
+        const text = String(m?.text || "").trim();
+        if (!text) continue;
+        const clickable = role === "assistant";
+        // Store MapScript snapshots only for assistant bubbles (these correspond to applied states).
+        const mapScript = clickable ? String(m?.mapScript || "").trim() : "";
+        messages.push({ role, text, clickable, mapScript: mapScript || "" });
+      }
+    } catch {
+      // ignore bad storage; keep chat usable
+    }
+  }
+
+  function saveChatToStorage() {
+    try {
+      const trimmed = messages.slice(-CHAT_STORAGE_MAX_MESSAGES).map((m) => ({
+        role: m?.role === "user" ? "user" : "assistant",
+        text: String(m?.text || ""),
+        // Persist mapScript only for assistant bubbles (keeps storage smaller).
+        mapScript: m?.role === "assistant" ? String(m?.mapScript || "") : "",
+      }));
+      localStorage.setItem(
+        CHAT_STORAGE_KEY,
+        JSON.stringify({
+          conversationId: String(conversationId || ""),
+          messages: trimmed,
+        })
+      );
+    } catch {
+      // ignore quota errors; chat still works in-memory
+    }
+  }
 
   // Purpose: click assistant bubbles to restore the diagram to that point.
   threadEl.addEventListener("click", (e) => {
@@ -9195,10 +9515,12 @@ function initChatUi({ editor, graphviz }) {
     messages.push({
       role,
       text: t,
-      mapScript: editor.getValue(), // snapshot the diagram state at the time this bubble was created
+      // Snapshot only for assistant bubbles (these correspond to applied diagram states).
+      mapScript: role === "assistant" ? editor.getValue() : "",
       clickable: role === "assistant", // only assistant bubbles correspond to applied diagram states
     });
     renderThread();
+    saveChatToStorage();
   }
 
   function getOrCreateStableId(key) {
@@ -9356,6 +9678,10 @@ function initChatUi({ editor, graphviz }) {
     input.focus();
   });
 
+  // Restore chat history (if any) and render immediately.
+  loadChatFromStorage();
+  renderThread();
+
   // Ensure correct initial button state.
   updateClearVisibility();
 
@@ -9378,6 +9704,24 @@ async function main() {
   initTooltips();
   initRecommendedColourSwatches();
   setActiveTab("viz");
+
+  // Diagram hint callout: gentle pulse on load, and allow dismiss for this browser session.
+  const vizHintWrap = document.getElementById("tm-viz-hint-wrap");
+  const vizHintDismiss = document.getElementById("tm-viz-hint-dismiss");
+  if (vizHintWrap) {
+    const dismissed = sessionStorage.getItem("tm_viz_hint_dismissed") === "1";
+    if (dismissed) {
+      vizHintWrap.classList.add("d-none");
+    } else {
+      vizHintWrap.classList.add("tm-callout-pulse-slow");
+      vizHintDismiss?.addEventListener("click", () => {
+        sessionStorage.setItem("tm_viz_hint_dismissed", "1");
+        vizHintWrap.classList.add("d-none");
+      });
+    }
+  }
+
+  initFooterCarousel();
 
   // Keep "fit to width" correct if the window size changes (only while in default fit mode).
   window.addEventListener("resize", () => {
