@@ -5791,9 +5791,12 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     hoverDeleteBtn.className = "btn btn-sm btn-danger tm-viz-hover-delete";
     hoverDeleteBtn.textContent = "×";
     hoverDeleteBtn.setAttribute("aria-label", "Click to delete");
-    hoverDeleteBtn.title = "Click to delete";
+    hoverDeleteBtn.dataset.tmTipTitle = "Click to delete";
+    hoverDeleteBtn.title = isTipsEnabled() ? hoverDeleteBtn.dataset.tmTipTitle : "";
     vizEl.appendChild(hoverDeleteBtn);
   }
+  if (!hoverDeleteBtn.dataset.tmTipTitle) hoverDeleteBtn.dataset.tmTipTitle = hoverDeleteBtn.title || "";
+  hoverDeleteBtn.title = isTipsEnabled() ? hoverDeleteBtn.dataset.tmTipTitle : "";
 
   // Hover-only checkbox for multi-select
   let hoverCheckbox = document.getElementById("tm-viz-hover-checkbox");
@@ -5803,9 +5806,12 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     hoverCheckbox.className = "btn btn-sm btn-outline-primary tm-viz-hover-checkbox";
     hoverCheckbox.innerHTML = '<input type="checkbox" />';
     hoverCheckbox.setAttribute("aria-label", "Click to select for linking/adding/moving");
-    hoverCheckbox.title = "Click to select for linking/adding/moving";
+    hoverCheckbox.dataset.tmTipTitle = "Click to select for linking/adding/moving";
+    hoverCheckbox.title = isTipsEnabled() ? hoverCheckbox.dataset.tmTipTitle : "";
     vizEl.appendChild(hoverCheckbox);
   }
+  if (!hoverCheckbox.dataset.tmTipTitle) hoverCheckbox.dataset.tmTipTitle = hoverCheckbox.title || "";
+  hoverCheckbox.title = isTipsEnabled() ? hoverCheckbox.dataset.tmTipTitle : "";
   const checkboxInput = hoverCheckbox.querySelector("input");
 
   // Hover-only checkbox for multi-select of groups (clusters)
@@ -5816,9 +5822,12 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     hoverClusterCheckbox.className = "btn btn-sm btn-outline-success tm-viz-hover-cluster-checkbox";
     hoverClusterCheckbox.innerHTML = '<input type="checkbox" />';
     hoverClusterCheckbox.setAttribute("aria-label", "Click to select group box for linking/styling");
-    hoverClusterCheckbox.title = "Click to select group box for linking/styling";
+    hoverClusterCheckbox.dataset.tmTipTitle = "Click to select group box for linking/styling";
+    hoverClusterCheckbox.title = isTipsEnabled() ? hoverClusterCheckbox.dataset.tmTipTitle : "";
     vizEl.appendChild(hoverClusterCheckbox);
   }
+  if (!hoverClusterCheckbox.dataset.tmTipTitle) hoverClusterCheckbox.dataset.tmTipTitle = hoverClusterCheckbox.title || "";
+  hoverClusterCheckbox.title = isTipsEnabled() ? hoverClusterCheckbox.dataset.tmTipTitle : "";
   const clusterCheckboxInput = hoverClusterCheckbox.querySelector("input");
 
   const DEFAULT_VIZ_HINT = "Hover over the diagram to edit it";
@@ -5830,6 +5839,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   document.body.appendChild(hintFloatEl);
 
   function setVizHint(msg) {
+    if (!isTipsEnabled()) return;
     // Support simple multi-line hints without using innerHTML (keeps this XSS-safe).
     const t = String(msg || "")
       // Accept <br>, <br/>, <br />, </br> with any whitespace/case.
@@ -5839,6 +5849,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   }
 
   function clearVizHint() {
+    if (!isTipsEnabled()) return;
     setVizHint(DEFAULT_VIZ_HINT);
   }
 
@@ -5857,9 +5868,11 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     hintEl.textContent = String(text || "");
   }
   function startVizTicker() {
+    if (!isTipsEnabled()) return;
     if (!hintEl) return;
     if (tickerTimer) return;
     tickerTimer = window.setInterval(() => {
+      if (!isTipsEnabled()) return stopVizTicker();
       tickerIdx = (tickerIdx + 1) % VIZ_TICKER_HINTS.length;
       setVizTickerText(VIZ_TICKER_HINTS[tickerIdx]);
     }, 10000);
@@ -5869,7 +5882,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     window.clearInterval(tickerTimer);
     tickerTimer = null;
   }
-  if (hintEl) {
+  if (hintEl && isTipsEnabled()) {
     setVizTickerText(VIZ_TICKER_HINTS[0]);
     startVizTicker();
   }
@@ -6002,11 +6015,13 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
   // Pointer over/out: pause/resume idle hint cycling.
   vizEl.addEventListener("pointerenter", () => {
+    if (!isTipsEnabled()) return;
     isPointerOverViz = true;
     stopVizTicker(); // freeze the top ticker while cursor is on the map
     hintFloatEl.classList.remove("d-none");
   });
   vizEl.addEventListener("pointerleave", () => {
+    if (!isTipsEnabled()) return;
     isPointerOverViz = false;
     startVizTicker(); // resume ticker when leaving the map
     hintFloatEl.classList.add("d-none");
@@ -6015,6 +6030,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   // Follow cursor while over diagram.
   vizEl.addEventListener("pointermove", (e) => {
     if (!isPointerOverViz) return;
+    if (!isTipsEnabled()) return;
     const x = Number(e.clientX || 0);
     const y = Number(e.clientY || 0);
     // Place top-left of the cursor (native browser tooltip is typically bottom-right).
@@ -6023,11 +6039,31 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   });
 
   // Seed the floating hint (only visible while pointer is over the diagram).
-  clearVizHint();
+  if (isTipsEnabled()) clearVizHint();
   hoverClusterCheckbox?.addEventListener?.("mouseleave", clearVizHint);
 
   // Initial (idle) hint.
-  clearVizHint();
+  if (isTipsEnabled()) clearVizHint();
+
+  // Tips switch: apply immediately (hide/show contextual tips without needing a pointerleave).
+  window.addEventListener(TM_TIPS_CHANGED_EVENT, (e) => {
+    const enabled = Boolean(e?.detail?.enabled);
+    if (!enabled) {
+      stopVizTicker();
+      isPointerOverViz = false;
+      hintFloatEl.classList.add("d-none");
+      // Also disable native (title="...") tooltips for in-map hover controls.
+      hoverDeleteBtn.title = "";
+      hoverCheckbox.title = "";
+      hoverClusterCheckbox.title = "";
+      return;
+    }
+    if (!isPointerOverViz) startVizTicker();
+    clearVizHint();
+    hoverDeleteBtn.title = hoverDeleteBtn.dataset.tmTipTitle || "";
+    hoverCheckbox.title = hoverCheckbox.dataset.tmTipTitle || "";
+    hoverClusterCheckbox.title = hoverClusterCheckbox.dataset.tmTipTitle || "";
+  });
 
   const modalEl = document.getElementById("tm-viz-edit-modal");
   const modalTitle = document.getElementById("tm-viz-edit-modal-title");
@@ -9138,12 +9174,34 @@ function initVizToolbar() {
 }
 
 function initTooltips() {
-  // Enable Bootstrap tooltips for icon buttons.
+  // Enable/disable Bootstrap tooltips for icon buttons.
+  // Purpose: used by the Tips switch to globally show/hide contextual hover tooltips.
   const bootstrap = globalThis.bootstrap;
   if (!bootstrap?.Tooltip) return;
-  document
-    .querySelectorAll('[data-bs-toggle="tooltip"]')
-    .forEach((el) => new bootstrap.Tooltip(el, { trigger: "hover focus" }));
+  const enabled = isTipsEnabled();
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
+    // Avoid duplicate tooltip instances if this is called more than once.
+    const existing = bootstrap.Tooltip.getInstance?.(el);
+    if (existing) existing.dispose();
+    if (enabled) new bootstrap.Tooltip(el, { trigger: "hover focus" });
+  });
+}
+
+// -----------------------------
+// Tips (toolbar + in-map contextual hints)
+// -----------------------------
+
+var TM_TIPS_CHANGED_EVENT = "tm:tips-changed";
+
+function isTipsEnabled() {
+  // Purpose: single source of truth for whether tips (toolbar + in-map) should be shown.
+  return globalThis.tmTipsEnabled !== false;
+}
+
+function setTipsEnabled(enabled) {
+  // Purpose: update global tips flag and notify any listeners (e.g. viz interactivity).
+  globalThis.tmTipsEnabled = Boolean(enabled);
+  window.dispatchEvent(new CustomEvent(TM_TIPS_CHANGED_EVENT, { detail: { enabled: globalThis.tmTipsEnabled } }));
 }
 
 // -----------------------------
@@ -9701,6 +9759,16 @@ async function main() {
   initTabs();
   initSplitter();
   initVizToolbar();
+
+  // Tips switch: default on. When off, hides the toolbar tips callout and in-map contextual tips.
+  const tipsToggle = document.getElementById("tm-tips-toggle");
+  setTipsEnabled(Boolean(tipsToggle?.checked));
+  tipsToggle?.addEventListener("change", () => {
+    setTipsEnabled(Boolean(tipsToggle?.checked));
+    updateVizHintWrapVisibility();
+    initTooltips(); // dispose/recreate Bootstrap tooltip instances based on current tips setting
+  });
+
   initTooltips();
   initRecommendedColourSwatches();
   setActiveTab("viz");
@@ -9708,17 +9776,22 @@ async function main() {
   // Diagram hint callout: gentle pulse on load, and allow dismiss for this browser session.
   const vizHintWrap = document.getElementById("tm-viz-hint-wrap");
   const vizHintDismiss = document.getElementById("tm-viz-hint-dismiss");
-  if (vizHintWrap) {
+  function updateVizHintWrapVisibility() {
+    // Purpose: keep session dismissal, but always hide when tips are toggled off.
+    if (!vizHintWrap) return;
     const dismissed = sessionStorage.getItem("tm_viz_hint_dismissed") === "1";
-    if (dismissed) {
-      vizHintWrap.classList.add("d-none");
-    } else {
+    const shouldShow = isTipsEnabled() && !dismissed;
+    vizHintWrap.classList.toggle("d-none", !shouldShow);
+  }
+  if (vizHintWrap) {
+    if (sessionStorage.getItem("tm_viz_hint_dismissed") !== "1") {
       vizHintWrap.classList.add("tm-callout-pulse-slow");
-      vizHintDismiss?.addEventListener("click", () => {
-        sessionStorage.setItem("tm_viz_hint_dismissed", "1");
-        vizHintWrap.classList.add("d-none");
-      });
     }
+    vizHintDismiss?.addEventListener("click", () => {
+      sessionStorage.setItem("tm_viz_hint_dismissed", "1");
+      updateVizHintWrapVisibility();
+    });
+    updateVizHintWrapVisibility();
   }
 
   initFooterCarousel();
