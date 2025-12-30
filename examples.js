@@ -6,23 +6,27 @@ export const GALLERY_EXAMPLES = [
   {
     id: "ex-01",
     title: "Starter (groups + multi-links)",
-    dsl: `# Styles
-Background: aliceblue
-Default node colour: rgb(255, 224, 224)
+        dsl: `Background: rgb(240,248,255)
+Text colour: rgb(17,24,39)
+Default node text colour: rgb(17,24,39)
+Default group text colour: rgb(17,24,39)
+Title size: 18
+Default node colour: rgb(255,224,224)
 Default node shape: rounded
 Default node shadow: subtle
-Default node border: 1px dashed seagreen
-Direction: right-left
-Label wrap: 20
-Spacing along: 2
+Default node border: 1px dashed rgb(46,139,87)
+Default link colour: rgb(108,117,125)
+
+Direction: LR
+Label wrap: 21
+Spacing along: 2    
 Spacing across: 2
 
-# Contents
 Title: Starter: change impacts
 Description: Groups + multi-source/multi-target links, plus per-node styling.
 
 ## Nodes (and groups)
-A:: New policy rollout[colour=red | border=1px solid blue]
+A:: New policy rollout [colour=red | border=1px solid blue]
 -- out:: Outcomes
 B:: Customer adoption
 ---- ops:: Operational load
@@ -30,16 +34,9 @@ C:: Support tickets
 --
 F:: Budget constraint
 
-P:: Training quality
-Q:: Tool usability
-D:: Process clarity
-E:: Delivery speed
 
 ## Links
 A -> B | C
-Q -> D | E
-P -> D 
-P -> E [improves]
 out -> F
 ops -> F [may increase | dashed seagreen]`,
   },
@@ -69,54 +66,6 @@ A -> B [label=drives | border=gray | label style=italic | label size=10]
 B -> C [leads to]`,
   },
   {
-    id: "ex-03",
-    title: "Left-right with implicit nodes",
-    dsl: `# Styles
-Background: floralwhite
-Default node colour: wheat
-Default node shape: rounded
-Default node border: 1px dashed peru
-Default node shadow: none
-Direction: left-right
-Label wrap: 22
-Spacing along: 4
-Spacing across: 3
-
-# Contents
-Title: Implicit nodes
-Description: Implicit nodes created from quoted labels; mixed positive/negative links.
-
-
-Intervention -> Compliance [improves | dashed peru]
-Intervention -> SideEffectRisk [increases | firebrick]
-Compliance -> Outcome [improves | dashed peru]
-SideEffectRisk -> Outcome [harms | firebrick]`,
-  },
-  {
-    id: "ex-04",
-    title: "Two drivers, one outcome",
-      dsl: `Background: whitesmoke
-Default node colour: gainsboro
-Default node shape: rounded
-
-
-Title: Drivers → outcomes
-Description: Shows how to create multiple links: Cross-product using | on sources and targets, with simple clusters.
-
--- drv:: Drivers
-A:: Training quality
-B:: Tool usability
---
--- out:: Outcomes
-C:: Adoption
-D:: Error rate
---
-
-A | B -> C | D
-drv -> out
-drv -> C`,
-  },
-  {
     id: "ex-05",
     title: "Nested groups (2 levels)",
     dsl: `# Styles
@@ -132,7 +81,7 @@ Spacing across: 3
 
 # Contents
 Title: Nested groups
-Description: Two-level nesting with explicit group closing markers.
+Description: Two-level nesting with links from groups to nodes.
 
 -- org:: Organisation
 A:: Policy
@@ -235,7 +184,7 @@ Default node shape: rounded
 
 # Contents
 Title: Trade-offs
-Description: One driver pushes outcomes in opposite directions (trade-off).
+Description: One driver pushes outcomes in opposite directions (trade-off), shown by coloured arrows.
 Direction: top-bottom
 A:: Strict policy
 B:: Compliance
@@ -260,7 +209,7 @@ Spacing across: 3
 
 # Contents
 Title: Fan-in
-Description: Fan-in: multiple causes converge on a single outcome.
+Description: Fan-in: multiple causes converge on a single outcome, with right-to-left arrows.
 
 A:: Staffing
 B:: Process clarity
@@ -377,40 +326,6 @@ C:: Output
 
 A -> B
 B -> C`,
-  },
-  {
-    id: "ex-13",
-    title: "Two-layer map (overview + detail)",
-    dsl: `# Styles
-Background: white
-Default node colour: whitesmoke
-Default node shape: rounded
-Default node border: 1px dashed dimgray
-Default node shadow: none
-Direction: left-right
-Label wrap: 18
-Spacing along: 5
-Spacing across: 4
-
-# Contents
-Title: Overview vs detail
-Description: Separate overview vs detail using clusters; multiple paths between them.
-
--- ov:: Overview
-A:: Strategy
-B:: Delivery
---
--- det:: Detail
-C:: Planning
-D:: Execution
---
-
-A -> B
-A -> C
-C -> D
-D -> B
-ov -> det
-det -> B`,
   },
   {
     id: "ex-14",

@@ -5766,6 +5766,17 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   // Track selected nodes/groups for multi-select
   const selectedNodes = new Set();
   const selectedClusters = new Set(); // clusterId ("cluster_0", ...)
+  
+  // Cache: used to cheaply detect whether the current selection is inside any group boxes.
+  // (We key off explicit "A:: ..." lines because group membership is defined by where node defs live.)
+  let editorRevForSelection = 0;
+  let selectedInBoxesCacheKey = "";
+  let selectedInBoxesCacheRev = -1;
+  let selectedInBoxesCacheValue = false;
+  editor?.session?.on?.("change", () => {
+    editorRevForSelection++;
+    selectedInBoxesCacheRev = -1; // invalidate
+  });
 
   // Hover glow (subtle highlight) for clickable-to-edit diagram elements.
   let hoverGlowEl = null; // SVG element with .tm-viz-hover-glow applied
@@ -5846,6 +5857,9 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       .replace(/<\s*br\s*\/?\s*>/gi, "\n")
       .replace(/<\s*\/\s*br\s*>/gi, "\n");
     hintFloatEl.textContent = t;
+    // If a hint is intentionally empty, hide the floating bubble (so we truly "say nothing").
+    if (!String(t || "").trim()) hintFloatEl.classList.add("d-none");
+    else if (isPointerOverViz) hintFloatEl.classList.remove("d-none");
   }
 
   function clearVizHint() {
@@ -5915,6 +5929,35 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     if (!xs.length) return t;
     return `${t ? `${t}\n` : ""}${xs.map((x) => `• ${x}`).join("\n")}`;
   }
+  
+  function anySelectedNodesInBoxes() {
+    // True if any selected node has an explicit node def line that is currently nested inside a cluster.
+    // (Nodes without explicit "A:: ..." lines are treated as not-in-a-box for this purpose.)
+    const key = Array.from(selectedNodes).sort().join("|");
+    if (key === selectedInBoxesCacheKey && selectedInBoxesCacheRev === editorRevForSelection) return selectedInBoxesCacheValue;
+    
+    selectedInBoxesCacheKey = key;
+    selectedInBoxesCacheRev = editorRevForSelection;
+    selectedInBoxesCacheValue = false;
+    
+    if (!key) return false;
+    const lines = editor.getValue().split(/\r?\n/);
+    for (const id of selectedNodes) {
+      const idx = findExplicitNodeDefIdx(lines, id);
+      if (idx < 0) continue;
+      if (getClusterDepthAtLine(lines, idx) > 0) {
+        selectedInBoxesCacheValue = true;
+        return true;
+      }
+    }
+    return false;
+  }
+  
+  function selectionHoverBackgroundHintForNodes() {
+    // Background hover while node selection is active: only show the "move out" hint when it applies.
+    if (!anySelectedNodesInBoxes()) return "";
+    return "Shift+click the background to move selection out of any boxes";
+  }
 
   function selectedNodesLabel() {
     const n = selectedNodes.size;
@@ -5934,21 +5977,23 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
   function selectionBackgroundHintForNodes() {
     // UX: after the *first* checkbox selection, encourage selecting more (before talking about targets).
-    if (selectedNodes.size === 1)
-      return bullets("Now:", [
-        "Click another node or group box to create a link",
-        "Select more nodes using their checkboxes",
-        "Use the styling panel on the left",
-      ]);
     const dir = getSelLinkDir();
     const a = toOrFromForTargetClick(dir);
     const b = a === "to" ? "from" : "to";
     const selectedWhat = selectedNodesLabel();
-    return bullets("Now:", [
+    const n = selectedNodes.size;
+    const items = [
+      "Add more nodes to the selection using their checkboxes",
       `Click a node or group box to add links ${a} it ${b} ${selectedWhat}`,
-      `Shift+click a group box to move selected ${plural(selectedNodes.size, "node", "nodes")} into it`,
-      "Shift+click the background to move out of groups",
-    ]);
+      `Shift+click a group box to move selected ${plural(n, "node", "nodes")} into it`,
+      // Show the "move out" action only when it applies (at least one selected node is inside a box).
+      ...(anySelectedNodesInBoxes() ? ["Shift+click the background to move selection out of any boxes"] : []),
+      `Use the panel on the left to: 
+      ... group selected ${plural(n, "node", "nodes")},
+      ... create new node(s) and add links ${a} it ${b} ${selectedWhat},
+      ... style the selected ${plural(n, "node", "nodes")}`,
+    ];
+    return bullets("Now do any of these:", items);
   }
 
   function selectionBackgroundHintForGroupBoxes() {
@@ -5956,7 +6001,13 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     const a = toOrFromForTargetClick(dir);
     const b = a === "to" ? "from" : "to";
     const selectedWhat = selectedGroupBoxesLabel();
-    return bullets("Now:", [`Click a node or group box to add links ${a} it ${b} ${selectedWhat}`]);
+    const n = selectedClusters.size;
+    return bullets("Now do any of these:", [
+      "Add more group boxes to the selection using their checkboxes",
+      `Click a node or group box to add links ${a} it ${b} ${selectedWhat}`,
+      `Use the panel on the left to: style the selected ${plural(n, "group box", "group boxes")}`,
+      `... create new node(s) and add links ${a} it ${b} ${selectedWhat}`,
+    ]);
   }
 
   function linkHintToFromSelected({ dir, targetWhat, selectedWhat }) {
@@ -5977,9 +6028,9 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   // Hovering over overlay UI should show a specific hint (and clear on mouse out).
   hoverDeleteBtn?.addEventListener?.("mouseenter", () => {
     const t = hoverDeleteTarget?.type || "";
-    if (t === "node") return setVizHint("Click to delete a node");
-    if (t === "edge") return setVizHint("Click to delete a link");
-    if (t === "cluster") return setVizHint("Click to delete a group box");
+    if (t === "node") return setVizHint("Click to delete this node");
+    if (t === "edge") return setVizHint("Click to delete this link");
+    if (t === "cluster") return setVizHint("Click to delete this group box");
     return setVizHint("Click to delete");
   });
   hoverDeleteBtn?.addEventListener?.("mouseleave", clearVizHint);
@@ -6018,7 +6069,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     if (!isTipsEnabled()) return;
     isPointerOverViz = true;
     stopVizTicker(); // freeze the top ticker while cursor is on the map
-    hintFloatEl.classList.remove("d-none");
+    if (String(hintFloatEl.textContent || "").trim()) hintFloatEl.classList.remove("d-none");
   });
   vizEl.addEventListener("pointerleave", () => {
     if (!isTipsEnabled()) return;
@@ -6033,14 +6084,41 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     if (!isTipsEnabled()) return;
     const x = Number(e.clientX || 0);
     const y = Number(e.clientY || 0);
-    // Place top-left of the cursor (native browser tooltip is typically bottom-right).
-    hintFloatEl.style.left = `${x - 10}px`;
-    hintFloatEl.style.top = `${y - 10}px`;
+    // Position tooltip near cursor without triggering shrink-to-fit squeezing near edges.
+    // Key trick: when we want the tooltip to appear to the LEFT of the cursor, use `right:` instead of `left:`.
+    const vw = window.innerWidth || 0;
+    const vh = window.innerHeight || 0;
+    const pad = 12;
+    const dx = 14;
+    const dy = 14;
+    const approxMinW = 260; // heuristic: if less than this space, prefer the other side
+    const approxMinH = 120;
+    const spaceLeft = x - pad;
+    const spaceRight = (vw - x) - pad;
+    const spaceUp = y - pad;
+    const spaceDown = (vh - y) - pad;
+    const placeRight = spaceRight >= approxMinW || spaceRight >= spaceLeft;
+    const placeDown = spaceDown >= approxMinH || spaceDown >= spaceUp;
+    
+    if (placeRight) {
+      hintFloatEl.style.left = `${x + dx}px`;
+      hintFloatEl.style.right = "auto";
+    } else {
+      hintFloatEl.style.right = `${(vw - x) + dx}px`;
+      hintFloatEl.style.left = "auto";
+    }
+    
+    if (placeDown) {
+      hintFloatEl.style.top = `${y + dy}px`;
+      hintFloatEl.style.bottom = "auto";
+    } else {
+      hintFloatEl.style.bottom = `${(vh - y) + dy}px`;
+      hintFloatEl.style.top = "auto";
+    }
   });
 
   // Seed the floating hint (only visible while pointer is over the diagram).
   if (isTipsEnabled()) clearVizHint();
-  hoverClusterCheckbox?.addEventListener?.("mouseleave", clearVizHint);
 
   // Initial (idle) hint.
   if (isTipsEnabled()) clearVizHint();
@@ -6588,6 +6666,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
           // Keep the group drawer open/updated
           openClusterSelectionDrawer();
           applyMultiSelectVisuals();
+          if (selectedClusters.size > 0) setVizHint(selectionBackgroundHintForGroupBoxes());
+          else clearVizHint();
         });
 
         wrap.appendChild(cb);
@@ -6639,6 +6719,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
         syncSelectionNodeEditor();
         applyMultiSelectVisuals(); // refresh checks + remove overlays if selection empties
         if (wasEmpty && selectedNodes.size === 1) setNodeSelectionStartHint();
+        if (selectedNodes.size > 0) setVizHint(selectionBackgroundHintForNodes());
+        else clearVizHint();
       });
 
       wrap.appendChild(cb);
@@ -7663,7 +7745,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       // - Click background: do NOT move selection (click is for linking targets).
       // - Shift+click background: move selection out of groups.
       if (selectedNodes.size > 0) {
-        if (!isShift) return setVizStatus("Shift+click background to move selection out of groups");
+        if (!anySelectedNodesInBoxes()) return; // nothing to do (avoid re-ordering already-top-level nodes)
+        if (!isShift) return; // no-op (background clicks are for link targets)
         const lines = editor.getValue().split(/\r?\n/);
         const res = moveExplicitNodeDefsOutToTopLevel(lines, Array.from(selectedNodes));
         if (!res.ok) return setVizStatus(res.message || "Move failed");
@@ -7866,6 +7949,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       selectedClusters.clear();
       selectedClusters.add(clusterId);
       openClusterSelectionDrawer("style");
+      applyMultiSelectVisuals(); // ensure the in-viz group checkbox shows checked (even when selection wasn't via checkbox)
+      setVizHint(selectionBackgroundHintForGroupBoxes());
       return;
     }
 
@@ -7936,7 +8021,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
     if (selectionActive && !hoveredNodeIsTarget && !hoveredClusterIsTarget) {
       clearHoverGlow();
-      setVizHint(hasNodeSelection ? selectionBackgroundHintForNodes() : selectionBackgroundHintForGroupBoxes());
+      setVizHint(hasNodeSelection ? selectionHoverBackgroundHintForNodes() : selectionBackgroundHintForGroupBoxes());
       hideHoverDelete();
       hideHoverCheckbox();
       hideHoverClusterCheckbox();
@@ -7947,7 +8032,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       // If a selection is active, background hover should describe the selection actions (not global styling).
       if (hasNodeSelection) {
         clearHoverGlow();
-        setVizHint(selectionBackgroundHintForNodes());
+        setVizHint(selectionHoverBackgroundHintForNodes());
         hideHoverDelete();
         hideHoverCheckbox();
         hideHoverClusterCheckbox();
@@ -8291,6 +8376,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     else openClusterSelectionDrawer();
     applyMultiSelectVisuals();
     hideHoverClusterCheckbox(); // per-cluster checkboxes will take over once selection exists
+    if (selectedClusters.size > 0) setVizHint(selectionBackgroundHintForGroupBoxes());
+    else clearVizHint();
   });
 
   hoverClusterCheckbox?.addEventListener("click", (e) => e.stopPropagation());
