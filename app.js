@@ -204,9 +204,8 @@ function positionVizDrawerAgainstDiagram(drawerEl, { topOffsetPx = 100 } = {}) {
 
   const w = el.offsetWidth || 360;
   const vizRect = vizWrap.getBoundingClientRect();
-  // Don't clamp to 0: when drawers are wider than the space to the diagram,
-  // it's better to overflow off-screen to the left than overlap the diagram.
-  const openX = Math.round(vizRect.left - w);
+  // Clamp to 0: on narrow screens, prefer overlapping the diagram over hiding the drawer off-screen.
+  const openX = Math.max(0, Math.round(vizRect.left - w));
 
   el.style.setProperty("--tm-viz-drawer-open-x", `${openX}px`);
   el.style.setProperty("--tm-viz-drawer-top", `${Math.round(vizRect.top + Number(topOffsetPx || 0))}px`);
@@ -9369,7 +9368,7 @@ function startIntroTour({ force = false } = {}) {
     },
     {
       element: "#tm-viz",
-      intro: "Your diagram renders here. You can click on nodes and links to edit them or apply styles.",
+      intro: "Your diagram is shown here. You can click on nodes and links to edit them or apply styles.",
       position: "left",
     },
     {
