@@ -9264,7 +9264,14 @@ function initTooltips() {
   // Enable/disable Bootstrap tooltips for icon buttons.
   // Purpose: used by the Tips switch to globally show/hide contextual hover tooltips.
   const bootstrap = globalThis.bootstrap;
-  if (!bootstrap?.Tooltip) return;
+  if (!bootstrap?.Tooltip) {
+    // Purpose: app.js (module) can run before bootstrap.bundle has executed; retry once after full load.
+    if (!globalThis.tmTooltipsInitOnLoadAttached) {
+      globalThis.tmTooltipsInitOnLoadAttached = true;
+      window.addEventListener("load", () => initTooltips(), { once: true });
+    }
+    return;
+  }
   const enabled = isTipsEnabled();
   document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
     // Avoid duplicate tooltip instances if this is called more than once.
@@ -9329,7 +9336,8 @@ function startIntroTour({ force = false } = {}) {
         <ul class="mt-3 mb-0 ps-3">
           <li>🆓 Free, no registration</li>
           <li>📝 Auto layout even of complex diagrams</li>
-          <li>🤖 Optional AI assistance</li>
+          <li>👆🏼 NEW: Improve your diagram by clicking on it</li>
+          <li>🤖 NEW: Optional AI assistance</li>
           <li>🔗 Share via a URL</li>
         </ul>
       `.trim(),
