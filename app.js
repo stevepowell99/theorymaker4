@@ -199,6 +199,22 @@ function positionVizDrawerAgainstDiagram(drawerEl, { topOffsetPx = 100 } = {}) {
   const el = drawerEl || null;
   if (!el) return;
 
+  // Mobile: drawers should appear BELOW the currently visible screen so the user can scroll to them
+  // (instead of covering the graph/editor).
+  const isMobile = Boolean(globalThis.matchMedia?.("(max-width: 991.98px)")?.matches);
+  if (isMobile) {
+    const right = document.getElementById("tm-right");
+    const left = document.getElementById("tm-left");
+    const rightVisible = right && !right.classList.contains("d-none");
+    const leftVisible = left && !left.classList.contains("d-none");
+
+    // Prefer docking inside the diagram wrap (puts it directly under the graph); otherwise dock to the visible panel.
+    const vizWrap = document.querySelector(".tm-viz-wrap");
+    const target = (rightVisible && vizWrap) ? vizWrap : (rightVisible ? right : (leftVisible ? left : null));
+    if (target && el.parentNode !== target) target.appendChild(el);
+    return;
+  }
+
   const vizWrap = document.querySelector(".tm-viz-wrap");
   if (!vizWrap) return;
 
@@ -6627,6 +6643,13 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
     if (selectedNodes.size === 0 && selectedClusters.size === 0) return;
 
+    // Selection mode: ensure the single hover checkbox can't get "stuck" visible (touch devices don't reliably fire hover out).
+    hideHoverCheckbox();
+    hideHoverClusterCheckbox();
+
+    // Use XHTML namespace nodes inside SVG foreignObject for better cross-browser rendering (esp. mobile Safari).
+    const XHTML_NS = "http://www.w3.org/1999/xhtml";
+
     // Group selection: show checkboxes on ALL clusters.
     if (selectedClusters.size > 0) {
       for (const clusterG of svg.querySelectorAll("g.cluster")) {
@@ -6641,7 +6664,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
         fo.setAttribute("width", String(TM_NODE_CHECKBOX_BOX_PX));
         fo.setAttribute("height", String(TM_NODE_CHECKBOX_BOX_PX));
 
-        const wrap = document.createElement("div");
+        const wrap = document.createElementNS(XHTML_NS, "div");
         wrap.style.width = `${TM_NODE_CHECKBOX_BOX_PX}px`;
         wrap.style.height = `${TM_NODE_CHECKBOX_BOX_PX}px`;
         wrap.style.display = "flex";
@@ -6649,8 +6672,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
         wrap.style.justifyContent = "center";
         wrap.style.pointerEvents = "auto";
 
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
+        const cb = document.createElementNS(XHTML_NS, "input");
+        cb.setAttribute("type", "checkbox");
         cb.checked = selectedClusters.has(clusterId);
         cb.style.width = `${TM_NODE_CHECKBOX_INNER_PX}px`;
         cb.style.height = `${TM_NODE_CHECKBOX_INNER_PX}px`;
@@ -6691,7 +6714,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       fo.setAttribute("height", String(TM_NODE_CHECKBOX_BOX_PX));
 
       // Use a plain checkbox (no Bootstrap button chrome) so it's small.
-      const wrap = document.createElement("div");
+      const wrap = document.createElementNS(XHTML_NS, "div");
       wrap.style.width = `${TM_NODE_CHECKBOX_BOX_PX}px`;
       wrap.style.height = `${TM_NODE_CHECKBOX_BOX_PX}px`;
       wrap.style.display = "flex";
@@ -6699,8 +6722,8 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       wrap.style.justifyContent = "center";
       wrap.style.pointerEvents = "auto";
 
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
+      const cb = document.createElementNS(XHTML_NS, "input");
+      cb.setAttribute("type", "checkbox");
       cb.checked = selectedNodes.has(nodeId);
       cb.style.width = `${TM_NODE_CHECKBOX_INNER_PX}px`;
       cb.style.height = `${TM_NODE_CHECKBOX_INNER_PX}px`;

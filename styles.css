@@ -1171,6 +1171,38 @@ details[open] .tm-chevron {
   .tm-tabs {
     display: none; /* hamburger replaces tabs on narrow screens */
   }
+
+  /* Drawers: on narrow screens, render BELOW the visible panel (scroll to them) instead of overlaying content */
+  .tm-viz-drawer {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    height: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    transform: none !important;
+    transition: none !important;
+    z-index: auto !important;
+    border-right: 0;
+    border-top: 1px solid #e9ecef;
+    box-shadow: none;
+    display: none; /* closed */
+  }
+
+  .tm-viz-drawer.tm-open {
+    display: block; /* open */
+  }
+
+  /* Make the right panel scroll so the user can scroll down from the graph to the drawer */
+  .tm-right-body {
+    overflow: auto;
+  }
+
+  /* Let the diagram take its natural height; scrolling happens on the panel (not inside the diagram box). */
+  .tm-viz {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
 }
 
 
