@@ -1504,6 +1504,9 @@ function initMobileScreens({ editor }) {
   const bs = globalThis.bootstrap;
   const offcanvas = offcanvasEl && bs?.Offcanvas ? bs.Offcanvas.getOrCreateInstance(offcanvasEl) : null;
 
+  // Keep the current mobile screen sticky across viewport resizes (e.g. keyboard opening/closing).
+  let activeMobileScreen = "diagram"; // "chat" | "editor" | "diagram" | "templates" | "help"
+
   function setActiveMenuItem(screen) {
     document.querySelectorAll("[data-tm-screen]").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.tmScreen === screen);
@@ -1520,6 +1523,7 @@ function initMobileScreens({ editor }) {
 
   function applyMobileScreen(screen) {
     const s = String(screen || "diagram");
+    activeMobileScreen = s || "diagram";
     const isLeft = s === "chat" || s === "editor";
     const isRight = s === "diagram" || s === "templates" || s === "help";
 
@@ -1545,7 +1549,7 @@ function initMobileScreens({ editor }) {
 
   function syncToViewport() {
     if (!mq.matches) applyDesktopLayout();
-    else applyMobileScreen("diagram"); // default on mobile
+    else applyMobileScreen(activeMobileScreen || "diagram"); // keep current screen on keyboard/resize
   }
 
   document.querySelectorAll("[data-tm-screen]").forEach((btn) => {

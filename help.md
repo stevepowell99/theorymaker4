@@ -35,6 +35,7 @@ Theorymaker is for creating Theories of Change and similar diagrams.
 - **Undo / Redo**: use the top-right buttons (these mirror browser Back/Forward).
 - **Templates**: load an example, or load maps you saved in this browser.
 - **Save**: you can save your maps into this browser only (LocalStorage).
+- **Questions or problems?**: [write to me](https://www.linkedin.com/in/stevepowell99/)!
 
 ### What are “nodes”, “links”, and “groups”?
 
