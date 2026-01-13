@@ -9160,7 +9160,7 @@ function initVizToolbar() {
   copyRawUrlBtn?.addEventListener("click", async () => {
     try {
       await copyTextToClipboard(getRawRestoreUrl());
-      setVizStatus("Raw URL copied");
+      setVizStatus("Plain link copied");
     } catch (e) {
       setVizStatus(`Copy failed: ${e?.message || String(e)}`);
     }
@@ -10046,6 +10046,7 @@ async function main() {
 
       const dsl = editor.getValue();
       const screenshotDataUrl = await captureVizPngDataUrl({ scale: 2 });
+      let savedWithoutScreenshot = false; // if the thumbnail is too big for LocalStorage, save without it
 
       try {
         saveMapToLocalStorage({ key, name, dsl, screenshotDataUrl });
@@ -10054,7 +10055,7 @@ async function main() {
         if (screenshotDataUrl) {
           try {
             saveMapToLocalStorage({ key, name, dsl, screenshotDataUrl: null });
-            alert("Saved (without screenshot). The screenshot was too large for LocalStorage.");
+            savedWithoutScreenshot = true;
           } catch {
             alert(`Save failed: ${e?.message || String(e)}`);
             return;
@@ -10067,6 +10068,11 @@ async function main() {
 
       // Refresh templates so the saved map appears immediately.
       if (typeof refreshTemplates === "function") refreshTemplates();
+
+      // Clarify scope: browser-only save vs portable saving via the URL.
+      alert(
+        `Saved in this browser only.${savedWithoutScreenshot ? "\n\nNote: saved without thumbnail (it was too large for LocalStorage)." : ""}\n\nFor a portable save, just bookmark the Plain Link (URL). If you want to access it from elsewhere, copy and save the link.`
+      );
     }
 
     // Admin-only: modal with a separate click target for the file picker (required by browsers).

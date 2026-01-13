@@ -225,28 +225,31 @@
                 <div class="vr mx-2 align-self-stretch"></div>
 
                 <div class="tm-toolbar-group">
-                  <div class="btn-group btn-group-sm" role="group" aria-label="Save in browser controls">
-                    <button id="tm-editor-save" class="btn btn-outline-primary tm-icon-btn" type="button" aria-label="Save"
-                      data-bs-toggle="tooltip" data-bs-title="Save">
-                      <i class="bi bi-floppy" aria-hidden="true"></i>
-                    </button>
-                  </div>
-                </div>
-
-                <div class="vr mx-2 align-self-stretch"></div>
-
-                <div class="tm-toolbar-group">
                   <div class="btn-group btn-group-sm" role="group">
                     <button
                       class="btn btn-outline-secondary dropdown-toggle tm-icon-btn"
                       type="button"
                       data-bs-toggle="dropdown"
                       aria-expanded="false"
-                      aria-label="Copy and share options"
+                      aria-label="Save and share options"
                     >
-                      <i class="bi bi-box-arrow-up" aria-hidden="true"></i>
+                      <i class="bi bi-floppy" aria-hidden="true"></i>
                     </button>
                     <ul class="dropdown-menu">
+                      <li><h6 class="dropdown-header">Save</h6></li>
+                      <li>
+                        <button
+                          id="tm-editor-save"
+                          class="dropdown-item"
+                          type="button"
+                          data-bs-toggle="tooltip"
+                          data-bs-placement="left"
+                          data-bs-title="Save to this browser"
+                        >
+                          <i class="bi bi-floppy me-2" aria-hidden="true"></i>Save to this browser
+                        </button>
+                      </li>
+                      <li><hr class="dropdown-divider"></li>
                       <li><h6 class="dropdown-header">Copy to clipboard</h6></li>
                       <li>
                         <button
@@ -255,9 +258,9 @@
                           type="button"
                           data-bs-toggle="tooltip"
                           data-bs-placement="left"
-                          data-bs-title="Copy a shareable URL that restores this map."
+                          data-bs-title="Copy a plain link (URL) that restores this map."
                         >
-                          <i class="bi bi-clipboard me-2" aria-hidden="true"></i>Raw URL
+                          <i class="bi bi-clipboard me-2" aria-hidden="true"></i>Plain Link
                         </button>
                       </li>
                       <li>

@@ -35,7 +35,7 @@
 - **Share/restore via URL**: the URL updates as you type. Copy/paste the URL to restore the exact same map later.
 - **Undo / Redo**: use the top-right buttons (these mirror browser Back/Forward).
 - **Templates**: load an example, or load maps you saved in this browser.
-- **Save**: you can save your maps into this browser only (LocalStorage).
+- **Save**: you can save maps **in this browser only** (LocalStorage). For a portable save you can use **Plain Link** (copy it, then bookmark or save it somewhere).
 - **Questions or problems?**: [write to me](https://www.linkedin.com/in/stevepowell99/)!
 
 ### What are “nodes”, “links”, and “groups”?
@@ -60,29 +60,28 @@ Tip: there’s also a **Tour** button (magic wand) in the navbar.
 Across the top of the diagram you have controls:
 
 - **Zoom out / Reset / Zoom in**: zoom the diagram.
-- **Save** (floppy): save the current map into this browser (LocalStorage).
-- **Share / export** (box-with-arrow menu):
-  - **Raw URL**: copies the current restore URL (it already contains the MapScript).
-  - **Formatted link**: copies an HTML `<a href="...">...</a>` link.
-  - **PNG image**: downloads a high-quality PNG.
-  - **HTML package**: downloads a small HTML file containing the PNG + a link.
 - **Diagram style** (palette): diagram-wide defaults (direction, spacing, colours, borders, etc).
 
-Tips:
 
 - You can **scroll** to move around large diagrams.
 - You can resize the left and right panels by dragging the broder between them.
 
-### Sharing / restoring (URL)
+#### Saving and sharing maps
 
 - The URL updates as you type.
-- Copy/paste the URL to share the exact same map with someone else (or to restore later).
+- Copy/paste the URL to share the exact same map with someone else (or to restore later). Or:
+- **Save / share / export** (floppy menu):
+  - **Save to this browser**: saves the current map into this browser only (LocalStorage). (This won’t sync to other devices.)
+  - **Plain Link**: copies a plain URL that restores this map. This is the best option for sharing or saving somewhere else.
+  - **Formatted link**: copies a clickable link (for docs/email) plus the plain URL.
+  - **PNG image**: copies a PNG image to the clipboard (great for slides/docs).
+  - **HTML package**: copies rich content for reports (title + image + link).
 
-### Saving maps (LocalStorage)
+- Use **Save → Save to this browser** to store the current map **in this browser only**.
+  - Saved maps appear in **Templates → Saved in this browser**.
+  - Saved maps can be deleted from Templates (browser-only).
+  - If you want to access the map from elsewhere, copy **Plain Link** and bookmark it or save the link somewhere.
 
-- Click **Save** to store the current map **in this browser only**.
-- Saved maps appear in **Templates → Saved in this browser**.
-- Saved maps can be deleted from Templates (browser-only).
 
 ### Editing the diagram by clicking
 
