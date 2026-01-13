@@ -2,7 +2,7 @@
 
 ## Intro
 
-Theorymaker is for creating Theories of Change and similar diagrams. 
+[Theorymaker](https://theorymaker.netlify.app) is for creating Theories of Change and similar diagrams. 
 
 😀😇🎖️**Theorymaker is great because**:
 - it is good at laying out even complicated diagrams easily, finding good positions for nodes and links. 
@@ -14,10 +14,11 @@ Theorymaker is for creating Theories of Change and similar diagrams.
   - editing the underlying text in the editor
   - or any combination of these.
 
-🔥💥⛔**Use another tool** if:
-- If you want a different kind of diagram, which does not simply involve multiple nodes, links and grouping boxes
-- If you want custom positions for your diagram components. Theorymaker is opinionated about positioning (auto layout). It is not freeform drag-and-drop positioning.
-- If you want fully-featured ToC software with indicators, monitoring, etc.
+🔥💥⛔**Use another tool** if you want:
+- a different kind of diagram, which does not simply involve multiple nodes, links and grouping boxes
+- custom positions for your diagram components. Theorymaker is opinionated about positioning (auto layout). It is not freeform drag-and-drop positioning
+- to construct causal maps based on evidence, try [Causal Map](https://causalmap.app/)
+- fully-featured ToC software with indicators, monitoring, etc. Try [TASO's tool](https://taso.org.uk/insights-and-evaluation/theory-of-change/) instead.
 
 **This help** is split into tabs:
 
