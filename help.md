@@ -18,7 +18,7 @@
 - a different kind of diagram, which does not simply involve multiple nodes, links and grouping boxes
 - custom positions for your diagram components. Theorymaker is opinionated about positioning (auto layout). It is not freeform drag-and-drop positioning
 - to construct causal maps based on evidence, try [Causal Map](https://causalmap.app/)
-- a mindmap to sketch our ideas, try [Biggerplate](https://www.biggerplate.com/)
+- a mindmap to sketch your ideas, try [Biggerplate](https://www.biggerplate.com/)
 - fully-featured ToC software with indicators, monitoring, etc. Try [TASO's tool](https://taso.org.uk/insights-and-evaluation/theory-of-change/) instead.
 
 **This help** is split into tabs:
