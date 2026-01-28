@@ -9092,6 +9092,7 @@ function initVizToolbar() {
 
   const copyRawUrlBtn = document.getElementById("tm-copy-raw-url");
   const downloadPngBtn = document.getElementById("tm-download-png");
+  const downloadSvgBtn = document.getElementById("tm-download-svg");
   const copyLinkBtn = document.getElementById("tm-copy-link");
   const downloadHtmlBtn = document.getElementById("tm-download-html");
 
@@ -9186,6 +9187,31 @@ function initVizToolbar() {
       const png = await svgToPngBlob(svg, { scale: 3 });
       await copyRichToClipboard({ pngBlob: png, text: getRawRestoreUrl() });
       setVizStatus("PNG copied");
+    } catch (e) {
+      setVizStatus(`Export failed: ${e?.message || String(e)}`);
+    }
+  });
+
+  downloadSvgBtn?.addEventListener("click", () => {
+    const svg = getVizSvgEl();
+    if (!svg) return setVizStatus("Nothing to export");
+
+    try {
+      const serializer = new XMLSerializer();
+      const svgText = serializer.serializeToString(svg);
+      const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${getExportBaseName()}.svg`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      // Purpose: release memory once the browser has consumed the blob URL.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      setVizStatus("SVG downloaded");
     } catch (e) {
       setVizStatus(`Export failed: ${e?.message || String(e)}`);
     }
