@@ -34,9 +34,27 @@
   --tm-ring: 0 0 0 0.25rem rgba(37, 99, 235, 0.20);
 }
 
+/* Bootstrap token mapping (keeps built-in components consistent with our tokens). */
+:root {
+  --bs-body-bg: var(--tm-bg);
+  --bs-body-color: var(--tm-text);
+  --bs-border-color: var(--tm-border);
+
+  --bs-primary: var(--tm-primary);
+  --bs-link-color: var(--tm-primary);
+  --bs-link-hover-color: #1d4ed8; /* blue-700 */
+
+  /* Use our focus ring for Bootstrap focusable controls. */
+  --bs-focus-ring-color: rgba(37, 99, 235, 0.25);
+}
+
 html,
 body {
   height: 100%;
+  /* Regression guard: ensure the root never shrink-wraps on mobile. */
+  width: 100%;
+  min-width: 100%;
+  max-width: none;
 }
 
 body {
@@ -48,6 +66,90 @@ body {
   /* Page layout: navbar (top) + main (fills) + footer (bottom) */
   display: flex;
   flex-direction: column;
+}
+
+/* Unified focus styling for form controls/buttons (keyboard + mouse). */
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus,
+.btn:focus,
+.btn:focus-visible,
+.dropdown-toggle:focus,
+.dropdown-item:focus,
+.dropdown-item:focus-visible {
+  box-shadow: var(--tm-ring) !important;
+}
+
+/* Buttons: slightly more “shadcn-like” (subtle borders, softer radius). */
+.btn {
+  border-radius: var(--tm-radius-sm);
+}
+
+.btn.btn-outline-secondary {
+  border-color: var(--tm-border-strong);
+  color: rgba(15, 23, 42, 0.82);
+}
+
+.btn.btn-outline-secondary:hover {
+  background: var(--tm-surface-2);
+  border-color: var(--tm-border-strong);
+  color: var(--tm-text);
+}
+
+.btn.btn-outline-danger {
+  border-color: rgba(220, 38, 38, 0.40);
+  color: var(--tm-danger);
+}
+
+.btn.btn-outline-danger:hover {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.55);
+  color: var(--tm-danger);
+}
+
+.btn.btn-primary {
+  border-color: var(--tm-primary);
+  background: var(--tm-primary);
+}
+
+.btn.btn-primary:hover {
+  border-color: #1d4ed8; /* blue-700 */
+  background: #1d4ed8;
+}
+
+.btn.btn-primary:active {
+  border-color: #1e40af; /* blue-800 */
+  background: #1e40af;
+}
+
+/* Dropdowns: make menus feel like a “popover” surface. */
+.dropdown-menu {
+  border: 1px solid var(--tm-border);
+  border-radius: var(--tm-radius-md);
+  box-shadow: var(--tm-shadow-md);
+  padding: 6px;
+}
+
+.dropdown-divider {
+  border-top-color: var(--tm-border);
+}
+
+.dropdown-header {
+  color: var(--tm-muted);
+}
+
+.dropdown-item {
+  border-radius: 10px;
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+  background: var(--tm-surface-2);
+}
+
+.dropdown-item:active {
+  background: var(--tm-primary-weak);
+  color: var(--tm-text);
 }
 
 /* Purpose: consistent keyboard focus without “Bootstrap blue everywhere”. */
@@ -1268,6 +1370,36 @@ details[open] .tm-chevron {
   .tm-viz {
     flex: 0 0 auto;
     overflow: visible;
+  }
+}
+
+/* -----------------------------
+   Ultra-narrow mobile (<= ~500px)
+   Purpose: avoid horizontal overflow causing "blank space" to the right.
+   Root cause: a few flex rows (toolbar/footer/navbar) can't shrink enough.
+   ----------------------------- */
+@media (max-width: 520px) {
+  /* Let the diagram toolbar wrap instead of forcing horizontal scroll/overflow. */
+  .tm-viz-toolbar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  /* Hint callout should never force extra width. */
+  .tm-viz-hint-wrap {
+    max-width: 100%;
+  }
+
+  /* Footer carousel min-width can overflow on very narrow screens. */
+  .tm-footer-carousel {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Navbar: allow the right-side controls row to wrap on tiny widths. */
+  nav.navbar .container-fluid {
+    flex-wrap: wrap;
+    row-gap: 8px;
   }
 }
 
