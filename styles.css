@@ -1,55 +1,37 @@
 /* Theorymaker: minimal layout + splitter + light typography */
 
 /* -----------------------------
-   Theme tokens (shadcn-like, no-build)
-   - Purpose: centralize colours/radii/shadows in one place
-   - Important: this is a Bootstrap app; we map tokens into Bootstrap CSS vars below.
+   Design tokens (shadcn-like)
+   - Purpose: modern neutral UI without a build step
+   - Scope: keep Bootstrap, but re-skin app surfaces via our selectors
    ----------------------------- */
-
 :root {
-  /* Core surfaces + text (light mode) */
+  /* Neutrals */
   --tm-bg: #fafafa; /* page background */
-  --tm-surface: #ffffff; /* panels/nav/footer */
-  --tm-card: #ffffff; /* cards/drawers */
-  --tm-foreground: #09090b; /* zinc-950-ish */
-  --tm-muted: #f4f4f5; /* zinc-100-ish */
-  --tm-muted-foreground: #71717a; /* zinc-500-ish */
-  --tm-border: #e4e4e7; /* zinc-200-ish */
+  --tm-surface: #ffffff; /* panels/drawers/cards */
+  --tm-surface-2: #f8fafc; /* subtle tinted surfaces */
+  --tm-border: #e5e7eb; /* light dividers */
+  --tm-border-strong: #d1d5db;
 
-  /* Accent (keep links readable; keep buttons strong) */
-  --tm-primary: #0f172a; /* slate-900-ish */
-  --tm-primary-foreground: #ffffff;
-  --tm-link: #2563eb; /* blue-600-ish */
-  --tm-link-hover: #1d4ed8; /* blue-700-ish */
-  --tm-ring: rgba(37, 99, 235, 0.35);
+  /* Text */
+  --tm-text: #0f172a; /* slate-900 */
+  --tm-muted: #64748b; /* slate-500 */
 
-  /* Shape + shadow */
-  --tm-radius: 0.75rem;
-  --tm-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --tm-shadow-md: 0 6px 18px rgba(0, 0, 0, 0.10);
-  --tm-shadow-lg: 0 18px 40px rgba(0, 0, 0, 0.14);
-}
+  /* Accent */
+  --tm-primary: #2563eb; /* blue-600 */
+  --tm-primary-weak: rgba(37, 99, 235, 0.12);
+  --tm-danger: #dc2626; /* red-600 */
 
-/* Bootstrap 5.3 token mapping (keeps built-in components consistent). */
-:root {
-  --bs-body-bg: var(--tm-bg);
-  --bs-body-color: var(--tm-foreground);
-  --bs-border-color: var(--tm-border);
+  /* Radius + shadows */
+  --tm-radius-sm: 8px;
+  --tm-radius-md: 12px;
+  --tm-radius-lg: 16px;
+  --tm-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --tm-shadow-md: 0 10px 24px rgba(15, 23, 42, 0.10);
+  --tm-shadow-lg: 0 18px 48px rgba(15, 23, 42, 0.18);
 
-  --bs-link-color: var(--tm-link);
-  --bs-link-hover-color: var(--tm-link-hover);
-
-  /* Background tiers used by many components */
-  --bs-secondary-bg: var(--tm-muted);
-  --bs-tertiary-bg: var(--tm-muted);
-
-  /* Make “primary” buttons shadcn-like (dark) */
-  --bs-primary: var(--tm-primary);
-
-  /* Radii */
-  --bs-border-radius: var(--tm-radius);
-  --bs-border-radius-sm: calc(var(--tm-radius) - 0.25rem);
-  --bs-border-radius-lg: calc(var(--tm-radius) + 0.25rem);
+  /* Focus ring */
+  --tm-ring: 0 0 0 0.25rem rgba(37, 99, 235, 0.20);
 }
 
 html,
@@ -60,26 +42,21 @@ body {
 body {
   margin: 0;
   background: var(--tm-bg);
-  color: var(--tm-foreground);
+  color: var(--tm-text);
+  /* Keep typography modern + neutral (Bootstrap still controls sizing). */
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   /* Page layout: navbar (top) + main (fills) + footer (bottom) */
   display: flex;
   flex-direction: column;
 }
 
-/* Bootstrap components: make focus ring match the theme */
-.form-control:focus,
-.form-select:focus,
-.form-check-input:focus,
-.btn:focus,
-.btn:focus-visible {
-  box-shadow: 0 0 0 0.25rem var(--tm-ring) !important;
-}
-
-/* App chrome: navbar + footer should read as “surface” */
-.navbar,
-footer {
-  background: var(--tm-surface) !important; /* override bg-white utility */
-  border-color: var(--tm-border) !important; /* override border-top/bottom utilities */
+/* Purpose: consistent keyboard focus without “Bootstrap blue everywhere”. */
+.tm-main :focus-visible,
+nav.navbar :focus-visible,
+footer :focus-visible {
+  outline: none;
+  box-shadow: var(--tm-ring);
+  border-radius: 6px;
 }
 
 /* -----------------------------
@@ -169,6 +146,21 @@ footer {
   min-height: 0;
 }
 
+/* Purpose: keep app “surfaces” crisp on neutral background. */
+.tm-main .bg-white,
+footer.bg-white,
+nav.navbar.bg-white,
+.tm-viz-drawer .bg-white {
+  background: var(--tm-surface) !important;
+}
+
+nav.navbar.border-bottom,
+footer.border-top,
+.tm-main .border-bottom,
+.tm-main .border-top {
+  border-color: var(--tm-border) !important;
+}
+
 /* Left editor panel (resizable) */
 .tm-left {
   flex-shrink: 0; /* don't let Templates/Help content squeeze the editor panel */
@@ -179,8 +171,8 @@ footer {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--tm-surface);
   border-right: 1px solid var(--tm-border);
+  background: var(--tm-surface);
 }
 
 @media (min-width: 992px) {
@@ -202,7 +194,7 @@ footer {
 
 .tm-chat-input::placeholder {
   /* Make placeholder a bit lighter + italic (without affecting typed text) */
-  color: var(--tm-muted-foreground);
+  color: var(--tm-muted);
   font-style: italic;
 }
 
@@ -252,7 +244,7 @@ footer {
   /* Purpose: only the site name is clickable, with black underline */
   color: inherit;
   text-decoration: underline;
-  text-decoration-color: currentColor;
+  text-decoration-color: #000;
   text-underline-offset: 2px;
 }
 
@@ -280,14 +272,16 @@ footer {
   flex: 1 1 auto;
   min-height: 220px; /* ensure the editor is visibly editable when disclosed */
   margin: 12px; /* space around the editor block */
-  border: 1px solid #e9ecef;
-  border-radius: 8px;
+  border: 1px solid var(--tm-border);
+  border-radius: var(--tm-radius-md);
+  box-shadow: var(--tm-shadow-sm);
+  background: var(--tm-surface);
 }
 
 /* Ace editor: force a very light gray background (theme-override) */
 .tm-editor.ace_editor,
 .tm-editor.ace_editor .ace_scroller {
-  background: #f8f9fa; /* Bootstrap "light" */
+  background: var(--tm-surface-2);
 }
 
 /* -----------------------------
@@ -306,10 +300,10 @@ footer {
   position: fixed;
   z-index: 2500; /* keep above drawers/toolbars/overlays */
   padding: 4px 6px;
-  background: var(--tm-surface);
-  border: 1px solid var(--tm-border);
+  background: #fff;
+  border: 1px solid #dee2e6; /* Bootstrap border */
   border-radius: 8px;
-  box-shadow: var(--tm-shadow-md);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
   max-width: 190px; /* keep it tidy; wrap into rows */
   gap: 3px; /* slightly tighter than default */
 }
@@ -320,9 +314,9 @@ footer {
   align-items: center;
   gap: 2px; /* keep picker + palette button close together */
   padding: 2px;
-  background: var(--tm-surface);
-  border: 1px solid var(--tm-border);
-  border-radius: calc(var(--tm-radius) - 0.25rem);
+  background: #fff;
+  border: 1px solid #ced4da; /* Bootstrap input border */
+  border-radius: 0.375rem; /* Bootstrap default radius */
 }
 
 .tm-color-swatch-trigger {
@@ -340,8 +334,8 @@ footer {
 
 .tm-color-input-wrap:focus-within {
   /* Purpose: mimic Bootstrap focus ring for the combined control */
-  border-color: var(--tm-link);
-  box-shadow: 0 0 0 0.25rem var(--tm-ring);
+  border-color: #86b7fe;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
 }
 
 .tm-color-swatch {
@@ -355,18 +349,18 @@ footer {
 }
 
 .tm-color-swatch:hover {
-  border-color: var(--tm-link);
+  border-color: #0d6efd; /* Bootstrap primary */
 }
 
 .tm-color-swatch:focus {
-  outline: 2px solid var(--tm-ring);
+  outline: 2px solid rgba(13, 110, 253, 0.35);
   outline-offset: 1px;
 }
 
 .tm-color-swatch-sep {
   width: 6px;
   height: 12px;
-  border-left: 1px solid var(--tm-border);
+  border-left: 1px solid #ced4da; /* Bootstrap border */
   margin: 0 2px;
 }
 
@@ -380,13 +374,13 @@ footer {
 .tm-splitter {
   width: 14px; /* wider grab area for resizing editor/diagram */
   cursor: col-resize;
-  background: var(--tm-bg);
+  background: #f3f4f6; /* slightly darker than page bg */
   border-left: 1px solid var(--tm-border);
   border-right: 1px solid var(--tm-border);
 }
 
 .tm-splitter:hover {
-  background: var(--tm-muted);
+  background: #efefef;
 }
 
 /* Right panel */
@@ -396,27 +390,22 @@ footer {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--tm-surface);
 }
 
 .tm-tabs {
   flex: 0 0 auto;
   user-select: none;
-  background: var(--tm-surface);
 }
 
 .tm-tab {
-  color: var(--tm-muted-foreground);
+  color: rgba(15, 23, 42, 0.78);
   text-decoration: none;
   font-weight: 600;
-  padding: 0.35rem 0.6rem;
-  border-radius: calc(var(--tm-radius) - 0.25rem);
-  display: inline-block;
+  padding: 0 2px;
 }
 
 .tm-tab.active {
-  color: var(--tm-foreground);
-  background: var(--tm-muted);
+  color: var(--tm-primary);
 }
 
 /* Styles drawer: make direction arrows big/bold for quick scanning */
@@ -460,12 +449,12 @@ footer {
   height: var(--tm-viz-drawer-h);
   width: var(--tm-viz-drawer-w);
   max-width: min(420px, 92vw);
-  background: var(--tm-card);
+  background: var(--tm-surface);
   border-right: 1px solid var(--tm-border);
   z-index: 200; /* above left panel; should not overlap diagram due to JS positioning */
   overflow: auto;
-  /* Purpose: avoid “ghost” shadow when the drawer is translated offscreen */
-  box-shadow: none;
+  /* Purpose: modern “sheet” look */
+  box-shadow: -16px 0 44px rgba(15, 23, 42, 0.18), -6px 0 18px rgba(15, 23, 42, 0.10);
   transform: translateX(-100%); /* start offscreen at far left */
   transition: transform 180ms ease;
   pointer-events: auto;
@@ -473,7 +462,6 @@ footer {
 
 .tm-viz-drawer.tm-open {
   transform: translateX(var(--tm-viz-drawer-open-x));
-  box-shadow: 18px 0 40px rgba(0, 0, 0, 0.14), 6px 0 16px rgba(0, 0, 0, 0.10);
 }
 
 .tm-viz-toolbar {
@@ -492,9 +480,9 @@ footer {
   gap: 2px;
   padding: 6px 10px;
   padding-right: 40px; /* room for the dismiss X + extra spacing from text */
-  border-radius: calc(var(--tm-radius) - 0.1rem);
-  border: 1px solid var(--tm-border);
-  background: var(--tm-muted);
+  border-radius: var(--tm-radius-md);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  background: rgba(37, 99, 235, 0.08);
   max-width: min(640px, 55vw);
   position: relative; /* anchor dismiss X */
 }
@@ -528,13 +516,13 @@ footer {
 
 @keyframes tm-callout-pulse {
   0% {
-    border-color: var(--tm-border);
+    border-color: #b6d4fe;
   }
   60% {
-    border-color: var(--tm-link);
+    border-color: #0b5ed7; /* darker, Bootstrap-ish */
   }
   100% {
-    border-color: var(--tm-border);
+    border-color: #b6d4fe;
   }
 }
 
@@ -547,10 +535,10 @@ footer {
   /* Purpose: very gentle "breathing" pulse for the hint callout on initial load */
   0%,
   100% {
-    border-color: var(--tm-border);
+    border-color: #b6d4fe;
   }
   50% {
-    border-color: var(--tm-link);
+    border-color: #6ea8fe; /* slightly darker */
   }
 }
 
@@ -572,7 +560,7 @@ footer {
   /* Keep labels subtle and compact */
   font-size: 11px;
   line-height: 1;
-  color: var(--tm-muted-foreground);
+  color: #6c757d; /* Bootstrap secondary */
   white-space: nowrap;
 }
 
@@ -612,11 +600,12 @@ footer {
   /* Purpose: make the diagram Description look like a professional callout under the graph */
   margin: 10px 12px 12px;
   padding: 12px 14px;
-  background: var(--tm-muted);
+  background: var(--tm-surface-2);
   border: 1px solid var(--tm-border);
-  border-radius: 10px;
+  border-left: 4px solid var(--tm-primary);
+  border-radius: var(--tm-radius-md);
   box-shadow: var(--tm-shadow-sm);
-  color: var(--tm-foreground); /* override Bootstrap .text-muted on the element */
+  color: var(--tm-text); /* override Bootstrap .text-muted on the element */
   font-size: 1.14rem; /* ~30% larger than Bootstrap .small (0.875rem * 1.3 ≈ 1.14rem) */
   line-height: 1.45;
   white-space: pre-wrap; /* allow multi-line descriptions */
@@ -639,12 +628,12 @@ footer {
   pointer-events: none; /* never block clicks */
   max-width: min(420px, 60vw);
   padding: 9px 15px; /* ~50% bigger */
-  border-radius: calc(var(--tm-radius) - 0.1rem);
-  border: 1px solid var(--tm-border);
+  border-radius: 10px;
+  border: 1px solid rgba(13, 110, 253, 0.30);
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(6px);
-  color: var(--tm-foreground);
-  box-shadow: var(--tm-shadow-lg);
+  color: #212529;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18), 0 2px 10px rgba(0, 0, 0, 0.12);
   font-size: 18px; /* 12px * 1.5 */
   line-height: 1.25;
   /* JS positions this using left/right + top/bottom to avoid shrink-to-fit squeezing near edges. */
@@ -780,19 +769,19 @@ footer {
 
 .tm-errors {
   font-size: 0.9rem;
-  color: #842029; /* bootstrap danger-ish */
-  background: #f8d7da;
-  border: 1px solid #f5c2c7;
-  border-radius: 6px;
+  color: #7f1d1d; /* red-900 */
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.18);
+  border-radius: var(--tm-radius-sm);
   padding: 8px 10px;
   margin-bottom: 8px;
   white-space: pre-wrap;
 }
 
 .tm-help {
-  background: var(--tm-muted);
+  background: var(--tm-surface-2);
   border: 1px solid var(--tm-border);
-  border-radius: 6px;
+  border-radius: var(--tm-radius-sm);
   padding: 10px;
   overflow: auto;
 }
@@ -815,8 +804,9 @@ footer {
   overflow-x: auto;
   padding: 12px;
   border: 1px solid var(--tm-border);
-  border-radius: 6px;
+  border-radius: var(--tm-radius-md);
   background: var(--tm-surface);
+  box-shadow: var(--tm-shadow-sm);
 }
 
 .tm-help-quickref {
@@ -832,17 +822,14 @@ footer {
 }
 
 .tm-help-subtab {
-  color: var(--tm-muted-foreground);
+  color: rgba(15, 23, 42, 0.78);
   text-decoration: none;
   font-weight: 600;
-  padding: 0.25rem 0.5rem;
-  border-radius: calc(var(--tm-radius) - 0.25rem);
-  display: inline-block;
+  padding: 0 2px;
 }
 
 .tm-help-subtab.active {
-  color: var(--tm-foreground);
-  background: var(--tm-muted);
+  color: var(--tm-primary);
 }
 
 /* Minimal markdown typography */
@@ -857,8 +844,8 @@ footer {
 }
 
 .tm-help-md pre {
-  background: var(--tm-muted);
-  border: 1px solid var(--tm-border);
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
   border-radius: 6px;
   padding: 10px;
 }
@@ -875,7 +862,7 @@ footer {
 }
 
 .tm-help-md code {
-  background: var(--tm-muted);
+  background: #f8f9fa;
   padding: 0.1rem 0.25rem;
   border-radius: 4px;
 }
@@ -891,24 +878,11 @@ footer {
 }
 
 .tm-templates-card:hover {
-  border-color: var(--tm-border);
-  box-shadow: var(--tm-shadow-md);
+  border-color: rgba(37, 99, 235, 0.55);
 }
 
 .tm-templates-card {
   position: relative;
-}
-
-/* Dropdown + card-ish surfaces: make them feel shadcn-like */
-.dropdown-menu {
-  border: 1px solid var(--tm-border);
-  border-radius: var(--tm-radius);
-  box-shadow: var(--tm-shadow-md);
-}
-
-.dropdown-item:active {
-  background-color: var(--tm-muted);
-  color: var(--tm-foreground);
 }
 
 .tm-templates-actions {
@@ -920,22 +894,21 @@ footer {
 
 .tm-templates-actions .btn {
   background: rgba(255, 255, 255, 0.92);
-  box-shadow: var(--tm-shadow-sm);
 }
 
 .tm-templates-thumb {
   width: 100%;
   height: 140px;
   object-fit: cover;
-  border-bottom: 1px solid var(--tm-border);
-  background: var(--tm-surface);
+  border-bottom: 1px solid #e9ecef;
+  background: #fff;
 }
 
 .tm-templates-thumb-placeholder {
   width: 100%;
   height: 140px;
-  border-bottom: 1px solid var(--tm-border);
-  background: linear-gradient(135deg, var(--tm-muted) 0%, var(--tm-surface) 55%, var(--tm-muted) 100%);
+  border-bottom: 1px solid #e9ecef;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 50%, #f1f3f5 100%);
 }
 
 .tm-templates-thumb-wrap {
@@ -970,7 +943,7 @@ footer {
   max-width: 320px;
   background: var(--tm-surface);
   border: 1px solid var(--tm-border);
-  border-radius: 8px;
+  border-radius: var(--tm-radius-md);
   padding: 10px;
   box-shadow: var(--tm-shadow-md);
 }
@@ -1133,9 +1106,10 @@ footer {
 
 .tm-details {
   border: 1px solid var(--tm-border);
-  border-radius: 8px;
+  border-radius: var(--tm-radius-md);
   padding: 10px;
   background: var(--tm-surface);
+  box-shadow: var(--tm-shadow-sm);
 }
 
 /* -----------------------------
@@ -1158,8 +1132,8 @@ footer {
   min-height: 0; /* required for flex scroll areas */
   overflow-y: auto;
   border: 1px solid var(--tm-border);
-  border-radius: 10px;
-  background: var(--tm-muted);
+  border-radius: var(--tm-radius-md);
+  background: var(--tm-surface-2);
   padding: 10px;
   display: flex;
   flex-direction: column;
@@ -1178,12 +1152,14 @@ footer {
 
 .tm-chat-bubble-user {
   align-self: flex-end;
-  background: var(--tm-muted);
+  border-color: rgba(37, 99, 235, 0.22);
+  background: rgba(37, 99, 235, 0.08);
 }
 
 .tm-chat-bubble-assistant {
   align-self: flex-start;
-  background: var(--tm-surface);
+  border-color: rgba(22, 163, 74, 0.18);
+  background: rgba(22, 163, 74, 0.07);
 }
 
 .tm-chat-bubble-clickable {
@@ -1192,7 +1168,7 @@ footer {
 }
 
 .tm-chat-bubble-clickable:hover {
-  border-color: var(--tm-link);
+  border-color: #0d6efd; /* Bootstrap primary */
 }
 
 .tm-editor-details {
@@ -1208,7 +1184,7 @@ footer {
 
 .tm-editor-details-summary {
   padding: 10px;
-  border-bottom: 1px solid var(--tm-border);
+  border-bottom: 1px solid #e9ecef;
 }
 
 .tm-editor-details > .tm-editor-wrap {

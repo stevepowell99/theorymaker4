@@ -1519,11 +1519,6 @@ function initMobileScreens({ editor }) {
     splitter.classList.remove("d-none");
     chatPanel.classList.remove("d-none");
     editorDetails.classList.remove("d-none");
-
-    // Layout width changed; refit diagram to the available space (unless user has zoomed).
-    requestAnimationFrame(() => {
-      if (!vizHasUserZoomed) fitVizToContainerWidth();
-    });
   }
 
   function applyMobileScreen(screen) {
@@ -1550,14 +1545,6 @@ function initMobileScreens({ editor }) {
     if (s === "help") setActiveTab("help");
 
     setActiveMenuItem(s);
-
-    // Mobile screen switches change available width; refit the diagram once the layout settles.
-    requestAnimationFrame(() => {
-      // On mobile, a previously user-chosen zoom (from desktop or earlier) often leaves lots of unused space.
-      // Reset to "fit" when entering the Diagram screen so the map uses the full mobile width.
-      if (s === "diagram") vizHasUserZoomed = false;
-      if (!vizHasUserZoomed) fitVizToContainerWidth();
-    });
   }
 
   function syncToViewport() {
@@ -8831,16 +8818,14 @@ function parseSvgLengthToPx(s) {
 }
 
 function getSvgBaseSizePx(svg) {
-  // Prefer explicit width/height attributes (Graphviz emits these, often in pt),
-  // because they map cleanly to CSS px. Fall back to viewBox if needed.
-  const w = parseSvgLengthToPx(svg.getAttribute("width"));
-  const h = parseSvgLengthToPx(svg.getAttribute("height"));
-  if (w && h) return { w, h };
-
+  // Prefer viewBox (stable), otherwise fall back to width/height attrs.
   const vb = svg.viewBox?.baseVal;
   if (vb && Number.isFinite(vb.width) && vb.width > 0 && Number.isFinite(vb.height) && vb.height > 0) {
     return { w: vb.width, h: vb.height };
   }
+  const w = parseSvgLengthToPx(svg.getAttribute("width"));
+  const h = parseSvgLengthToPx(svg.getAttribute("height"));
+  if (w && h) return { w, h };
   return null;
 }
 
@@ -8859,9 +8844,8 @@ function applyVizScale() {
 }
 
 function fitVizToContainerWidth() {
-  // Fit the rendered SVG to the current viz panel.
-  // - Desktop: fit to BOTH width and height (prevents tall diagrams running off-screen by default).
-  // - Mobile: fit to WIDTH only (mobile layout makes #tm-viz auto-height, so height-fitting can shrink to near-zero).
+  // Fit the rendered SVG to the current viz panel *both* width and height
+  // (so tall diagrams don't run off-screen below the fold by default).
   const viz = document.getElementById("tm-viz");
   const svg = getVizSvgEl();
   if (!viz || !svg) return;
@@ -8878,12 +8862,10 @@ function fitVizToContainerWidth() {
   const availableW = Math.max(1, viz.clientWidth - padL - padR);
   const availableH = Math.max(1, viz.clientHeight - padT - padB);
 
-  const isMobile = Boolean(globalThis.matchMedia?.("(max-width: 991.98px)")?.matches);
-
-  // Choose a scale that fits within the available space.
+  // Choose a scale that fits within both width and height.
   const scaleW = availableW / base.w;
   const scaleH = availableH / base.h;
-  const next = isMobile ? scaleW : Math.min(scaleW, scaleH);
+  const next = Math.min(scaleW, scaleH);
   vizScale = Math.max(0.2, Math.min(6, next));
   applyVizScale();
 }
