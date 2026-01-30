@@ -46,6 +46,10 @@
 
   /* Use our focus ring for Bootstrap focusable controls. */
   --bs-focus-ring-color: rgba(37, 99, 235, 0.25);
+
+  /* Tooltip theme (Bootstrap uses these vars). */
+  --bs-tooltip-bg: #0f172a;
+  --bs-tooltip-color: #ffffff;
 }
 
 html,
@@ -63,9 +67,22 @@ body {
   color: var(--tm-text);
   /* Keep typography modern + neutral (Bootstrap still controls sizing). */
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   /* Page layout: navbar (top) + main (fills) + footer (bottom) */
   display: flex;
   flex-direction: column;
+}
+
+/* Text: make Bootstrap “muted” match our tokens consistently. */
+.text-muted {
+  color: var(--tm-muted) !important;
+}
+
+/* Links: subtle, modern underline behavior (keep tabs/subtabs unaffected). */
+a:not(.tm-tab):not(.tm-help-subtab) {
+  text-underline-offset: 2px;
 }
 
 /* Unified focus styling for form controls/buttons (keyboard + mouse). */
@@ -78,6 +95,46 @@ body {
 .dropdown-item:focus,
 .dropdown-item:focus-visible {
   box-shadow: var(--tm-ring) !important;
+}
+
+/* Form controls: reduce “Bootstrap-y” look (subtle borders, consistent radius). */
+.form-control,
+.form-select {
+  border-color: var(--tm-border-strong);
+  border-radius: var(--tm-radius-sm);
+}
+
+.form-control::placeholder,
+.form-select::placeholder {
+  color: rgba(100, 116, 139, 0.85);
+}
+
+/* Checkboxes/radios/switches: use accent colour where supported. */
+.form-check-input {
+  accent-color: var(--tm-primary);
+  border-color: var(--tm-border-strong);
+}
+
+/* Cards: used heavily in Templates (and a few other places). */
+.card {
+  border-color: var(--tm-border);
+  border-radius: var(--tm-radius-md);
+  box-shadow: var(--tm-shadow-sm);
+}
+
+.card .card-header {
+  background: var(--tm-surface);
+  border-bottom-color: var(--tm-border);
+}
+
+/* Templates: hover should feel “lifted” but still subtle. */
+.tm-templates-card {
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.tm-templates-card:hover {
+  box-shadow: var(--tm-shadow-md);
+  transform: translateY(-1px);
 }
 
 /* Buttons: slightly more “shadcn-like” (subtle borders, softer radius). */
@@ -150,6 +207,70 @@ body {
 .dropdown-item:active {
   background: var(--tm-primary-weak);
   color: var(--tm-text);
+}
+
+/* Accordions: unify chrome (used in drawers heavily). */
+.accordion {
+  --bs-accordion-border-color: var(--tm-border);
+  --bs-accordion-border-radius: var(--tm-radius-md);
+  --bs-accordion-inner-border-radius: calc(var(--tm-radius-md) - 2px);
+  --bs-accordion-btn-focus-box-shadow: var(--tm-ring);
+  --bs-accordion-btn-padding-y: 0.85rem;
+  --bs-accordion-btn-padding-x: 1rem;
+  --bs-accordion-body-padding-y: 0.9rem;
+  --bs-accordion-body-padding-x: 1rem;
+}
+
+.accordion-item {
+  border-color: var(--tm-border);
+}
+
+.accordion-button {
+  color: var(--tm-text);
+}
+
+.accordion-button:not(.collapsed):hover,
+.accordion-button.collapsed:hover {
+  filter: saturate(0.98);
+}
+
+.accordion-button::after {
+  opacity: 0.7;
+}
+
+/* Drawers: ensure borders match tokens even though drawers sit outside `.tm-main`. */
+.tm-viz-drawer .border-bottom,
+.tm-viz-drawer .border-top {
+  border-color: var(--tm-border) !important;
+}
+
+/* Close buttons: make them a touch more modern/subtle. */
+.btn-close {
+  opacity: 0.55;
+}
+
+.btn-close:hover,
+.btn-close:focus {
+  opacity: 0.85;
+}
+
+/* Offcanvas (mobile menu): match our surface + borders. */
+.offcanvas {
+  background: var(--tm-surface);
+  border-color: var(--tm-border);
+}
+
+.offcanvas .offcanvas-header {
+  border-bottom: 1px solid var(--tm-border);
+}
+
+.offcanvas .list-group-item {
+  border-color: var(--tm-border);
+}
+
+.offcanvas .list-group-item:hover,
+.offcanvas .list-group-item:focus {
+  background: var(--tm-surface-2);
 }
 
 /* Purpose: consistent keyboard focus without “Bootstrap blue everywhere”. */
