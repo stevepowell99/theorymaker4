@@ -21,6 +21,8 @@
 - a mindmap to sketch your ideas, try [Biggerplate](https://www.biggerplate.com/)
 - fully-featured ToC software with indicators, monitoring, etc. Try [TASO's tool](https://taso.org.uk/insights-and-evaluation/theory-of-change/) instead.
 
+**Comments, questions, bugs?** Please leave a [comment on LinkedIn](https://www.linkedin.com/feed/update/urn:li:activity:7416416749945815040/).
+
 **This help** is split into tabs:
 
 - **intro**: the basics (start here)
