@@ -39,7 +39,6 @@
 - **Undo / Redo**: use the top-right buttons (these mirror browser Back/Forward).
 - **Templates**: load an example, or load maps you saved in this browser.
 - **Save**: you can save maps **in this browser only** (LocalStorage). For a portable save you can use **Plain Link** (copy it, then bookmark or save it somewhere).
-- **Questions or problems?**: [write to me](https://www.linkedin.com/in/stevepowell99/)!
 
 ### What are “nodes”, “links”, and “groups”?
 
