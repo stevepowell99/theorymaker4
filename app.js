@@ -6272,6 +6272,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
   function clearAllSelectionsAndCloseDrawers() {
     // Purpose: user expectation: Esc (and closing drawers) should always "reset" the interaction state.
+    addNodeMode = false;
     clearVizSelection();
     clearHoverGlow();
     hideHoverDelete();
@@ -6365,8 +6366,16 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
   // Selection drawer (opens when nodes are multi-selected via checkboxes)
   const selDrawerEl = document.getElementById("tm-viz-selection-drawer");
+  const selDrawerTitle = document.getElementById("tm-viz-selection-drawer-title");
   const selDrawerMeta = document.getElementById("tm-viz-selection-meta");
   const selDrawerCloseBtn = document.getElementById("tm-viz-selection-close");
+  const selActionBtns = document.getElementById("tm-viz-selection-action-btns");
+  const selAccTitle = document.getElementById("tm-viz-selection-acc-node-title");
+  const selAccSelItem = document.getElementById("tm-viz-selection-acc-sel-item");
+  const addNodeBlock = document.getElementById("tm-viz-add-node-block");
+  const addNodeLabelInput = document.getElementById("tm-viz-add-node-label");
+  const addNodeBtn = document.getElementById("tm-viz-add-node-btn");
+  const nodeLabelRow = document.getElementById("tm-viz-node-label-row");
   const selNodeEditHint = document.getElementById("tm-viz-selection-node-edit-hint");
   const selNodeEditDisabled = document.getElementById("tm-viz-selection-node-edit-disabled");
   const selAccNodePanel = document.getElementById("tm-viz-selection-acc-node");
@@ -6387,6 +6396,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   const selLinkCreateNewBtn = document.getElementById("tm-viz-selection-link-create-new-btn");
 
   let selection = null; // { type: "node", nodeId } | { type: "cluster", clusterId } | { type: "edge", lineNo, fromId, toId }
+  let addNodeMode = false; // true when + Node toolbar button opened the drawer to add a standalone node
   let canSave = false;
   let canDelete = false;
   let suppressLiveApply = false; // prevents feedback loops while we populate widgets
@@ -6541,7 +6551,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
   function updateDeleteSelectedButton() {
     // Purpose: show multi-select actions via a sliding drawer (not toolbar icons).
     const n = selectedNodes.size;
-    const show = n > 0;
+    const show = n > 0 || addNodeMode;
 
     if (!selDrawerEl) return;
 
@@ -6553,8 +6563,64 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
     closeOtherVizDrawers(selDrawerEl);
     selDrawerEl.classList.add("tm-open");
-    if (selDrawerMeta) selDrawerMeta.textContent = `${n} selected`;
+    if (selDrawerMeta) {
+      selDrawerMeta.textContent = addNodeMode ? "" : `${n} selected`;
+      selDrawerMeta.classList.toggle("d-none", addNodeMode);
+    }
+    if (selDrawerTitle) selDrawerTitle.textContent = addNodeMode ? "Add Node" : "Edit nodes";
     positionVizDrawerAgainstDiagram(selDrawerEl, { topOffsetPx: 100 });
+  }
+
+  function openAddNodeDrawer() {
+    // Purpose: open selection drawer in "add node" mode (label + styling widgets + Add button).
+    addNodeMode = true;
+    selectedNodes.clear();
+    selectedClusters.clear();
+    if (addNodeLabelInput) addNodeLabelInput.value = "";
+    // Populate styling widgets with defaults
+    const def = getDefaultNodeUi();
+    if (nodeFillInput) nodeFillInput.value = def.fillHex || "#ffffff";
+    if (nodeBwInput) nodeBwInput.value = String(def.borderUi?.width ?? 1);
+    if (nodeBsSel) nodeBsSel.value = def.borderUi?.style || "solid";
+    setButtonsUi(nodeBsBtns, def.borderUi?.style || "solid");
+    if (nodeBcInput) nodeBcInput.value = def.borderUi?.colorHex || "#999999";
+    if (nodeRoundedChk) nodeRoundedChk.checked = Boolean(def.rounded);
+    if (nodeTextSizeInput) nodeTextSizeInput.value = "1";
+    updateDeleteSelectedButton();
+    syncSelectionNodeEditor();
+    applyMultiSelectVisuals();
+    // First-open bootstrap quirk: force the node panel open both immediately and after drawer transition.
+    forceOpenAddNodeAccordionPanel();
+    setTimeout(forceOpenAddNodeAccordionPanel, 250);
+    // Defer focus until drawer is visible
+    requestAnimationFrame(() => addNodeLabelInput?.focus());
+  }
+
+  function forceOpenAddNodeAccordionPanel() {
+    const nodePanel = selAccNodePanel || null;
+    const selPanel = selAccSelPanel || null;
+    const nodeBtn = document.querySelector("#tm-viz-selection-acc-node-h .accordion-button");
+    const selBtn = document.querySelector("#tm-viz-selection-acc-sel-h .accordion-button");
+    if (!nodePanel) return;
+
+    nodePanel.classList.remove("collapsing");
+    nodePanel.classList.add("collapse", "show");
+    nodePanel.style.height = "";
+
+    if (nodeBtn) {
+      nodeBtn.classList.remove("collapsed");
+      nodeBtn.setAttribute("aria-expanded", "true");
+    }
+
+    if (selPanel) {
+      selPanel.classList.remove("show", "collapsing");
+      selPanel.classList.add("collapse");
+      selPanel.style.height = "";
+    }
+    if (selBtn) {
+      selBtn.classList.add("collapsed");
+      selBtn.setAttribute("aria-expanded", "false");
+    }
   }
 
   function openSelectionAccordionPanel(which) {
@@ -6570,6 +6636,10 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
       bsCollapse.getOrCreateInstance(nodePanel).hide();
       return;
     }
+    if (addNodeMode) {
+      forceOpenAddNodeAccordionPanel();
+      return;
+    }
     bsCollapse.getOrCreateInstance(nodePanel).show();
     bsCollapse.getOrCreateInstance(selPanel).hide();
   }
@@ -6579,12 +6649,25 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     // Rule: only show the node editor when EXACTLY 1 node is selected.
     const n = selectedNodes.size;
     resetBulkNodeDirty();
+    // Add-node mode: show add block, hide hint/node fields, hide clear/delete btns and create-move panel, update titles
+    if (addNodeBlock) addNodeBlock.classList.toggle("d-none", !addNodeMode);
+    if (selActionBtns) selActionBtns.classList.toggle("d-none", addNodeMode);
+    if (selAccSelItem) selAccSelItem.classList.toggle("d-none", addNodeMode);
+    if (selAccTitle) selAccTitle.textContent = addNodeMode ? "Style and label your new node" : "Style or relabel nodes";
+    if (addNodeMode) {
+      if (selNodeEditHint) selNodeEditHint.classList.add("d-none");
+      if (nodeLabelRow) nodeLabelRow.classList.add("d-none"); // hide edit label row; add-node uses addNodeBlock
+      nodeFields?.classList.remove("d-none"); // show styling widgets in add-node mode
+      setActions({ save: false, del: false, message: "" });
+      return;
+    }
     if (n !== 1) {
       if (n === 0) {
         selection = null;
         baseline = null;
         setActions({ save: false, del: false, message: "" });
         nodeFields?.classList.add("d-none");
+        if (nodeLabelRow) nodeLabelRow.classList.remove("d-none");
         if (selNodeEditHint) selNodeEditHint.classList.remove("d-none");
         if (selNodeEditDisabled) selNodeEditDisabled.classList.add("d-none");
         if (nodeLabelInput) nodeLabelInput.disabled = false;
@@ -6593,6 +6676,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
 
       // Multi-select: show styling controls, but disable label editing.
       nodeFields?.classList.remove("d-none");
+      if (nodeLabelRow) nodeLabelRow.classList.remove("d-none");
       if (selNodeEditHint) selNodeEditHint.classList.add("d-none");
       if (nodeLabelInput) {
         nodeLabelInput.value = "";
@@ -6621,7 +6705,7 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     const onlyId = Array.from(selectedNodes)[0] || "";
     if (!onlyId) return;
     if (selNodeEditHint) selNodeEditHint.classList.add("d-none");
-    // refreshFormFromEditor() will setActions() and show disabled message if needed.
+    if (nodeLabelRow) nodeLabelRow.classList.remove("d-none");
     selection = { type: "node", nodeId: onlyId };
     if (nodeLabelInput) nodeLabelInput.disabled = false;
     refreshFormFromEditor();
@@ -8581,6 +8665,65 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     clearAllSelectionsAndCloseDrawers();
   });
 
+  // + Node toolbar button: open selection drawer in add-node mode
+  document.getElementById("tm-add-node")?.addEventListener("click", openAddNodeDrawer);
+
+  // Add node: insert "ID:: Label [style]" at recommended position, wiggle new node, close drawer
+  function doAddNode() {
+    const label = String(addNodeLabelInput?.value ?? "").trim();
+    if (!label) return setVizStatus("Enter a node label");
+    const curFillHex = String(nodeFillInput?.value || "#ffffff").toLowerCase();
+    const curBorderUi = {
+      width: Number(nodeBwInput?.value ?? 1),
+      style: String(nodeBsSel?.value ?? "solid"),
+      colorHex: String(nodeBcInput?.value ?? "#999999"),
+    };
+    const curRounded = Boolean(nodeRoundedChk?.checked);
+    const curTextSizeScale = Number(nodeTextSizeInput?.value ?? 1);
+    const borderText = uiToBorderText(curBorderUi);
+    const styleInner = upsertNodeStyleInner("", {
+      fillHex: curFillHex,
+      borderText,
+      rounded: curRounded,
+      textSizeScale: Number.isFinite(curTextSizeScale) && curTextSizeScale > 0 ? curTextSizeScale : null,
+    });
+    const bracket = styleInner ? ` [${styleInner}]` : "";
+    const lines = editor.getValue().split(/\r?\n/);
+    const existingIds = new Set(getExplicitNodeIdsFromLines(lines));
+    const newId = makeUniqueNodeIdFromLabel(label, existingIds);
+    const insertAt = findInsertIdxForAutoNodeDef(lines);
+    lines.splice(insertAt, 0, `${newId}:: ${label}${bracket}`);
+    applyEditorLines(lines);
+    addNodeMode = false;
+    if (addNodeLabelInput) addNodeLabelInput.value = "";
+    updateDeleteSelectedButton();
+    syncSelectionNodeEditor();
+    closeSelectionDrawer();
+    // Wiggle new node after render (Graphviz is async); show link hint 2s after wiggle starts
+    const nodeDomId = makeNodeDomId(newId);
+    setTimeout(() => {
+      const nodeEl = document.querySelector(`#tm-viz g.node#${CSS.escape(nodeDomId)}`);
+      if (nodeEl) {
+        nodeEl.classList.add("tm-node-wiggle");
+        setTimeout(() => nodeEl.classList.remove("tm-node-wiggle"), 2200);
+        setTimeout(() => {
+          const r = nodeEl.getBoundingClientRect();
+          const bubble = document.createElement("div");
+          bubble.className = "tm-node-hint-bubble";
+          bubble.textContent = "To add links to/from your node, click on it.";
+          bubble.style.left = `${r.left + r.width / 2}px`;
+          bubble.style.top = `${r.top - 8}px`;
+          document.body.appendChild(bubble);
+          setTimeout(() => bubble.remove(), 6000);
+        }, 2000);
+      }
+    }, 400);
+  }
+  addNodeBtn?.addEventListener("click", doAddNode);
+  addNodeLabelInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); doAddNode(); }
+  });
+
   // Live preview in the viz edit modal: any change updates editor + rerenders.
   function maybeLiveApply() {
     if (suppressLiveApply) return;
@@ -8717,17 +8860,21 @@ function pulseVizHintCallout() {
   wrap.classList.add("tm-callout-pulse");
 }
 
-function setVizStatus(msg) {
+function setVizStatus(msg, clearDelayMs = 1800) {
   const el = document.getElementById("tm-viz-status");
   if (!el) return;
   el.textContent = msg || "";
-  if (!msg) return;
+  if (!msg) {
+    window.clearTimeout(setVizStatus._t);
+    setVizStatus._t = null;
+    return;
+  }
   pulseVizHintCallout(); // draw attention to new status
-  // Clear after a short delay so the toolbar stays clean.
+  // Clear after delay so the toolbar stays clean.
   window.clearTimeout(setVizStatus._t);
   setVizStatus._t = window.setTimeout(() => {
     el.textContent = "";
-  }, 1800);
+  }, clearDelayMs);
 }
 
 function initFooterCarousel() {
@@ -9274,7 +9421,7 @@ function initVizToolbar() {
       // Open Bluesky composer
       const composeText = encodeURIComponent(text);
       window.open(`https://bsky.app/intent/compose?text=${composeText}`, "_blank");
-      setVizStatus("Copied - paste into Bluesky");
+      setVizStatus("Bluesky opened. Create your post and paste the copied link from clipboard.");
     } catch (e) {
       setVizStatus(`Share failed: ${e?.message || String(e)}`);
     }
@@ -9380,17 +9527,15 @@ function startIntroTour({ force = false } = {}) {
       intro: `
         <div class="fw-semibold mb-1">Welcome to theorymaker</div>
         <div class="text-muted small">
-          Create and update simple or complex diagrams using text or AI.
-        </div>
-        <div class="text-muted small">
-          Great for Theory of Change diagrams.
+          Create simple or complex diagrams like Theories of Change.
         </div>
         <ul class="mt-3 mb-0 ps-3">
           <li>🆓 Free, no registration</li>
-          <li>📝 Auto layout even of complex diagrams</li>
-          <li>👆🏼 NEW: Improve your diagram by clicking on it</li>
-          <li>🤖 NEW: Optional AI assistance</li>
-          <li>🔗 Share via a URL</li>
+          <li>📝 The diagram you see here is yours</li>
+          <li>🖱️ Edit it by clicking on any part</li>
+          <li>📄 Or pick a template to start quickly</li>
+          <li>🤖 Or ask the AI to create a new one</li>
+          <li>🔗 Share it with a link</li>
         </ul>
       `.trim(),
     },
@@ -9426,7 +9571,7 @@ function startIntroTour({ force = false } = {}) {
     },
     {
       element: ".tm-viz-toolbar",
-      intro: "Diagram toolbar: zoom, save, export, share, and style.",
+      intro: "Diagram toolbar: zoom, save/export/share, add a node with +, and open diagram styles.",
       position: "bottom",
     },
     {

@@ -806,6 +806,64 @@ footer.border-top,
   min-width: 140px;
 }
 
+/* Floating hint above newly added node */
+.tm-node-hint-bubble {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  margin-top: -8px;
+  padding: 8px 12px;
+  background: #fff;
+  border: 2px solid #0d6efd;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 0.875rem;
+  max-width: 220px;
+  text-align: center;
+  z-index: 3000;
+  pointer-events: none;
+  animation: tm-node-hint-bubble-pulse 1.5s ease-in-out infinite;
+}
+@keyframes tm-node-hint-bubble-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+/* Styles button: thicker blue border */
+#tm-editor-style {
+  border-width: 2px !important;
+  border-color: #0d6efd !important;
+}
+
+/* Save/share trigger: wider to fit floppy + share icons cleanly */
+#tm-save-share-btn {
+  border-width: 2px !important;
+  border-color: #0d6efd !important;
+  width: auto;
+  min-width: 64px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* Zoom controls: match save/style border emphasis */
+#tm-zoom-out,
+#tm-zoom-reset,
+#tm-zoom-in {
+  border-width: 2px !important;
+  border-color: #0d6efd !important;
+}
+
+/* Keep internal dividers thinner inside the 3-button zoom group */
+#tm-zoom-out {
+  border-right-width: 1px !important;
+}
+#tm-zoom-reset {
+  border-left-width: 1px !important;
+  border-right-width: 1px !important;
+}
+#tm-zoom-in {
+  border-left-width: 1px !important;
+}
+
 .tm-viz {
   flex: 1 1 auto;
   min-height: 0;
@@ -864,6 +922,16 @@ footer.border-top,
   white-space: pre-line; /* allow wrapping + render \n as line breaks */
   overflow-wrap: break-word; /* don't split normal words into tiny fragments */
   word-break: normal;
+}
+
+/* Wiggle: draw attention to a newly added node for a few seconds */
+@keyframes tm-node-wiggle {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-1.5px); }
+  20%, 40%, 60%, 80% { transform: translateX(1.5px); }
+}
+.tm-viz svg g.node.tm-node-wiggle {
+  animation: tm-node-wiggle 0.4s ease-in-out 5;
 }
 
 /* Hover glow: subtle highlight for anything clickable-to-edit in the diagram (nodes, links, cluster boxes, title). */

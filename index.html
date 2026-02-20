@@ -227,13 +227,15 @@
                 <div class="tm-toolbar-group">
                   <div class="btn-group btn-group-sm" role="group">
                     <button
+                      id="tm-save-share-btn"
                       class="btn btn-outline-secondary dropdown-toggle tm-icon-btn"
                       type="button"
                       data-bs-toggle="dropdown"
                       aria-expanded="false"
                       aria-label="Save and share options"
                     >
-                      <i class="bi bi-floppy" aria-hidden="true"></i>
+                      <i class="bi bi-floppy me-1" aria-hidden="true"></i>
+                      <i class="bi bi-share" aria-hidden="true"></i>
                     </button>
                     <ul class="dropdown-menu">
                       <li><h6 class="dropdown-header">Save</h6></li>
@@ -314,10 +316,17 @@
                       <li><hr class="dropdown-divider"></li>
                       <li><h6 class="dropdown-header">Share to social</h6></li>
                       <li>
-                        <button id="tm-share-bluesky" class="dropdown-item" type="button">
+                        <button
+                          id="tm-share-bluesky"
+                          class="dropdown-item"
+                          type="button"
+                          data-bs-toggle="tooltip"
+                          data-bs-placement="left"
+                          data-bs-title="Opens Bluesky. Create a post and paste the copied link from your clipboard."
+                        >
                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 568 501" class="me-2" style="display: inline-block; vertical-align: text-bottom;">
                             <path d="M123.121 33.664C188.241 82.553 258.281 181.68 284 234.873c25.719-53.192 95.759-152.32 160.879-201.21C491.866-1.611 568-28.906 568 57.947c0 17.346-9.945 145.713-15.778 166.555-20.275 72.453-94.155 90.933-159.875 79.748C507.222 323.8 536.444 388.56 473.333 453.32c-119.86 122.992-172.272-30.859-185.702-70.281-2.462-7.227-3.614-10.608-3.631-7.733-.017-2.875-1.169.506-3.631 7.733-13.43 39.422-65.842 193.273-185.702 70.281-63.111-64.76-33.89-129.52 80.986-149.071-65.72 11.185-139.6-7.295-159.875-79.748C9.945 203.659 0 75.291 0 57.946 0-28.906 76.135-1.612 123.121 33.664Z"/>
-                          </svg>Bluesky
+                          </svg>Bluesky (paste copied link)
                         </button>
                       </li>
                       <li>
@@ -334,6 +343,16 @@
                 <div class="tm-toolbar-group">
                   <div class="btn-group btn-group-sm" role="group" aria-label="Style controls">
                     <button
+                      id="tm-add-node"
+                      class="btn btn-primary tm-icon-btn fw-bold"
+                      type="button"
+                      aria-label="Add node"
+                      data-bs-toggle="tooltip"
+                      data-bs-title="Add node"
+                    >
+                      <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                    </button>
+                    <button
                       id="tm-editor-style"
                       class="btn btn-outline-secondary tm-icon-btn"
                       type="button"
@@ -346,6 +365,13 @@
                   </div>
                 </div>
 
+                <!-- Tips switch: hides the toolbar tips callout AND the in-map contextual hint bubble -->
+                <div class="tm-toolbar-group ms-2">
+                  <div class="form-check form-switch m-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="tm-tips-toggle" checked />
+                    <label class="form-check-label small text-muted" for="tm-tips-toggle">Tips</label>
+                  </div>
+                </div>
 
                 <div id="tm-viz-hint-wrap" class="tm-viz-hint-wrap ms-2">
                   <button
@@ -357,14 +383,6 @@
                   ></button>
                   <span id="tm-viz-hint" class="tm-viz-hint small text-muted"></span>
                   <span id="tm-viz-status" class="tm-viz-status small text-muted" aria-live="polite"></span>
-                </div>
-
-                <!-- Tips switch: hides the toolbar tips callout AND the in-map contextual hint bubble -->
-                <div class="tm-toolbar-group ms-2">
-                  <div class="form-check form-switch m-0">
-                    <input class="form-check-input" type="checkbox" role="switch" id="tm-tips-toggle" checked />
-                    <label class="form-check-label small text-muted" for="tm-tips-toggle">Tips</label>
-                  </div>
                 </div>
               </div>
 
@@ -381,7 +399,7 @@
                   </div>
                   <button id="tm-viz-selection-close" type="button" class="btn-close" aria-label="Close"></button>
                 </div>
-                <div class="row mb-3 g-2 px-3">
+                <div id="tm-viz-selection-action-btns" class="row mb-3 g-2 px-3">
                   <div class="col-6 d-grid">
                     <button id="tm-clear-selection" type="button" class="btn btn-sm btn-outline-secondary w-100">
                       <i class="bi bi-x-square me-1" aria-hidden="true"></i>
@@ -403,11 +421,19 @@
                       <h2 class="accordion-header tm-viz-acc-style" id="tm-viz-selection-acc-node-h">
                         <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#tm-viz-selection-acc-node" aria-expanded="true" aria-controls="tm-viz-selection-acc-node">
                           <i class="bi bi-brush me-2" aria-hidden="true"></i>
-                          Style or relabel nodes
+                          <span id="tm-viz-selection-acc-node-title">Style or relabel nodes</span>
                         </button>
                       </h2>
                       <div id="tm-viz-selection-acc-node" class="accordion-collapse collapse show" aria-labelledby="tm-viz-selection-acc-node-h" data-bs-parent="#tm-viz-selection-accordion">
                         <div class="accordion-body">
+                          <!-- Add node mode: label input + Add button (opened via + Node toolbar button) -->
+                          <div id="tm-viz-add-node-block" class="mb-3 d-none">
+                            <label class="form-label mb-1" for="tm-viz-add-node-label">New node label</label>
+                            <div class="input-group input-group-sm mb-3">
+                              <input id="tm-viz-add-node-label" class="form-control" type="text" placeholder="Node label" autocomplete="off" />
+                              <button id="tm-viz-add-node-btn" type="button" class="btn btn-outline-primary">Add</button>
+                            </div>
+                          </div>
                           <div id="tm-viz-selection-node-edit-hint" class="small text-muted">
                             Select exactly 1 node to edit its label and styling.
                           </div>
@@ -415,8 +441,10 @@
 
                           <!-- Node fields (moved from tm-viz-edit-modal) -->
                           <div id="tm-viz-edit-node-fields" class="mt-3 d-none">
-                            <label class="form-label mb-1" for="tm-viz-node-label">Node label</label>
-                            <input id="tm-viz-node-label" class="form-control form-control-sm" type="text" />
+                            <div id="tm-viz-node-label-row">
+                              <label class="form-label mb-1" for="tm-viz-node-label">Node label</label>
+                              <input id="tm-viz-node-label" class="form-control form-control-sm" type="text" />
+                            </div>
 
                             <div class="row g-2 mt-2">
                               <div class="col-12 col-md-5">
@@ -468,7 +496,7 @@
                     </div>
 
                     <!-- Selection operations (existing selection drawer contents) -->
-                    <div class="accordion-item">
+                    <div id="tm-viz-selection-acc-sel-item" class="accordion-item">
                       <h2 class="accordion-header tm-viz-acc-actions" id="tm-viz-selection-acc-sel-h">
                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#tm-viz-selection-acc-sel" aria-expanded="false" aria-controls="tm-viz-selection-acc-sel">
                           <i class="bi bi-check2-square me-2" aria-hidden="true"></i>

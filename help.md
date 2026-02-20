@@ -62,6 +62,7 @@ Tip: there’s also a **Tour** button (magic wand) in the navbar.
 Across the top of the diagram you have controls:
 
 - **Zoom out / Reset / Zoom in**: zoom the diagram.
+- **Add node** (`+`): opens the Add Node drawer to create and style a new node quickly.
 - **Diagram style** (palette): diagram-wide defaults (direction, spacing, colours, borders, etc).
 
 
@@ -88,6 +89,7 @@ Across the top of the diagram you have controls:
 ### Editing the diagram by clicking
 
 - Click a **node** to start a node selection (this opens the node drawer where you can style/rename).
+- Click the **`+` button** in the diagram toolbar to open **Add Node** (label + styling for a new node).
 - Click a **link** to edit its endpoints/label/styling or delete it.
 - Click a **group box** to open the group drawer (style/rename/link).
 
