@@ -346,12 +346,17 @@
                       id="tm-add-node"
                       class="btn btn-primary tm-icon-btn fw-bold"
                       type="button"
-                      aria-label="Add node"
-                      data-bs-toggle="tooltip"
-                      data-bs-title="Add node"
+                      aria-label="Add options"
+                      data-bs-toggle="dropdown"
+                      data-bs-auto-close="true"
+                      data-bs-title="Create options"
                     >
                       <i class="bi bi-plus-lg" aria-hidden="true"></i>
                     </button>
+                    <ul class="dropdown-menu">
+                      <li><button id="tm-new-diagram" class="dropdown-item" type="button">New diagram</button></li>
+                      <li><button id="tm-add-node-action" class="dropdown-item" type="button">Add node</button></li>
+                    </ul>
                     <button
                       id="tm-editor-style"
                       class="btn btn-outline-secondary tm-icon-btn"

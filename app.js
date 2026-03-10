@@ -8665,8 +8665,15 @@ function initVizInteractivity(editor, graphviz, opts = {}) {
     clearAllSelectionsAndCloseDrawers();
   });
 
-  // + Node toolbar button: open selection drawer in add-node mode
-  document.getElementById("tm-add-node")?.addEventListener("click", openAddNodeDrawer);
+  // (+) menu actions
+  document.getElementById("tm-new-diagram")?.addEventListener("click", () => {
+    // Start a blank diagram by clearing the full MapScript.
+    clearAllSelectionsAndCloseDrawers();
+    editor.setValue("", -1);
+    setMapScriptInUrl(editor.getValue());
+    renderNow(graphviz, editor);
+  });
+  document.getElementById("tm-add-node-action")?.addEventListener("click", openAddNodeDrawer);
 
   // Add node: insert "ID:: Label [style]" at recommended position, wiggle new node, close drawer
   function doAddNode() {
