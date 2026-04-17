@@ -9753,6 +9753,7 @@ function initChatUi({ editor, graphviz }) {
   const input = document.getElementById("tm-chat-input");
   const btnSend = document.getElementById("tm-chat-send");
   const btnClear = document.getElementById("tm-chat-clear");
+  const btnClearThread = document.getElementById("tm-chat-clear-thread");
   const btnStop = document.getElementById("tm-chat-stop");
   const sendLabel = document.getElementById("tm-chat-send-label");
   const sendSpinner = document.getElementById("tm-chat-send-spinner");
@@ -9761,7 +9762,7 @@ function initChatUi({ editor, graphviz }) {
 
   const editorDetails = document.getElementById("tm-editor-details");
 
-  if (!input || !btnSend || !btnClear || !btnStop || !threadEl) return;
+  if (!input || !btnSend || !btnClear || !btnClearThread || !btnStop || !threadEl) return;
 
   // Auto-grow chat input on focus/input, up to a maximum height.
   // Purpose: keep the default compact (1 line) but allow long prompts without manual resizing.
@@ -9803,6 +9804,17 @@ function initChatUi({ editor, graphviz }) {
 
   // Persist chat history across reloads (browser-only).
   const CHAT_STORAGE_KEY = "tm_chat_history_v1";
+
+  function clearChatThread() {
+    messages.length = 0;
+    conversationId = "";
+    try {
+      localStorage.removeItem(CHAT_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    renderThread();
+  }
   const CHAT_STORAGE_MAX_MESSAGES = 40; // keep LocalStorage small; MapScript snapshots can be large
 
   const messages = [];
@@ -10100,6 +10112,10 @@ function initChatUi({ editor, graphviz }) {
     resizeChatInput(false);
     updateClearVisibility();
     input.focus();
+  });
+
+  btnClearThread.addEventListener("click", () => {
+    clearChatThread();
   });
 
   // Restore chat history (if any) and render immediately.

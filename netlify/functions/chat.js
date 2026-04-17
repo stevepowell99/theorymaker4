@@ -46,7 +46,8 @@ exports.handler = async (event, context) => {
 
   try {
     // Persist usage in Netlify Blobs so the limit survives serverless cold starts.
-    const { getStore } = await import("@netlify/blobs");
+    const { connectLambda, getStore } = await import("@netlify/blobs");
+    connectLambda(event);
     const usageStore = getStore("chat-usage");
 
     const clientIp = getClientIp(event, context);

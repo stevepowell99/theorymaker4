@@ -119,7 +119,16 @@
 
           <!-- Chat UI -->
           <div id="tm-chat-panel" class="tm-panel-header bg-white px-2 py-2">
-            <div class="d-flex align-items-center justify-content-between gap-2">
+            <div class="d-flex align-items-center justify-content-end gap-2">
+              <button
+                type="button"
+                id="tm-chat-clear-thread"
+                class="btn btn-sm btn-outline-secondary"
+                title="New chat"
+                aria-label="New chat"
+              >
+                <i class="bi bi-chat me-1" aria-hidden="true"></i>New chat
+              </button>
             </div>
 
             <!-- Chat thread: hidden until first message; grows up to ~40% viewport height then scrolls -->
