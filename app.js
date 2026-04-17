@@ -1495,11 +1495,11 @@ function initMobileScreens({ editor }) {
   const left = document.getElementById("tm-left");
   const right = document.getElementById("tm-right");
   const splitter = document.getElementById("tm-splitter");
-  const chatPanel = document.getElementById("tm-chat-panel");
+  const chatDetails = document.getElementById("tm-chat-details");
   const editorDetails = document.getElementById("tm-editor-details");
   const offcanvasEl = document.getElementById("tm-mobile-nav");
 
-  if (!left || !right || !splitter || !chatPanel || !editorDetails) return;
+  if (!left || !right || !splitter || !chatDetails || !editorDetails) return;
 
   const bs = globalThis.bootstrap;
   const offcanvas = offcanvasEl && bs?.Offcanvas ? bs.Offcanvas.getOrCreateInstance(offcanvasEl) : null;
@@ -1517,7 +1517,7 @@ function initMobileScreens({ editor }) {
     left.classList.remove("d-none");
     right.classList.remove("d-none");
     splitter.classList.remove("d-none");
-    chatPanel.classList.remove("d-none");
+    chatDetails.classList.remove("d-none");
     editorDetails.classList.remove("d-none");
   }
 
@@ -1531,7 +1531,7 @@ function initMobileScreens({ editor }) {
     right.classList.toggle("d-none", !isRight);
     splitter.classList.add("d-none");
 
-    chatPanel.classList.toggle("d-none", s !== "chat");
+    chatDetails.classList.toggle("d-none", s !== "chat");
     editorDetails.classList.toggle("d-none", s !== "editor");
 
     if (s === "editor") {
@@ -9729,6 +9729,7 @@ function initChatUi({ editor, graphviz }) {
   const sendLabel = document.getElementById("tm-chat-send-label");
   const sendSpinner = document.getElementById("tm-chat-send-spinner");
   const threadEl = document.getElementById("tm-chat-thread");
+  const footerUsageEl = document.getElementById("tm-footer-usage");
 
   const editorDetails = document.getElementById("tm-editor-details");
 
@@ -9779,6 +9780,36 @@ function initChatUi({ editor, graphviz }) {
   const messages = [];
   let conversationId = "";
   let activeChatAbortController = null; // AbortController for the current request (for Stop button)
+
+  function setFooterUsageText(text) {
+    if (!footerUsageEl) return;
+    footerUsageEl.textContent = String(text || "").trim();
+  }
+
+  function updateFooterUsageFromHeaders(response) {
+    if (!footerUsageEl || !response) return;
+    const used = Number(response.headers.get("X-TM-Usage-Chars"));
+    const limit = Number(response.headers.get("X-TM-Usage-Limit"));
+    if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return;
+    setFooterUsageText(`AI usage today: ${used.toLocaleString()} / ${limit.toLocaleString()} chars`);
+  }
+
+  async function refreshFooterUsage() {
+    if (!footerUsageEl) return;
+
+    const isLocal = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    if (isLocal) {
+      setFooterUsageText("AI usage: local dev");
+      return;
+    }
+
+    try {
+      const r = await fetch("/.netlify/functions/chat", { method: "GET" });
+      updateFooterUsageFromHeaders(r);
+    } catch {
+      setFooterUsageText("");
+    }
+  }
 
   function loadChatFromStorage() {
     try {
@@ -9972,8 +10003,13 @@ function initChatUi({ editor, graphviz }) {
         });
       }
 
+      updateFooterUsageFromHeaders(r);
+
       if (!r.ok) {
         const txt = await r.text().catch(() => "");
+        if (r.status === 429) {
+          throw new Error("Your daily AI usage limit has been reached. Please try again tomorrow.");
+        }
         throw new Error(`Chat API error (${r.status}): ${txt || r.statusText}`);
       }
 
@@ -10038,6 +10074,7 @@ function initChatUi({ editor, graphviz }) {
   // Restore chat history (if any) and render immediately.
   loadChatFromStorage();
   renderThread();
+  refreshFooterUsage();
 
   // Ensure correct initial button state.
   updateClearVisibility();
@@ -10301,7 +10338,8 @@ async function main() {
   const vizInteractivityApi = initVizInteractivity(editor, graphviz, { openTitleModal });
   window.vizInteractivityApi = vizInteractivityApi;
 
-  // Light “autocorrect/validate then render” on idle typing (kept minimal)
+  // Keep typing predictable: on idle, only sync URL + rerender.
+  // Do not rewrite editor text here, because that can fight in-progress edits.
   editor.session.on("change", () => {
     if (suppressHistorySync) return;
 
@@ -10312,23 +10350,6 @@ async function main() {
     }
     if (historyBurstTimer) clearTimeout(historyBurstTimer);
     historyBurstTimer = setTimeout(() => {
-      const text = editor.getValue();
-      // Normalize away redundant specs (kept simple; removes no-op/redundant styling).
-      const { settings } = dslToDot(text);
-      const normalized = normalizeDslRemoveRedundantSpecs(text, settings);
-      if (normalized !== text) {
-        // Update editor without triggering another history/render burst.
-        const cursor = editor.getCursorPosition();
-        suppressHistorySync = true;
-        try {
-          editor.setValue(normalized, -1);
-          editor.moveCursorToPosition(cursor);
-          editor.clearSelection();
-        } finally {
-          suppressHistorySync = false;
-        }
-      }
-
       const nextText = editor.getValue();
       setMapScriptInUrl(nextText);
       renderNow(graphviz, editor);

@@ -62,6 +62,13 @@ Supported settings (the ones the app recognises) include:
 - Saved maps appear in **Templates → Saved in this browser** (with a thumbnail if possible).
 - Saved maps can be deleted from Templates (browser-only).
 
+## Run locally
+
+- This app has **no build step**. Serve the repo root as static files.
+- In VS Code, the intended local-dev flow is **Live Server**: right-click `index.html` and choose **Open with Live Server**.
+- Open the local URL it gives you (typically `http://localhost:5500/`).
+- Use `localhost` or `127.0.0.1` rather than opening the file directly, because local admin features only appear on those hosts.
+
 ## Admin mode (local dev only)
 
 When running on `http://localhost/...` or `http://127.0.0.1/...` you are treated as **admin**:

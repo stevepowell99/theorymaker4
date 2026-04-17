@@ -110,46 +110,54 @@
     <main class="tm-main">
       <!-- Left: Chat (default) + Editor (behind chevron) -->
       <section id="tm-left" class="tm-left">
-        <!-- Chat UI -->
-        <div id="tm-chat-panel" class="tm-panel-header border-bottom bg-white px-2 py-2">
-          <div class="d-flex align-items-center justify-content-between gap-2">
-          </div>
+        <!-- AI chat hidden behind a chevron -->
+        <details id="tm-chat-details" class="tm-details tm-chat-details" open>
+          <summary class="tm-details-summary tm-chat-details-summary">
+            <i class="bi bi-chevron-right tm-chevron" aria-hidden="true"></i>
+            <span class="fw-semibold">AI assistant</span>
+          </summary>
 
-          <!-- Chat thread: hidden until first message; grows up to ~40% viewport height then scrolls -->
-          <div id="tm-chat-thread" class="tm-chat-thread d-none" aria-label="Chat history"></div>
+          <!-- Chat UI -->
+          <div id="tm-chat-panel" class="tm-panel-header bg-white px-2 py-2">
+            <div class="d-flex align-items-center justify-content-between gap-2">
+            </div>
 
-          <div class="input-group input-group-sm mt-2">
-            <textarea
-              id="tm-chat-input"
-              class="form-control tm-chat-input"
-              rows="2"
-              placeholder="Chat with AI to create a new diagram or update the existing diagram: contents and/or styles. Or click on the diagram to edit it, or use the manual editor below."
-              aria-label="Chat input"
-            ></textarea>
-            <button
-              id="tm-chat-clear"
-              class="btn btn-outline-secondary d-none"
-              type="button"
-              title="Clear chat history"
-              aria-label="Clear chat history"
-            >
-              Clear
-            </button>
-            <button
-              id="tm-chat-stop"
-              class="btn btn-outline-danger d-none"
-              type="button"
-              title="Stop"
-              aria-label="Stop"
-            >
-              Stop
-            </button>
-            <button id="tm-chat-send" class="btn btn-primary" type="button">
-              <span id="tm-chat-send-label">Send</span>
-              <span id="tm-chat-send-spinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
-            </button>
+            <!-- Chat thread: hidden until first message; grows up to ~40% viewport height then scrolls -->
+            <div id="tm-chat-thread" class="tm-chat-thread d-none" aria-label="Chat history"></div>
+
+            <div class="input-group input-group-sm mt-2">
+              <textarea
+                id="tm-chat-input"
+                class="form-control tm-chat-input"
+                rows="2"
+                placeholder="Chat with AI to create a new diagram or update the existing diagram: contents and/or styles. Or click on the diagram to edit it, or use the manual editor below."
+                aria-label="Chat input"
+              ></textarea>
+              <button
+                id="tm-chat-clear"
+                class="btn btn-outline-secondary d-none"
+                type="button"
+                title="Clear chat history"
+                aria-label="Clear chat history"
+              >
+                Clear
+              </button>
+              <button
+                id="tm-chat-stop"
+                class="btn btn-outline-danger d-none"
+                type="button"
+                title="Stop"
+                aria-label="Stop"
+              >
+                Stop
+              </button>
+              <button id="tm-chat-send" class="btn btn-primary" type="button">
+                <span id="tm-chat-send-label">Send</span>
+                <span id="tm-chat-send-spinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+              </button>
+            </div>
           </div>
-        </div>
+        </details>
 
         <!-- Editor hidden behind a chevron (per request) -->
         <details id="tm-editor-details" class="tm-details tm-editor-details">
@@ -731,7 +739,8 @@ A -> B [increases | 1px]</code></pre>
     <!-- Subtle footer -->
     <footer class="border-top bg-white">
       <div class="container-fluid py-2">
-        <div class="d-flex align-items-center justify-content-start small text-muted">
+        <div class="d-flex align-items-center gap-3 small text-muted flex-wrap">
+          <div class="d-inline-flex align-items-center flex-wrap min-w-0">
           <!-- Footer links with matching icons (combined) -->
           <div class="tm-footer-icons d-inline-flex align-items-center flex-nowrap text-nowrap">
             <a
@@ -778,6 +787,8 @@ A -> B [increases | 1px]</code></pre>
               <span id="tm-footer-carousel-suffix"></span>
             </span>
           </div>
+          </div>
+          <div id="tm-footer-usage" class="tm-footer-usage ms-auto text-nowrap" aria-live="polite"></div>
         </div>
       </div>
     </footer>

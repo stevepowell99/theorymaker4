@@ -476,6 +476,11 @@ footer.border-top,
   text-decoration-thickness: 2px;
 }
 
+.tm-footer-usage {
+  /* Purpose: show today's AI usage limit in the footer without taking over the layout. */
+  flex: 0 0 auto;
+}
+
 .tm-fade-swap {
   transition: opacity 260ms ease;
 }
@@ -1403,6 +1408,19 @@ footer.border-top,
   box-shadow: var(--tm-shadow-sm);
 }
 
+.tm-chat-details {
+  /* Keep the AI chat panel compact above the editor. */
+  flex: 0 0 auto;
+  margin: 10px 10px 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.tm-chat-details-summary {
+  padding: 10px;
+  border-bottom: 1px solid #e9ecef;
+}
+
 /* -----------------------------
    Chat UI: standard "thread + composer"
    - Starts as just the input (thread hidden)
@@ -1514,6 +1532,10 @@ details[open] .tm-chevron {
     min-width: 0;
     max-width: 100% !important;
     border: 0;
+  }
+
+  .tm-chat-details {
+    margin-bottom: 10px;
   }
 
   .tm-right {
