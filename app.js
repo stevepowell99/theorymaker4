@@ -8957,6 +8957,34 @@ function initFooterCarousel() {
   window.setInterval(swapToNext, 10000);
 }
 
+function trackGoatcounterEvent(path, title) {
+  // Purpose: send a custom GoatCounter event without exposing map content.
+  if (!path || String(path).startsWith("/")) return;
+  try {
+    globalThis.goatcounter?.count?.({
+      path: String(path),
+      title: String(title || path),
+      event: true,
+      no_session: true,
+    });
+  } catch {
+    // ignore analytics failures
+  }
+}
+
+function trackGoatcounterSessionEvent(key, path, title) {
+  // Purpose: count some behaviours once per browser tab session.
+  const storageKey = `tm_gc_${String(key || path || "").trim()}`;
+  if (!storageKey) return;
+  try {
+    if (sessionStorage.getItem(storageKey) === "1") return;
+    sessionStorage.setItem(storageKey, "1");
+  } catch {
+    // If sessionStorage is unavailable, still attempt the event.
+  }
+  trackGoatcounterEvent(path, title);
+}
+
 function getVizSvgEl() {
   return document.getElementById("tm-viz")?.querySelector("svg") || null;
 }
@@ -9939,6 +9967,8 @@ function initChatUi({ editor, graphviz }) {
     if (!msg) return;
 
     const userId = getOrCreateStableId("tm_dify_user");
+    trackGoatcounterSessionEvent("ai_session", "ai_session", "AI used in this session");
+    trackGoatcounterEvent("ai_send", "AI request sent");
 
     push("user", msg);
     input.value = "";
@@ -10026,6 +10056,7 @@ function initChatUi({ editor, graphviz }) {
       if (!nextSyntax) throw new Error("Returned JSON is missing `syntax`.");
 
       // Apply returned syntax directly to the editor (editor is the source of truth).
+      trackGoatcounterEvent("ai_apply", "AI change applied");
       editor.setValue(nextSyntax, -1);
       setMapScriptInUrl(editor.getValue());
       await renderNow(graphviz, editor);
@@ -10174,6 +10205,23 @@ async function main() {
   editor.on("change", resizeAceToContents);
   window.addEventListener("resize", resizeAceToContents);
 
+  let pendingManualEditAnalytics = false;
+  function markPendingManualEditAnalytics(e) {
+    const key = String(e?.key || "");
+    const lower = key.toLowerCase();
+    const isDirectText = key.length === 1 && !e?.ctrlKey && !e?.metaKey && !e?.altKey;
+    const isEditKey = key === "Backspace" || key === "Delete" || key === "Enter" || key === "Tab";
+    const isPasteOrCut = Boolean(e && (e.ctrlKey || e.metaKey) && (lower === "v" || lower === "x"));
+    if (isDirectText || isEditKey || isPasteOrCut) pendingManualEditAnalytics = true;
+  }
+  editor.container?.addEventListener("keydown", markPendingManualEditAnalytics, true);
+  editor.container?.addEventListener("paste", () => {
+    pendingManualEditAnalytics = true;
+  }, true);
+  editor.container?.addEventListener("cut", () => {
+    pendingManualEditAnalytics = true;
+  }, true);
+
   // Restore editor from URL if present, otherwise seed a starter example.
   const fromUrl = getMapScriptFromUrl();
   const isMobile = Boolean(globalThis.matchMedia?.("(max-width: 991.98px)")?.matches);
@@ -10283,6 +10331,7 @@ async function main() {
 
       // Refresh templates so the saved map appears immediately.
       if (typeof refreshTemplates === "function") refreshTemplates();
+      trackGoatcounterEvent("manual_save", "Map saved in browser");
 
       // Clarify scope: browser-only save vs portable saving via the URL.
       alert(
@@ -10341,6 +10390,10 @@ async function main() {
   // Keep typing predictable: on idle, only sync URL + rerender.
   // Do not rewrite editor text here, because that can fight in-progress edits.
   editor.session.on("change", () => {
+    if (pendingManualEditAnalytics) {
+      pendingManualEditAnalytics = false;
+      trackGoatcounterSessionEvent("manual_edit_session", "manual_edit_session", "Manual edit in this session");
+    }
     if (suppressHistorySync) return;
 
     // First change in a burst: create a new history entry. Subsequent changes update that entry.

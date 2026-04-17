@@ -18,6 +18,7 @@ This repo is designed to be **no-build** and easy to host as static files (Netli
 - `help.md`: help content (rendered into the Help tab and the standalone `/help` pages)
 - `help/`: standalone help pages (they load `help.md`)
 - `netlify/functions/chat.js`: Netlify Function proxy for AI chat (keeps API key server-side)
+- `package.json`: runtime dependency for Netlify Blobs (used by the chat usage counter)
 
 ## Interaction model (quick)
 
@@ -81,6 +82,13 @@ When running on `http://localhost/...` or `http://127.0.0.1/...` you are treated
 - Chat uses **direct Dify API** and will prompt for a Dify App API key (stored in this browser only as `localStorage["tm_dify_api_key"]`).
 
 In production (Netlify), chat calls `/.netlify/functions/chat` and the API key is stored in Netlify environment variables (`DIFY_API_KEY`).
+
+Production chat also has a daily per-IP submitted-character limit, and the footer shows the current usage for that IP for today.
+
+## Analytics
+
+- GoatCounter tracks the landing page as before, without sending the map hash/content.
+- It also records a few anonymous custom events so you can compare AI usage vs manual editing (for example `ai_session`, `ai_send`, `ai_apply`, `manual_edit_session`, `manual_save`).
 
 ## License
 

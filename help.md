@@ -161,6 +161,9 @@ Important notes:
 
 - **Optional**: you can ignore chat entirely and just edit manually.
 - **Privacy**: when you use chat, your current map text is sent to an external AI service (Dify) to generate a suggested update.
+- **Usage limit (hosted app)**: production chat has a daily per-IP submitted-character limit. If you hit it, chat will tell you to try again tomorrow.
+- **Usage display (hosted app)**: the footer shows today’s AI usage so far for your current IP.
+- **Analytics**: the app records basic anonymous usage events (for example whether a session used AI and/or manual editing). Map text is not sent to GoatCounter.
 - **API keys**:
   - **Production (hosted)**: the API key is stored server-side (Netlify environment variable) and you will not be prompted.
   - **Local dev (localhost only)**: you’ll be prompted for a Dify App API key; it is stored in this browser only (`localStorage["tm_dify_api_key"]`).
