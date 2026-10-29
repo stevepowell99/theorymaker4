@@ -9821,6 +9821,61 @@ function initChatUi({ editor, graphviz }) {
   let conversationId = "";
   let activeChatAbortController = null; // AbortController for the current request (for Stop button)
 
+  // Polite per-browser cap on AI requests. LocalStorage is easy to bypass; the server's per-IP daily
+  // character limit is the real backstop. Admin (local dev) uses its own Dify key and is not capped.
+  const CHAT_RATE_STORAGE_KEY = "tm_chat_request_times_v1";
+  const CHAT_RATE_LIMITS = [
+    { windowMs: 60 * 60 * 1000, max: 20, name: "hourly" },
+    { windowMs: 24 * 60 * 60 * 1000, max: 60, name: "daily" },
+  ];
+  const CHAT_RATE_MAX_WINDOW_MS = Math.max(...CHAT_RATE_LIMITS.map((l) => l.windowMs));
+
+  function readChatRequestTimes(now) {
+    try {
+      const arr = JSON.parse(localStorage.getItem(CHAT_RATE_STORAGE_KEY) || "[]");
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .map(Number)
+        .filter((t) => Number.isFinite(t) && t > now - CHAT_RATE_MAX_WINDOW_MS && t <= now)
+        .sort((a, b) => a - b);
+    } catch {
+      return [];
+    }
+  }
+
+  function recordChatRequest(now) {
+    try {
+      const times = readChatRequestTimes(now);
+      times.push(now);
+      localStorage.setItem(CHAT_RATE_STORAGE_KEY, JSON.stringify(times));
+    } catch {
+      // ignore: the cap is a courtesy, so chat still works without storage
+    }
+  }
+
+  // Returns a message explaining the limit if this browser has hit one, otherwise "".
+  function getChatRateLimitMessage(now) {
+    if (IS_ADMIN) return "";
+    const times = readChatRequestTimes(now);
+    for (const lim of CHAT_RATE_LIMITS) {
+      const inWindow = times.filter((t) => t > now - lim.windowMs);
+      if (inWindow.length < lim.max) continue;
+      // A slot frees up when enough of the oldest requests leave the window; round up to the minute.
+      const freeAt = inWindow[inWindow.length - lim.max] + lim.windowMs;
+      const next = new Date(Math.ceil(freeAt / 60000) * 60000);
+      const time = next.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const when = next.toDateString() === new Date(now).toDateString() ? `at ${time}` : `tomorrow at ${time}`;
+      const [hourly, daily] = CHAT_RATE_LIMITS;
+      return (
+        `Sorry, you have reached the ${lim.name} limit for the AI assistant. ` +
+        `Theorymaker is free to use, but every AI request costs us money, so each browser can send ` +
+        `${hourly.max} requests an hour and ${daily.max} a day. ` +
+        `You can send another request ${when}. In the meantime you can keep editing the diagram by hand.`
+      );
+    }
+    return "";
+  }
+
   function setFooterUsageText(text) {
     if (!footerUsageEl) return;
     footerUsageEl.textContent = String(text || "").trim();
@@ -9977,6 +10032,15 @@ function initChatUi({ editor, graphviz }) {
   async function send() {
     const msg = String(input.value || "").trim();
     if (!msg) return;
+
+    // Leave the typed request in the input so it can be sent once the limit clears.
+    const limitMessage = getChatRateLimitMessage(Date.now());
+    if (limitMessage) {
+      trackGoatcounterEvent("ai_rate_limited", "AI request blocked by browser limit");
+      push("assistant", limitMessage);
+      return;
+    }
+    if (!IS_ADMIN) recordChatRequest(Date.now());
 
     const userId = getOrCreateStableId("tm_dify_user");
     trackGoatcounterSessionEvent("ai_session", "ai_session", "AI used in this session");

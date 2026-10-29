@@ -85,6 +85,8 @@ In production (Netlify), chat calls `/.netlify/functions/chat` and the API key i
 
 Production chat also has a daily per-IP submitted-character limit, and the footer shows the current usage for that IP for today.
 
+On top of that, each browser may send 20 AI requests in any rolling hour and 60 in any rolling 24 hours (`CHAT_RATE_LIMITS` in `app.js`, timestamps in `localStorage["tm_chat_request_times_v1"]`). When a limit is reached the chat explains why and says when the next request is possible; the typed request stays in the input. It is a courtesy limit that anyone can clear by emptying their browser storage; the server's per-IP limit is the real backstop. Admin (local dev) is exempt.
+
 ## Analytics
 
 - GoatCounter tracks the landing page as before, without sending the map hash/content.
